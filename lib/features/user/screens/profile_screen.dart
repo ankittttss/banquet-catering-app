@@ -218,6 +218,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 label: 'My addresses',
                 onTap: () => context.push(AppRoutes.addresses),
               ),
+              const SizedBox(height: AppSizes.sm),
+              _ProfileLink(
+                icon: PhosphorIconsDuotone.heart,
+                iconColor: AppColors.primary,
+                iconBg: AppColors.primarySoft,
+                label: 'Favorites',
+                onTap: () => context.push(AppRoutes.favorites),
+              ),
               const SizedBox(height: AppSizes.xxl),
               OutlinedButton.icon(
                 onPressed: _signOut,

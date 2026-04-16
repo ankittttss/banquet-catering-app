@@ -18,7 +18,10 @@ import '../../features/user/screens/my_events_screen.dart';
 import '../../features/user/screens/order_detail_screen.dart';
 import '../../features/user/screens/order_success_screen.dart';
 import '../../features/user/screens/addresses_screen.dart';
+import '../../features/user/screens/favorites_screen.dart';
 import '../../features/user/screens/profile_screen.dart';
+import '../../features/user/screens/restaurant_detail_screen.dart';
+import '../../features/user/screens/search_screen.dart';
 import '../../features/user/screens/user_home_screen.dart';
 import '../../shared/providers/auth_providers.dart';
 import '../config/app_config.dart';
@@ -102,6 +105,22 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: AppRoutes.menu,
         pageBuilder: (_, s) => _page(s, const MenuScreen()),
+      ),
+      GoRoute(
+        path: AppRoutes.restaurantDetail,
+        pageBuilder: (_, s) => _page(
+          s,
+          RestaurantDetailScreen(
+              restaurantId: s.pathParameters['id']!),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.search,
+        pageBuilder: (_, s) => _page(s, const SearchScreen()),
+      ),
+      GoRoute(
+        path: AppRoutes.favorites,
+        pageBuilder: (_, s) => _page(s, const FavoritesScreen()),
       ),
       GoRoute(
         path: AppRoutes.cart,

@@ -260,52 +260,46 @@ class _SearchBar extends ConsumerWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(
           horizontal: AppSizes.pagePadding),
-      child: Container(
-        height: 54,
-        padding: const EdgeInsets.symmetric(horizontal: AppSizes.md),
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(AppSizes.radiusMd),
-          border: Border.all(color: AppColors.border),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.03),
-              blurRadius: 8,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            const Icon(PhosphorIconsBold.magnifyingGlass,
-                color: AppColors.primary, size: 20),
-            const SizedBox(width: AppSizes.sm),
-            Expanded(
-              child: TextField(
-                onChanged: (v) =>
-                    ref.read(homeSearchProvider.notifier).state = v,
-                decoration: InputDecoration(
-                  isDense: true,
-                  border: InputBorder.none,
-                  enabledBorder: InputBorder.none,
-                  focusedBorder: InputBorder.none,
-                  filled: false,
-                  hintText: 'Search dishes, cuisines, restaurants…',
-                  hintStyle: AppTextStyles.body
+      child: InkWell(
+        onTap: () => context.push(AppRoutes.search),
+        borderRadius: BorderRadius.circular(AppSizes.radiusMd),
+        child: Container(
+          height: 54,
+          padding: const EdgeInsets.symmetric(horizontal: AppSizes.md),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(AppSizes.radiusMd),
+            border: Border.all(color: AppColors.border),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.03),
+                blurRadius: 8,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              const Icon(PhosphorIconsBold.magnifyingGlass,
+                  color: AppColors.primary, size: 20),
+              const SizedBox(width: AppSizes.sm),
+              Expanded(
+                child: Text(
+                  'Search dishes, cuisines, restaurants…',
+                  style: AppTextStyles.body
                       .copyWith(color: AppColors.textMuted),
-                  contentPadding: EdgeInsets.zero,
                 ),
               ),
-            ),
-            Container(
-              width: 1,
-              height: 24,
-              color: AppColors.border,
-            ),
-            const SizedBox(width: AppSizes.sm),
-            const Icon(PhosphorIconsBold.sliders,
-                color: AppColors.textSecondary, size: 20),
-          ],
+              Container(
+                width: 1,
+                height: 24,
+                color: AppColors.border,
+              ),
+              const SizedBox(width: AppSizes.sm),
+              const Icon(PhosphorIconsBold.sliders,
+                  color: AppColors.textSecondary, size: 20),
+            ],
+          ),
         ),
       ),
     ).animate().fadeIn(delay: 100.ms, duration: 340.ms);
@@ -944,8 +938,7 @@ class _RestaurantCard extends StatelessWidget {
         child: InkWell(
           onTap: () {
             HapticFeedback.lightImpact();
-            // For v1 — just jump into event flow. In v2, open a detail sheet.
-            context.push(AppRoutes.eventDetails);
+            context.push(AppRoutes.restaurantDetailFor(restaurant.id));
           },
           borderRadius: BorderRadius.circular(AppSizes.radiusLg),
           child: Container(
