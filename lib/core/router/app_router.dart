@@ -9,6 +9,7 @@ import '../../features/admin/screens/admin_menu_screen.dart';
 import '../../features/admin/screens/admin_orders_screen.dart';
 import '../../features/auth/screens/login_screen.dart';
 import '../../features/auth/screens/otp_screen.dart';
+import '../../features/onboarding/onboarding_screen.dart';
 import '../../features/splash/splash_screen.dart';
 import '../../features/user/screens/cart_screen.dart';
 import '../../features/user/screens/checkout_screen.dart';
@@ -45,9 +46,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       final isAuthRoute =
           loc == AppRoutes.login || loc == AppRoutes.otp;
       final isSplash = loc == AppRoutes.splash;
+      final isOnboarding = loc == AppRoutes.onboarding;
 
-      // Let splash show while profile loads.
-      if (isSplash) return null;
+      // Let splash + onboarding show freely.
+      if (isSplash || isOnboarding) return null;
 
       // Not signed in → force to login (unless Supabase isn't configured, in
       // which case we let devs roam freely for UI work).
@@ -74,6 +76,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: AppRoutes.splash,
         pageBuilder: (_, s) => _page(s, const SplashScreen()),
+      ),
+      GoRoute(
+        path: AppRoutes.onboarding,
+        pageBuilder: (_, s) => _page(s, const OnboardingScreen()),
       ),
       GoRoute(
         path: AppRoutes.login,

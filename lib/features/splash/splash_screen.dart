@@ -12,6 +12,7 @@ import '../../core/router/app_routes.dart';
 import '../../core/supabase/supabase_client.dart' as sb;
 import '../../data/models/user_role.dart';
 import '../../shared/providers/auth_providers.dart';
+import '../onboarding/onboarding_screen.dart';
 
 class SplashScreen extends ConsumerStatefulWidget {
   const SplashScreen({super.key});
@@ -31,6 +32,13 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
     // Small pause for brand flash.
     await Future<void>.delayed(const Duration(milliseconds: 900));
     if (!mounted) return;
+
+    // First-launch onboarding takes precedence (even in dev mode).
+    if (!await hasSeenOnboarding()) {
+      if (!mounted) return;
+      context.go(AppRoutes.onboarding);
+      return;
+    }
 
     if (!AppConfig.hasSupabase) {
       // Dev mode: go straight to user home for local UI work.

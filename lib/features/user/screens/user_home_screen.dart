@@ -23,6 +23,8 @@ import '../../../shared/providers/menu_providers.dart';
 import '../../../shared/widgets/app_card.dart';
 import '../../../shared/widgets/app_scaffold.dart';
 import '../../../shared/widgets/app_skeleton.dart';
+import '../../../shared/widgets/filters_sheet.dart';
+import '../../../shared/widgets/notifications_sheet.dart';
 import '../../../shared/widgets/status_badge.dart';
 import '../../../shared/widgets/user_bottom_nav.dart';
 import 'my_events_screen.dart';
@@ -168,6 +170,11 @@ class _Header extends ConsumerWidget {
         ),
       ),
       actions: [
+        IconButton(
+          icon: const Icon(PhosphorIconsBold.bell, size: 22),
+          color: AppColors.textPrimary,
+          onPressed: () => showNotificationsSheet(context),
+        ),
         Padding(
           padding: const EdgeInsets.only(right: AppSizes.pagePadding),
           child: _ProfileAvatar(onTap: () => context.push(AppRoutes.profile)),
@@ -260,46 +267,68 @@ class _SearchBar extends ConsumerWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(
           horizontal: AppSizes.pagePadding),
-      child: InkWell(
-        onTap: () => context.push(AppRoutes.search),
-        borderRadius: BorderRadius.circular(AppSizes.radiusMd),
-        child: Container(
-          height: 54,
-          padding: const EdgeInsets.symmetric(horizontal: AppSizes.md),
-          decoration: BoxDecoration(
-            color: AppColors.surface,
-            borderRadius: BorderRadius.circular(AppSizes.radiusMd),
-            border: Border.all(color: AppColors.border),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.03),
-                blurRadius: 8,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: Row(
-            children: [
-              const Icon(PhosphorIconsBold.magnifyingGlass,
-                  color: AppColors.primary, size: 20),
-              const SizedBox(width: AppSizes.sm),
-              Expanded(
-                child: Text(
-                  'Search dishes, cuisines, restaurants…',
-                  style: AppTextStyles.body
-                      .copyWith(color: AppColors.textMuted),
+      child: Container(
+        height: 54,
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(AppSizes.radiusMd),
+          border: Border.all(color: AppColors.border),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.03),
+              blurRadius: 8,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: InkWell(
+                onTap: () => context.push(AppRoutes.search),
+                borderRadius: const BorderRadius.horizontal(
+                    left: Radius.circular(AppSizes.radiusMd)),
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: AppSizes.md),
+                  child: Row(
+                    children: [
+                      const Icon(PhosphorIconsBold.magnifyingGlass,
+                          color: AppColors.primary, size: 20),
+                      const SizedBox(width: AppSizes.sm),
+                      Expanded(
+                        child: Text(
+                          'Search dishes, cuisines, restaurants…',
+                          style: AppTextStyles.body
+                              .copyWith(color: AppColors.textMuted),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-              Container(
-                width: 1,
-                height: 24,
-                color: AppColors.border,
+            ),
+            Container(
+              width: 1,
+              height: 24,
+              color: AppColors.border,
+            ),
+            InkWell(
+              onTap: () => showFiltersSheet(context),
+              borderRadius: const BorderRadius.horizontal(
+                  right: Radius.circular(AppSizes.radiusMd)),
+              child: const Padding(
+                padding: EdgeInsets.symmetric(
+                  horizontal: AppSizes.md,
+                  vertical: AppSizes.md,
+                ),
+                child: Icon(PhosphorIconsBold.sliders,
+                    color: AppColors.textSecondary, size: 20),
               ),
-              const SizedBox(width: AppSizes.sm),
-              const Icon(PhosphorIconsBold.sliders,
-                  color: AppColors.textSecondary, size: 20),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     ).animate().fadeIn(delay: 100.ms, duration: 340.ms);
