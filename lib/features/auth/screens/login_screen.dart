@@ -18,7 +18,6 @@ import '../../../data/models/user_profile.dart';
 import '../../../data/models/user_role.dart';
 import '../../../shared/providers/auth_providers.dart';
 import '../../../shared/providers/repositories_providers.dart';
-import '../../../shared/widgets/app_scaffold.dart';
 import '../../../shared/widgets/app_text_field.dart';
 import '../../../shared/widgets/primary_button.dart';
 
@@ -64,9 +63,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             ? null
             : 'io.supabase.banquetcatering://login-callback',
       );
-      // Web: browser redirects back and the authStateChanges stream
-      // drives the router's redirect to home.
-      // Native: same, via the deep-link callback.
     } on AuthException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -113,8 +109,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         );
       }
 
-      // Make sure the profile row exists (trigger handles it, this upsert
-      // is belt-and-braces + lets us set name on signup).
       await ref.read(profileRepositoryProvider).upsert(
             UserProfile(
               id: user.id,
@@ -153,155 +147,408 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     final isSignUp = _mode == _Mode.signUp;
+    final screenHeight = MediaQuery.of(context).size.height;
 
-    return AppScaffold(
-      padded: false,
-      body: SingleChildScrollView(
+    return Scaffold(
+      backgroundColor: AppColors.primary,
+      body: Stack(
+        children: [
+          const _OrnateBackground(),
+          SafeArea(
+            child: SingleChildScrollView(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(context).viewInsets.bottom,
+              ),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: screenHeight - 60),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    SizedBox(height: screenHeight * 0.08),
+                    _BrandMark(),
+                    SizedBox(height: screenHeight * 0.05),
+                    _FormCard(
+                      formKey: _formKey,
+                      isSignUp: isSignUp,
+                      emailCtrl: _emailCtrl,
+                      passwordCtrl: _passwordCtrl,
+                      nameCtrl: _nameCtrl,
+                      obscure: _obscure,
+                      loading: _loading,
+                      oauthLoading: _oauthLoading,
+                      onToggleObscure: () =>
+                          setState(() => _obscure = !_obscure),
+                      onSubmit: _submit,
+                      onGoogle: _signInWithGoogle,
+                      onToggleMode: () => setState(() {
+                        _mode = isSignUp ? _Mode.signIn : _Mode.signUp;
+                      }),
+                    ),
+                    const SizedBox(height: AppSizes.xl),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Decorative background — gradient + soft sparkle pattern
+// ---------------------------------------------------------------------------
+
+class _OrnateBackground extends StatelessWidget {
+  const _OrnateBackground();
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        const DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Color(0xFF6A1530),
+                Color(0xFF8B1E3F),
+                Color(0xFFB23A5E),
+              ],
+            ),
+          ),
+        ),
+        // Soft gold glow top-right
+        Positioned(
+          top: -80,
+          right: -80,
+          child: Container(
+            width: 260,
+            height: 260,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: RadialGradient(
+                colors: [
+                  AppColors.accent.withValues(alpha: 0.35),
+                  AppColors.accent.withValues(alpha: 0),
+                ],
+              ),
+            ),
+          ),
+        ),
+        // Deep glow bottom-left
+        Positioned(
+          bottom: -80,
+          left: -80,
+          child: Container(
+            width: 300,
+            height: 300,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: RadialGradient(
+                colors: [
+                  const Color(0xFF6A1530).withValues(alpha: 0.6),
+                  const Color(0xFF6A1530).withValues(alpha: 0),
+                ],
+              ),
+            ),
+          ),
+        ),
+        // Floating sparkles
+        const _FloatingSparkles(),
+      ],
+    );
+  }
+}
+
+class _FloatingSparkles extends StatelessWidget {
+  const _FloatingSparkles();
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: Stack(
+        children: [
+          _sparkle(top: 70, left: 30, size: 12, delay: 0),
+          _sparkle(top: 140, right: 40, size: 16, delay: 200),
+          _sparkle(top: 220, left: 70, size: 9, delay: 400),
+          _sparkle(bottom: 160, right: 30, size: 14, delay: 600),
+          _sparkle(bottom: 80, left: 40, size: 10, delay: 800),
+        ],
+      ),
+    );
+  }
+
+  Widget _sparkle({
+    double? top,
+    double? left,
+    double? right,
+    double? bottom,
+    required double size,
+    required int delay,
+  }) {
+    return Positioned(
+      top: top,
+      left: left,
+      right: right,
+      bottom: bottom,
+      child: Icon(
+        PhosphorIconsFill.sparkle,
+        color: AppColors.accent.withValues(alpha: 0.55),
+        size: size,
+      )
+          .animate(onPlay: (c) => c.repeat(reverse: true))
+          .fadeIn(duration: 900.ms, delay: delay.ms)
+          .scale(
+            begin: const Offset(0.7, 0.7),
+            end: const Offset(1.1, 1.1),
+            duration: 2400.ms,
+            curve: Curves.easeInOut,
+          ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Brand mark — big serif "Dawat" + gold sparkle accent + tagline
+// ---------------------------------------------------------------------------
+
+class _BrandMark extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            const Icon(PhosphorIconsFill.sparkle,
+                color: AppColors.accent, size: 22),
+            const SizedBox(width: AppSizes.sm),
+            Text(
+              'Dawat',
+              style: AppTextStyles.display.copyWith(
+                color: Colors.white,
+                fontSize: 56,
+                letterSpacing: -1,
+                height: 1,
+              ),
+            ),
+            const SizedBox(width: AppSizes.sm),
+            const Icon(PhosphorIconsFill.sparkle,
+                color: AppColors.accent, size: 22),
+          ],
+        )
+            .animate()
+            .fadeIn(duration: 500.ms)
+            .slideY(begin: -0.15, end: 0, duration: 500.ms),
+        const SizedBox(height: AppSizes.sm),
+        Container(
+          width: 44,
+          height: 1,
+          color: AppColors.accent.withValues(alpha: 0.6),
+        ),
+        const SizedBox(height: AppSizes.sm),
+        Text(
+          'HOST   WITH   HEART',
+          style: AppTextStyles.overline.copyWith(
+            color: AppColors.accent,
+            fontSize: 11,
+            letterSpacing: 5,
+          ),
+        ).animate().fadeIn(delay: 300.ms, duration: 400.ms),
+      ],
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Floating form card — cream surface on top of maroon background
+// ---------------------------------------------------------------------------
+
+class _FormCard extends StatelessWidget {
+  const _FormCard({
+    required this.formKey,
+    required this.isSignUp,
+    required this.emailCtrl,
+    required this.passwordCtrl,
+    required this.nameCtrl,
+    required this.obscure,
+    required this.loading,
+    required this.oauthLoading,
+    required this.onToggleObscure,
+    required this.onSubmit,
+    required this.onGoogle,
+    required this.onToggleMode,
+  });
+
+  final GlobalKey<FormState> formKey;
+  final bool isSignUp;
+  final TextEditingController emailCtrl;
+  final TextEditingController passwordCtrl;
+  final TextEditingController nameCtrl;
+  final bool obscure;
+  final bool loading;
+  final bool oauthLoading;
+  final VoidCallback onToggleObscure;
+  final VoidCallback onSubmit;
+  final VoidCallback onGoogle;
+  final VoidCallback onToggleMode;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: AppSizes.pagePadding),
+      padding: const EdgeInsets.fromLTRB(
+        AppSizes.xl,
+        AppSizes.xl,
+        AppSizes.xl,
+        AppSizes.xl,
+      ),
+      decoration: BoxDecoration(
+        color: AppColors.pageBg,
+        borderRadius: BorderRadius.circular(AppSizes.radiusXl),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.25),
+            blurRadius: 40,
+            offset: const Offset(0, 20),
+          ),
+        ],
+      ),
+      child: Form(
+        key: formKey,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _Hero(isSignUp: isSignUp),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                AppSizes.pagePadding,
-                AppSizes.xl,
-                AppSizes.pagePadding,
-                AppSizes.pagePadding,
+            Text(
+              isSignUp ? 'Create account' : 'Welcome back',
+              style: AppTextStyles.display.copyWith(fontSize: 26),
+            ),
+            const SizedBox(height: AppSizes.xs),
+            Text(
+              isSignUp
+                  ? 'Start planning your first event'
+                  : 'Sign in to continue hosting',
+              style: AppTextStyles.bodyMuted,
+            ),
+            const SizedBox(height: AppSizes.xl),
+            if (isSignUp) ...[
+              _FieldLabel('Your name'),
+              AppTextField(
+                label: 'Full name',
+                controller: nameCtrl,
+                prefixIcon: PhosphorIconsBold.user,
               ),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      isSignUp ? 'Create account' : 'Welcome back',
-                      style: AppTextStyles.display,
-                    ),
-                    const SizedBox(height: AppSizes.xs),
-                    Text(
-                      isSignUp
-                          ? 'Sign up to plan your first event'
-                          : 'Sign in to continue',
-                      style: AppTextStyles.bodyMuted,
-                    ),
-                    const SizedBox(height: AppSizes.xl),
-                    if (isSignUp) ...[
-                      Text('Your name',
-                          style: AppTextStyles.captionBold),
-                      const SizedBox(height: AppSizes.sm),
-                      AppTextField(
-                        label: 'Full name',
-                        controller: _nameCtrl,
-                        prefixIcon: PhosphorIconsBold.user,
-                      ),
-                      const SizedBox(height: AppSizes.md),
-                    ],
-                    Text('Email', style: AppTextStyles.captionBold),
-                    const SizedBox(height: AppSizes.sm),
-                    AppTextField(
-                      label: 'you@example.com',
-                      controller: _emailCtrl,
-                      keyboardType: TextInputType.emailAddress,
-                      prefixIcon: PhosphorIconsBold.envelope,
-                      validator: Validators.email,
-                    ),
-                    const SizedBox(height: AppSizes.md),
-                    Text('Password', style: AppTextStyles.captionBold),
-                    const SizedBox(height: AppSizes.sm),
-                    TextFormField(
-                      controller: _passwordCtrl,
-                      obscureText: _obscure,
-                      validator: (v) {
-                        if (v == null || v.isEmpty) {
-                          return 'Password is required';
-                        }
-                        if (v.length < 6) return 'Minimum 6 characters';
-                        return null;
-                      },
-                      decoration: InputDecoration(
-                        hintText: 'At least 6 characters',
-                        prefixIcon:
-                            const Icon(PhosphorIconsBold.lock),
-                        suffixIcon: IconButton(
-                          icon: Icon(_obscure
-                              ? PhosphorIconsBold.eye
-                              : PhosphorIconsBold.eyeSlash),
-                          onPressed: () =>
-                              setState(() => _obscure = !_obscure),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: AppSizes.xl),
-                    PrimaryButton(
-                      label:
-                          isSignUp ? 'Create account' : 'Sign in',
-                      icon: PhosphorIconsBold.arrowRight,
-                      loading: _loading,
-                      onPressed: _submit,
-                    ),
-                    const SizedBox(height: AppSizes.lg),
-                    Row(
-                      children: [
-                        const Expanded(child: Divider()),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: AppSizes.md),
-                          child: Text('OR',
-                              style: AppTextStyles.captionBold),
-                        ),
-                        const Expanded(child: Divider()),
-                      ],
-                    ),
-                    const SizedBox(height: AppSizes.lg),
-                    _GoogleButton(
-                      loading: _oauthLoading,
-                      onPressed: _signInWithGoogle,
-                    ),
-                    const SizedBox(height: AppSizes.md),
-                    Center(
-                      child: TextButton(
-                        onPressed: () => setState(() {
-                          _mode = isSignUp
-                              ? _Mode.signIn
-                              : _Mode.signUp;
-                        }),
-                        child: Text.rich(
-                          TextSpan(
-                            text: isSignUp
-                                ? 'Already have an account? '
-                                : 'New here? ',
-                            style: AppTextStyles.bodyMuted,
-                            children: [
-                              TextSpan(
-                                text: isSignUp
-                                    ? 'Sign in'
-                                    : 'Create one',
-                                style: AppTextStyles.bodyBold
-                                    .copyWith(
-                                        color: AppColors.primary),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: AppSizes.sm),
-                    Center(
-                      child: Text(
-                        'By continuing you agree to our Terms & Privacy',
-                        style: AppTextStyles.caption,
-                      ),
-                    ),
-                  ],
+              const SizedBox(height: AppSizes.md),
+            ],
+            _FieldLabel('Email'),
+            AppTextField(
+              label: 'you@example.com',
+              controller: emailCtrl,
+              keyboardType: TextInputType.emailAddress,
+              prefixIcon: PhosphorIconsBold.envelope,
+              validator: Validators.email,
+            ),
+            const SizedBox(height: AppSizes.md),
+            _FieldLabel('Password'),
+            TextFormField(
+              controller: passwordCtrl,
+              obscureText: obscure,
+              validator: (v) {
+                if (v == null || v.isEmpty) return 'Password is required';
+                if (v.length < 6) return 'Minimum 6 characters';
+                return null;
+              },
+              decoration: InputDecoration(
+                hintText: 'At least 6 characters',
+                prefixIcon: const Icon(PhosphorIconsBold.lock),
+                suffixIcon: IconButton(
+                  icon: Icon(
+                    obscure
+                        ? PhosphorIconsBold.eye
+                        : PhosphorIconsBold.eyeSlash,
+                    size: 18,
+                  ),
+                  onPressed: onToggleObscure,
                 ),
-              )
-                  .animate()
-                  .fadeIn(duration: 400.ms)
-                  .slideY(begin: 0.08, end: 0),
+              ),
+            ),
+            const SizedBox(height: AppSizes.xl),
+            PrimaryButton(
+              label: isSignUp ? 'Create account' : 'Sign in',
+              icon: PhosphorIconsBold.arrowRight,
+              loading: loading,
+              onPressed: onSubmit,
+            ),
+            const SizedBox(height: AppSizes.lg),
+            Row(
+              children: [
+                const Expanded(
+                  child: Divider(color: AppColors.border),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: AppSizes.md),
+                  child: Text('OR', style: AppTextStyles.captionBold),
+                ),
+                const Expanded(
+                  child: Divider(color: AppColors.border),
+                ),
+              ],
+            ),
+            const SizedBox(height: AppSizes.lg),
+            _GoogleButton(loading: oauthLoading, onPressed: onGoogle),
+            const SizedBox(height: AppSizes.lg),
+            Center(
+              child: TextButton(
+                onPressed: onToggleMode,
+                child: Text.rich(
+                  TextSpan(
+                    text: isSignUp
+                        ? 'Already have an account? '
+                        : 'New here? ',
+                    style: AppTextStyles.bodyMuted,
+                    children: [
+                      TextSpan(
+                        text: isSignUp ? 'Sign in' : 'Create one',
+                        style: AppTextStyles.bodyBold
+                            .copyWith(color: AppColors.primary),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            Center(
+              child: Text(
+                'By continuing you agree to our Terms & Privacy',
+                style: AppTextStyles.caption,
+                textAlign: TextAlign.center,
+              ),
             ),
           ],
         ),
       ),
+    )
+        .animate()
+        .fadeIn(duration: 500.ms, delay: 200.ms)
+        .slideY(begin: 0.08, end: 0, duration: 500.ms, delay: 200.ms);
+  }
+}
+
+class _FieldLabel extends StatelessWidget {
+  const _FieldLabel(this.text);
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSizes.xs + 2),
+      child: Text(text, style: AppTextStyles.captionBold),
     );
   }
 }
@@ -347,60 +594,6 @@ class _GoogleButton extends StatelessWidget {
                   ),
                 ],
               ),
-      ),
-    );
-  }
-}
-
-class _Hero extends StatelessWidget {
-  const _Hero({required this.isSignUp});
-  final bool isSignUp;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 240,
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          colors: AppColors.heroGradient,
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-      ),
-      padding: EdgeInsets.only(
-        top: MediaQuery.of(context).padding.top + AppSizes.lg,
-        left: AppSizes.pagePadding,
-        right: AppSizes.pagePadding,
-        bottom: AppSizes.xl,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.end,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(AppSizes.md),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.14),
-              borderRadius: BorderRadius.circular(AppSizes.radiusMd),
-            ),
-            child: const Icon(
-              PhosphorIconsDuotone.confetti,
-              color: Colors.white,
-              size: 30,
-            ),
-          ),
-          const SizedBox(height: AppSizes.md),
-          Text(
-            'Plan beautifully.',
-            style: AppTextStyles.display.copyWith(color: Colors.white),
-          ),
-          Text(
-            'Book with a tap.',
-            style: AppTextStyles.display.copyWith(
-              color: Colors.white.withValues(alpha: 0.9),
-            ),
-          ),
-        ],
       ),
     );
   }

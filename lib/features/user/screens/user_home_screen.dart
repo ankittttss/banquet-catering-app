@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -11,7 +14,11 @@ import '../../../core/constants/app_text_styles.dart';
 import '../../../core/router/app_routes.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../data/models/order.dart';
+import '../../../data/models/restaurant.dart';
+import '../../../shared/providers/address_providers.dart';
 import '../../../shared/providers/auth_providers.dart';
+import '../../../shared/providers/event_providers.dart';
+import '../../../shared/providers/home_providers.dart';
 import '../../../shared/widgets/app_card.dart';
 import '../../../shared/widgets/app_scaffold.dart';
 import '../../../shared/widgets/status_badge.dart';
@@ -24,119 +31,51 @@ String _greeting() {
   return 'Good evening';
 }
 
+// ===========================================================================
+// Screen
+// ===========================================================================
+
 class UserHomeScreen extends ConsumerWidget {
   const UserHomeScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final profile = ref.watch(currentProfileProvider).valueOrNull;
-    final firstName = (profile?.name?.split(' ').first.trim().isNotEmpty ?? false)
-        ? profile!.name!.split(' ').first
-        : (profile?.email?.split('@').first ?? 'there');
-
     return AppScaffold(
       padded: false,
       body: CustomScrollView(
         slivers: [
-          SliverAppBar(
-            floating: true,
-            backgroundColor: AppColors.pageBg,
-            surfaceTintColor: AppColors.pageBg,
-            elevation: 0,
-            title: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(AppSizes.sm),
-                  decoration: BoxDecoration(
-                    color: AppColors.primarySoft,
-                    borderRadius: BorderRadius.circular(AppSizes.radiusSm),
-                  ),
-                  child: const Icon(
-                    PhosphorIconsDuotone.confetti,
-                    color: AppColors.primary,
-                    size: 20,
-                  ),
-                ),
-                const SizedBox(width: AppSizes.sm),
-                Text('Dawat',
-                    style: AppTextStyles.display.copyWith(fontSize: 22)),
-              ],
-            ),
-            actions: [
-              Padding(
-                padding: const EdgeInsets.only(right: AppSizes.sm),
-                child: IconButton(
-                  icon: const Icon(
-                    PhosphorIconsDuotone.userCircle,
-                    color: AppColors.primary,
-                  ),
-                  iconSize: 28,
-                  tooltip: 'My profile',
-                  onPressed: () => context.push(AppRoutes.profile),
-                ),
-              ),
-            ],
-          ),
+          const _Header(),
+          const SliverToBoxAdapter(child: _Greeting()),
+          const SliverToBoxAdapter(child: _SearchBar()),
+          const SliverToBoxAdapter(child: SizedBox(height: AppSizes.xl)),
 
-          // Greeting
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(
-                AppSizes.pagePadding,
-                AppSizes.sm,
-                AppSizes.pagePadding,
-                AppSizes.md,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '${_greeting()},',
-                    style: AppTextStyles.bodyMuted
-                        .copyWith(fontSize: 15),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(firstName, style: AppTextStyles.display),
-                ],
-              )
-                  .animate()
-                  .fadeIn(duration: 400.ms)
-                  .slideY(begin: 0.08, end: 0),
-            ),
-          ),
+          const _SectionTitle(
+              overline: 'WHAT ARE YOU PLANNING', title: 'Event types'),
+          SliverToBoxAdapter(child: _EventTypeCarousel()),
 
-          // Hero — plan new event
-          SliverToBoxAdapter(child: _PlanEventCard()),
+          const SliverToBoxAdapter(child: SizedBox(height: AppSizes.xl)),
+          const SliverToBoxAdapter(child: _BannerCarousel()),
 
-          // Upcoming event preview (realtime)
+          const SliverToBoxAdapter(child: SizedBox(height: AppSizes.xl)),
+          const _SectionTitle(overline: 'BROWSE BY', title: 'Cuisines'),
+          SliverToBoxAdapter(child: _CuisineStrip()),
+
           SliverToBoxAdapter(child: _UpcomingEventSection()),
 
-          // What we offer
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(
-                AppSizes.pagePadding,
-                AppSizes.xl,
-                AppSizes.pagePadding,
-                AppSizes.sm,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('WHAT WE OFFER',
-                      style: AppTextStyles.overline),
-                  const SizedBox(height: AppSizes.xs),
-                  Text('A premium catering experience',
-                      style: AppTextStyles.heading1),
-                ],
-              ),
-            ),
-          ),
-          SliverToBoxAdapter(child: _FeatureGrid()),
+          const SliverToBoxAdapter(child: SizedBox(height: AppSizes.xl)),
+          const _SectionTitle(
+              overline: 'HANDPICKED FOR YOU',
+              title: 'Popular restaurants',
+              trailingLabel: 'View all'),
+          SliverToBoxAdapter(child: _PopularRestaurants()),
 
-          const SliverPadding(
-            padding: EdgeInsets.only(bottom: AppSizes.xxl),
-          ),
+          const SliverToBoxAdapter(child: SizedBox(height: AppSizes.xl)),
+          const _SectionTitle(
+              overline: 'WHY DAWAT', title: 'What you get'),
+          SliverToBoxAdapter(child: _FeatureStrip()),
+
+          SliverToBoxAdapter(child: _TrustStrip()),
+          const SliverToBoxAdapter(child: SizedBox(height: AppSizes.xxxl)),
         ],
       ),
       bottomBar: const _BottomNav(),
@@ -144,161 +83,614 @@ class UserHomeScreen extends ConsumerWidget {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Plan-new-event hero card
-// ---------------------------------------------------------------------------
+// ===========================================================================
+// Header (location + title + profile)
+// ===========================================================================
 
-class _PlanEventCard extends StatelessWidget {
+class _Header extends ConsumerWidget {
+  const _Header();
+
   @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: AppSizes.pagePadding),
+  Widget build(BuildContext context, WidgetRef ref) {
+    final def = ref.watch(defaultAddressProvider);
+    final addressLabel = def?.label.label ?? 'Add address';
+    final fullLine = def?.fullAddress ?? 'Set a venue to plan an event';
+
+    return SliverAppBar(
+      floating: true,
+      snap: true,
+      pinned: false,
+      backgroundColor: AppColors.pageBg,
+      surfaceTintColor: AppColors.pageBg,
+      elevation: 0,
+      toolbarHeight: 64,
+      titleSpacing: AppSizes.pagePadding,
+      title: InkWell(
+        borderRadius: BorderRadius.circular(AppSizes.radiusSm),
+        onTap: () => context.push(AppRoutes.addresses),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: AppSizes.xs),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: AppColors.primarySoft,
+                  borderRadius: BorderRadius.circular(AppSizes.radiusSm),
+                ),
+                child: const Icon(PhosphorIconsFill.mapPin,
+                    color: AppColors.primary, size: 16),
+              ),
+              const SizedBox(width: AppSizes.sm),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      children: [
+                        Text(addressLabel.toUpperCase(),
+                            style: AppTextStyles.overline
+                                .copyWith(fontSize: 10)),
+                        const SizedBox(width: AppSizes.xs),
+                        const Icon(PhosphorIconsBold.caretDown,
+                            size: 10, color: AppColors.textSecondary),
+                      ],
+                    ),
+                    Text(
+                      fullLine,
+                      style: AppTextStyles.body
+                          .copyWith(fontWeight: FontWeight.w600),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        Padding(
+          padding: const EdgeInsets.only(right: AppSizes.pagePadding),
+          child: _ProfileAvatar(onTap: () => context.push(AppRoutes.profile)),
+        ),
+      ],
+    );
+  }
+}
+
+class _ProfileAvatar extends ConsumerWidget {
+  const _ProfileAvatar({required this.onTap});
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final profile = ref.watch(currentProfileProvider).valueOrNull;
+    final seed = profile?.name ?? profile?.email ?? 'U';
+    final initial = seed.trim().isEmpty ? 'U' : seed.trim()[0].toUpperCase();
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(100),
       child: Container(
-        padding: const EdgeInsets.all(AppSizes.xl),
+        width: 38,
+        height: 38,
         decoration: BoxDecoration(
           gradient: const LinearGradient(
             colors: AppColors.heroGradient,
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
-          borderRadius: BorderRadius.circular(AppSizes.radiusXl),
+          shape: BoxShape.circle,
+        ),
+        alignment: Alignment.center,
+        child: Text(
+          initial,
+          style: AppTextStyles.bodyBold.copyWith(color: Colors.white),
+        ),
+      ),
+    );
+  }
+}
+
+// ===========================================================================
+// Greeting
+// ===========================================================================
+
+class _Greeting extends ConsumerWidget {
+  const _Greeting();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final profile = ref.watch(currentProfileProvider).valueOrNull;
+    final first = (profile?.name?.split(' ').first.trim().isNotEmpty ?? false)
+        ? profile!.name!.split(' ').first
+        : (profile?.email?.split('@').first ?? 'there');
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppSizes.pagePadding,
+        AppSizes.sm,
+        AppSizes.pagePadding,
+        AppSizes.md,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('${_greeting()},',
+              style: AppTextStyles.bodyMuted.copyWith(fontSize: 14)),
+          const SizedBox(height: 2),
+          Text('Let\'s plan something,',
+              style: AppTextStyles.display.copyWith(fontSize: 26, height: 1.1)),
+          Text(first,
+              style: AppTextStyles.display.copyWith(
+                  fontSize: 26, height: 1.1, color: AppColors.primary)),
+        ],
+      ),
+    ).animate().fadeIn(duration: 340.ms).slideY(begin: 0.08, end: 0);
+  }
+}
+
+// ===========================================================================
+// Search bar
+// ===========================================================================
+
+class _SearchBar extends ConsumerWidget {
+  const _SearchBar();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+          horizontal: AppSizes.pagePadding),
+      child: Container(
+        height: 54,
+        padding: const EdgeInsets.symmetric(horizontal: AppSizes.md),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(AppSizes.radiusMd),
+          border: Border.all(color: AppColors.border),
           boxShadow: [
             BoxShadow(
-              color: AppColors.primary.withValues(alpha: 0.22),
-              blurRadius: 24,
-              offset: const Offset(0, 12),
+              color: Colors.black.withValues(alpha: 0.03),
+              blurRadius: 8,
+              offset: const Offset(0, 4),
             ),
           ],
         ),
-        child: Stack(
+        child: Row(
           children: [
-            // Decorative sparkle glyphs (soft, far right)
-            Positioned(
-              right: -20,
-              top: -20,
-              child: Opacity(
-                opacity: 0.10,
-                child: Icon(
-                  PhosphorIconsFill.sparkle,
-                  color: Colors.white,
-                  size: 160,
+            const Icon(PhosphorIconsBold.magnifyingGlass,
+                color: AppColors.primary, size: 20),
+            const SizedBox(width: AppSizes.sm),
+            Expanded(
+              child: TextField(
+                onChanged: (v) =>
+                    ref.read(homeSearchProvider.notifier).state = v,
+                decoration: InputDecoration(
+                  isDense: true,
+                  border: InputBorder.none,
+                  enabledBorder: InputBorder.none,
+                  focusedBorder: InputBorder.none,
+                  filled: false,
+                  hintText: 'Search dishes, cuisines, restaurants…',
+                  hintStyle: AppTextStyles.body
+                      .copyWith(color: AppColors.textMuted),
+                  contentPadding: EdgeInsets.zero,
                 ),
               ),
             ),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _HeroOverline('READY TO CELEBRATE'),
-                const SizedBox(height: AppSizes.sm),
-                Text(
-                  'Plan a new event',
-                  style: AppTextStyles.display.copyWith(
-                    color: Colors.white,
-                    fontSize: 34,
-                    height: 1.05,
-                  ),
-                ),
-                const SizedBox(height: AppSizes.sm),
-                Text(
-                  'Curated menus, setup, service — delivered to your venue.',
-                  style: AppTextStyles.body.copyWith(
-                    color: Colors.white.withValues(alpha: 0.92),
-                  ),
-                ),
-                const SizedBox(height: AppSizes.xl),
-                _HeroCtaButton(
-                  label: 'Start Planning',
-                  onTap: () {
-                    HapticFeedback.lightImpact();
-                    context.push(AppRoutes.eventDetails);
-                  },
-                ),
-              ],
+            Container(
+              width: 1,
+              height: 24,
+              color: AppColors.border,
             ),
+            const SizedBox(width: AppSizes.sm),
+            const Icon(PhosphorIconsBold.sliders,
+                color: AppColors.textSecondary, size: 20),
           ],
         ),
-      )
-          .animate()
-          .fadeIn(duration: 500.ms, delay: 100.ms)
-          .slideY(begin: 0.1, end: 0),
-    );
+      ),
+    ).animate().fadeIn(delay: 100.ms, duration: 340.ms);
   }
 }
 
-class _HeroOverline extends StatelessWidget {
-  const _HeroOverline(this.text);
-  final String text;
+// ===========================================================================
+// Section title
+// ===========================================================================
+
+class _SectionTitle extends StatelessWidget {
+  const _SectionTitle({
+    required this.overline,
+    required this.title,
+    this.trailingLabel,
+  });
+
+  final String overline;
+  final String title;
+  final String? trailingLabel;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppSizes.md,
-        vertical: AppSizes.xs + 1,
-      ),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.18),
-        borderRadius: BorderRadius.circular(AppSizes.radiusPill),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(PhosphorIconsFill.sparkle,
-              color: AppColors.accent, size: 12),
-          const SizedBox(width: AppSizes.xs),
-          Text(
-            text,
-            style: AppTextStyles.overline.copyWith(
-              color: Colors.white,
-              letterSpacing: 1.1,
+    return SliverToBoxAdapter(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(
+          AppSizes.pagePadding,
+          0,
+          AppSizes.pagePadding,
+          AppSizes.md,
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(overline, style: AppTextStyles.overline),
+                  const SizedBox(height: 2),
+                  Text(title, style: AppTextStyles.heading1),
+                ],
+              ),
             ),
-          ),
-        ],
+            if (trailingLabel != null)
+              Text(
+                trailingLabel!,
+                style: AppTextStyles.captionBold
+                    .copyWith(color: AppColors.primary),
+              ),
+          ],
+        ),
       ),
     );
   }
 }
 
-class _HeroCtaButton extends StatelessWidget {
-  const _HeroCtaButton({required this.label, required this.onTap});
-  final String label;
+// ===========================================================================
+// Event type carousel (round tiles)
+// ===========================================================================
+
+class _EventTypeCarousel extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final types = ref.watch(eventTypesProvider);
+    final selected = ref.watch(selectedEventTypeProvider);
+    return SizedBox(
+      height: 110,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: AppSizes.pagePadding),
+        separatorBuilder: (_, __) => const SizedBox(width: AppSizes.md),
+        itemCount: types.length,
+        itemBuilder: (_, i) {
+          final t = types[i];
+          final isSelected = selected == t.id;
+          return _EventTypeTile(
+            type: t,
+            selected: isSelected,
+            onTap: () {
+              HapticFeedback.selectionClick();
+              ref.read(selectedEventTypeProvider.notifier).state = t.id;
+              // Pre-fill the event draft with this type's defaults.
+              ref
+                  .read(eventDraftProvider.notifier)
+                  .setSession(t.defaultSession);
+              ref
+                  .read(eventDraftProvider.notifier)
+                  .setGuestCount(t.defaultGuestCount);
+              context.push(AppRoutes.eventDetails);
+            },
+          )
+              .animate(delay: (i * 40).ms)
+              .fadeIn(duration: 320.ms)
+              .slideX(begin: 0.15, end: 0);
+        },
+      ),
+    );
+  }
+}
+
+class _EventTypeTile extends StatelessWidget {
+  const _EventTypeTile({
+    required this.type,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final EventType type;
+  final bool selected;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(AppSizes.radiusPill),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(AppSizes.radiusPill),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: AppSizes.lg,
-            vertical: AppSizes.md,
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                label,
-                style: AppTextStyles.bodyBold
-                    .copyWith(color: AppColors.primary, fontSize: 15),
+    final border = selected
+        ? Border.all(color: type.color, width: 2.2)
+        : Border.all(color: AppColors.border);
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(AppSizes.radiusLg),
+      child: SizedBox(
+        width: 86,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 66,
+              height: 66,
+              decoration: BoxDecoration(
+                color: type.color.withValues(alpha: 0.12),
+                shape: BoxShape.circle,
+                border: border,
               ),
-              const SizedBox(width: AppSizes.sm),
-              const Icon(PhosphorIconsBold.arrowRight,
-                  color: AppColors.primary, size: 16),
-            ],
-          ),
+              child: Icon(type.icon, color: type.color, size: 32),
+            ),
+            const SizedBox(height: AppSizes.sm),
+            Text(
+              type.label,
+              style: AppTextStyles.captionBold
+                  .copyWith(color: AppColors.textPrimary, fontSize: 12),
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
         ),
       ),
     );
   }
 }
 
-// ---------------------------------------------------------------------------
-// Upcoming event preview (realtime — only shows if user has bookings)
-// ---------------------------------------------------------------------------
+// ===========================================================================
+// Banner carousel (auto-rotates)
+// ===========================================================================
+
+class _BannerCarousel extends ConsumerStatefulWidget {
+  const _BannerCarousel();
+
+  @override
+  ConsumerState<_BannerCarousel> createState() => _BannerCarouselState();
+}
+
+class _BannerCarouselState extends ConsumerState<_BannerCarousel> {
+  final _ctrl = PageController(viewportFraction: 0.92);
+  int _page = 0;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (!mounted || !_ctrl.hasClients) return;
+      final next = (_page + 1) %
+          ref.read(bannersProvider).length.clamp(1, 999);
+      _ctrl.animateToPage(next,
+          duration: const Duration(milliseconds: 500),
+          curve: Curves.easeInOut);
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final banners = ref.watch(bannersProvider);
+    return Column(
+      children: [
+        SizedBox(
+          height: 168,
+          child: PageView.builder(
+            controller: _ctrl,
+            itemCount: banners.length,
+            onPageChanged: (i) => setState(() => _page = i),
+            itemBuilder: (_, i) => _BannerCard(banner: banners[i]),
+          ),
+        ),
+        const SizedBox(height: AppSizes.sm),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            for (int i = 0; i < banners.length; i++)
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 240),
+                margin: const EdgeInsets.symmetric(horizontal: 3),
+                width: i == _page ? 18 : 6,
+                height: 6,
+                decoration: BoxDecoration(
+                  color:
+                      i == _page ? AppColors.primary : AppColors.border,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _BannerCard extends StatelessWidget {
+  const _BannerCard({required this.banner});
+  final HomeBanner banner;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: AppSizes.sm),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(AppSizes.radiusXl),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            CachedNetworkImage(
+              imageUrl: banner.imageUrl,
+              fit: BoxFit.cover,
+              errorWidget: (_, __, ___) => Container(color: banner.accent),
+            ),
+            DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.centerLeft,
+                  end: Alignment.centerRight,
+                  colors: [
+                    banner.accent.withValues(alpha: 0.95),
+                    banner.accent.withValues(alpha: 0.3),
+                  ],
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(AppSizes.lg),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppSizes.sm,
+                      vertical: 3,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.22),
+                      borderRadius:
+                          BorderRadius.circular(AppSizes.radiusPill),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(PhosphorIconsFill.sparkle,
+                            color: Colors.white, size: 11),
+                        const SizedBox(width: AppSizes.xs),
+                        Text('FEATURED',
+                            style: AppTextStyles.overline.copyWith(
+                                color: Colors.white,
+                                fontSize: 10,
+                                letterSpacing: 1.4)),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: AppSizes.sm),
+                  Text(
+                    banner.title,
+                    style: AppTextStyles.display.copyWith(
+                      color: Colors.white,
+                      fontSize: 22,
+                      height: 1.1,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    banner.subtitle,
+                    style: AppTextStyles.caption.copyWith(
+                      color: Colors.white.withValues(alpha: 0.9),
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: AppSizes.md),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppSizes.md,
+                      vertical: AppSizes.xs + 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius:
+                          BorderRadius.circular(AppSizes.radiusPill),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(banner.ctaLabel,
+                            style: AppTextStyles.captionBold
+                                .copyWith(color: banner.accent)),
+                        const SizedBox(width: AppSizes.xs),
+                        Icon(PhosphorIconsBold.arrowRight,
+                            size: 12, color: banner.accent),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ===========================================================================
+// Cuisine strip
+// ===========================================================================
+
+class _CuisineStrip extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final cuisines = ref.watch(cuisinesProvider);
+    final selected = ref.watch(selectedCuisineProvider);
+    return SizedBox(
+      height: 44,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: AppSizes.pagePadding),
+        separatorBuilder: (_, __) => const SizedBox(width: AppSizes.sm),
+        itemCount: cuisines.length,
+        itemBuilder: (_, i) {
+          final c = cuisines[i];
+          final isSel = selected == c.id;
+          return InkWell(
+            onTap: () {
+              HapticFeedback.selectionClick();
+              ref.read(selectedCuisineProvider.notifier).state =
+                  isSel ? null : c.id;
+            },
+            borderRadius: BorderRadius.circular(AppSizes.radiusPill),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSizes.md,
+                vertical: AppSizes.xs + 2,
+              ),
+              decoration: BoxDecoration(
+                color: isSel ? AppColors.primary : AppColors.surface,
+                borderRadius: BorderRadius.circular(AppSizes.radiusPill),
+                border: Border.all(
+                  color: isSel ? AppColors.primary : AppColors.border,
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(c.emoji, style: const TextStyle(fontSize: 14)),
+                  const SizedBox(width: AppSizes.xs + 2),
+                  Text(
+                    c.label,
+                    style: AppTextStyles.bodyBold.copyWith(
+                      color: isSel ? Colors.white : AppColors.textPrimary,
+                      fontSize: 13,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+// ===========================================================================
+// Upcoming event (existing, refined)
+// ===========================================================================
 
 class _UpcomingEventSection extends ConsumerWidget {
   @override
@@ -320,6 +712,10 @@ class _UpcomingEventSection extends ConsumerWidget {
           });
         if (upcoming.isEmpty) return const SizedBox.shrink();
         final next = upcoming.first;
+        final days = next.eventDate == null
+            ? null
+            : next.eventDate!.difference(DateTime.now()).inDays;
+
         return Padding(
           padding: const EdgeInsets.fromLTRB(
             AppSizes.pagePadding,
@@ -333,7 +729,8 @@ class _UpcomingEventSection extends ConsumerWidget {
               Text('YOUR NEXT EVENT', style: AppTextStyles.overline),
               const SizedBox(height: AppSizes.sm),
               AppCard(
-                onTap: () => context.push(AppRoutes.orderDetailFor(next.id)),
+                onTap: () =>
+                    context.push(AppRoutes.orderDetailFor(next.id)),
                 padding: const EdgeInsets.all(AppSizes.lg),
                 child: Row(
                   children: [
@@ -361,29 +758,45 @@ class _UpcomingEventSection extends ConsumerWidget {
                                 : Formatters.date(next.eventDate!),
                             style: AppTextStyles.heading2,
                           ),
-                          if (next.location != null)
+                          if (days != null)
+                            Text(
+                              days == 0
+                                  ? 'Today'
+                                  : days == 1
+                                      ? 'Tomorrow'
+                                      : 'In $days days',
+                              style: AppTextStyles.captionBold.copyWith(
+                                color: AppColors.primary,
+                              ),
+                            ),
+                          if (next.location != null) ...[
+                            const SizedBox(height: 2),
                             Text(
                               next.location!,
                               style: AppTextStyles.caption,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),
-                          const SizedBox(height: AppSizes.xs),
-                          StatusBadge(
-                            label: next.orderStatus.label,
-                            tone: _tone(next.orderStatus),
-                          ),
+                          ],
                         ],
                       ),
                     ),
-                    const Icon(PhosphorIconsBold.caretRight,
-                        color: AppColors.textMuted),
+                    const SizedBox(width: AppSizes.sm),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        StatusBadge(
+                          label: next.orderStatus.label,
+                          tone: _tone(next.orderStatus),
+                        ),
+                        const SizedBox(height: AppSizes.xs),
+                        const Icon(PhosphorIconsBold.caretRight,
+                            color: AppColors.textMuted, size: 16),
+                      ],
+                    ),
                   ],
                 ),
-              )
-                  .animate()
-                  .fadeIn(duration: 400.ms, delay: 150.ms)
-                  .slideY(begin: 0.08, end: 0),
+              ),
             ],
           ),
         );
@@ -401,107 +814,324 @@ class _UpcomingEventSection extends ConsumerWidget {
       };
 }
 
-// ---------------------------------------------------------------------------
-// Feature grid
-// ---------------------------------------------------------------------------
+// ===========================================================================
+// Popular restaurants carousel
+// ===========================================================================
 
-class _FeatureGrid extends StatelessWidget {
+class _PopularRestaurants extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final restaurants = ref.watch(popularRestaurantsProvider);
+    return restaurants.when(
+      loading: () => _loading(),
+      error: (e, _) => Padding(
+        padding: const EdgeInsets.all(AppSizes.pagePadding),
+        child: Text('$e', style: AppTextStyles.caption),
+      ),
+      data: (list) {
+        if (list.isEmpty) {
+          return Padding(
+            padding: const EdgeInsets.symmetric(
+                horizontal: AppSizes.pagePadding),
+            child: Text(
+              'Restaurants coming soon.',
+              style: AppTextStyles.bodyMuted,
+            ),
+          );
+        }
+        return SizedBox(
+          height: 248,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(
+                horizontal: AppSizes.pagePadding),
+            separatorBuilder: (_, __) =>
+                const SizedBox(width: AppSizes.md),
+            itemCount: list.length,
+            itemBuilder: (_, i) => _RestaurantCard(restaurant: list[i])
+                .animate(delay: (i * 60).ms)
+                .fadeIn(duration: 320.ms)
+                .slideX(begin: 0.12, end: 0),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _loading() {
+    return SizedBox(
+      height: 248,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding:
+            const EdgeInsets.symmetric(horizontal: AppSizes.pagePadding),
+        separatorBuilder: (_, __) => const SizedBox(width: AppSizes.md),
+        itemCount: 3,
+        itemBuilder: (_, __) => Container(
+          width: 220,
+          decoration: BoxDecoration(
+            color: AppColors.surfaceAlt,
+            borderRadius: BorderRadius.circular(AppSizes.radiusLg),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _RestaurantCard extends StatelessWidget {
+  const _RestaurantCard({required this.restaurant});
+  final Restaurant restaurant;
+
   @override
   Widget build(BuildContext context) {
-    final features = <_Feature>[
-      _Feature('Multi-cuisine menus', 'North Indian, Awadhi, Goan & more',
-          PhosphorIconsDuotone.forkKnife),
-      _Feature('Trained service boys', 'Uniformed, experienced staff',
-          PhosphorIconsDuotone.users),
-      _Feature('Buffet setup included', 'Tables, linens, décor',
-          PhosphorIconsDuotone.table),
-      _Feature('GST invoice', 'Compliant billing on request',
-          PhosphorIconsDuotone.receipt),
+    return SizedBox(
+      width: 220,
+      child: Material(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppSizes.radiusLg),
+        child: InkWell(
+          onTap: () {
+            HapticFeedback.lightImpact();
+            // For v1 — just jump into event flow. In v2, open a detail sheet.
+            context.push(AppRoutes.eventDetails);
+          },
+          borderRadius: BorderRadius.circular(AppSizes.radiusLg),
+          child: Container(
+            decoration: BoxDecoration(
+              border: Border.all(color: AppColors.border),
+              borderRadius: BorderRadius.circular(AppSizes.radiusLg),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                ClipRRect(
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(AppSizes.radiusLg),
+                  ),
+                  child: SizedBox(
+                    height: 132,
+                    width: double.infinity,
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        if (restaurant.logoUrl != null)
+                          CachedNetworkImage(
+                            imageUrl: restaurant.logoUrl!,
+                            fit: BoxFit.cover,
+                            errorWidget: (_, __, ___) => _fallback(),
+                          )
+                        else
+                          _fallback(),
+                        Positioned(
+                          top: AppSizes.sm,
+                          right: AppSizes.sm,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: AppSizes.sm,
+                              vertical: 3,
+                            ),
+                            decoration: BoxDecoration(
+                              color: AppColors.success,
+                              borderRadius: BorderRadius.circular(
+                                  AppSizes.radiusPill),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.star_rounded,
+                                    color: Colors.white, size: 12),
+                                const SizedBox(width: 2),
+                                Text(
+                                  '4.${(restaurant.name.length % 5) + 4}',
+                                  style:
+                                      AppTextStyles.captionBold.copyWith(
+                                    color: Colors.white,
+                                    fontSize: 11,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    AppSizes.md,
+                    AppSizes.sm,
+                    AppSizes.md,
+                    AppSizes.md,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        restaurant.name,
+                        style: AppTextStyles.heading3,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'North Indian · Mughlai',
+                        style: AppTextStyles.caption,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: AppSizes.sm),
+                      Row(
+                        children: [
+                          const Icon(PhosphorIconsBold.users,
+                              size: 12, color: AppColors.textSecondary),
+                          const SizedBox(width: 2),
+                          Text('50+',
+                              style: AppTextStyles.caption),
+                          const SizedBox(width: AppSizes.sm),
+                          const Icon(PhosphorIconsBold.currencyInr,
+                              size: 12, color: AppColors.textSecondary),
+                          Text('${600 + (restaurant.name.length * 15)}/plate',
+                              style: AppTextStyles.captionBold),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _fallback() {
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          colors: AppColors.heroGradient,
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        restaurant.name[0],
+        style: AppTextStyles.display.copyWith(
+          color: Colors.white,
+          fontSize: 52,
+        ),
+      ),
+    );
+  }
+}
+
+// ===========================================================================
+// Feature strip (horizontal chips)
+// ===========================================================================
+
+class _FeatureStrip extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final features = <(IconData, String)>[
+      (PhosphorIconsDuotone.forkKnife, 'Multi-cuisine menus'),
+      (PhosphorIconsDuotone.users, 'Trained service staff'),
+      (PhosphorIconsDuotone.table, 'Buffet setup included'),
+      (PhosphorIconsDuotone.receipt, 'GST invoice'),
+      (PhosphorIconsDuotone.shieldCheck, 'On-time delivery'),
     ];
+    return SizedBox(
+      height: 68,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding:
+            const EdgeInsets.symmetric(horizontal: AppSizes.pagePadding),
+        separatorBuilder: (_, __) => const SizedBox(width: AppSizes.md),
+        itemCount: features.length,
+        itemBuilder: (_, i) {
+          final (icon, label) = features[i];
+          return Container(
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSizes.md,
+              vertical: AppSizes.sm,
+            ),
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(AppSizes.radiusLg),
+              border: Border.all(color: AppColors.border),
+            ),
+            child: Row(
+              children: [
+                Icon(icon, color: AppColors.primary, size: 22),
+                const SizedBox(width: AppSizes.sm),
+                Text(label, style: AppTextStyles.bodyBold),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+// ===========================================================================
+// Trust strip
+// ===========================================================================
+
+class _TrustStrip extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(
         AppSizes.pagePadding,
-        AppSizes.sm,
+        AppSizes.xl,
         AppSizes.pagePadding,
         0,
       ),
-      child: GridView.count(
-        crossAxisCount: 2,
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        mainAxisSpacing: AppSizes.md,
-        crossAxisSpacing: AppSizes.md,
-        childAspectRatio: 1.05,
-        children: [
-          for (int i = 0; i < features.length; i++)
-            _FeatureTile(features[i])
-                .animate(delay: (i * 70).ms)
-                .fadeIn(duration: 320.ms)
-                .slideY(begin: 0.08, end: 0),
-        ],
-      ),
-    );
-  }
-}
-
-class _Feature {
-  const _Feature(this.title, this.subtitle, this.icon);
-  final String title;
-  final String subtitle;
-  final IconData icon;
-}
-
-class _FeatureTile extends StatelessWidget {
-  const _FeatureTile(this.f);
-  final _Feature f;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(AppSizes.lg),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(AppSizes.radiusLg),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Container(
-            width: 42,
-            height: 42,
-            decoration: BoxDecoration(
-              color: AppColors.primarySoft,
-              borderRadius: BorderRadius.circular(AppSizes.radiusSm),
+      child: Container(
+        padding: const EdgeInsets.all(AppSizes.lg),
+        decoration: BoxDecoration(
+          color: AppColors.accentSoft,
+          borderRadius: BorderRadius.circular(AppSizes.radiusLg),
+        ),
+        child: Row(
+          children: [
+            const Icon(PhosphorIconsDuotone.medal,
+                color: AppColors.accentDark, size: 30),
+            const SizedBox(width: AppSizes.md),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Trusted by 500+ hosts this year',
+                      style: AppTextStyles.bodyBold),
+                  const SizedBox(height: 2),
+                  Row(
+                    children: [
+                      for (int i = 0; i < 5; i++)
+                        const Icon(Icons.star_rounded,
+                            color: AppColors.accentDark, size: 14),
+                      const SizedBox(width: AppSizes.xs),
+                      Text('4.9 · 2,100+ reviews',
+                          style: AppTextStyles.caption.copyWith(
+                              color: AppColors.accentDark)),
+                    ],
+                  ),
+                ],
+              ),
             ),
-            alignment: Alignment.center,
-            child: Icon(f.icon, color: AppColors.primary, size: 24),
-          ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(f.title,
-                  style: AppTextStyles.heading3,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis),
-              const SizedBox(height: 2),
-              Text(f.subtitle,
-                  style: AppTextStyles.caption,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis),
-            ],
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 }
 
-// ---------------------------------------------------------------------------
+// ===========================================================================
 // Bottom nav
-// ---------------------------------------------------------------------------
+// ===========================================================================
 
 class _BottomNav extends StatelessWidget {
   const _BottomNav();

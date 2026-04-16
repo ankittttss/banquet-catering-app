@@ -22,6 +22,10 @@ pubspec.lock
 env/*.json
 !env/*.example.json
 
+# Node tooling (tool/ scripts)
+node_modules/
+tool/package-lock.json
+
 # Android
 android/.gradle/
 android/app/debug

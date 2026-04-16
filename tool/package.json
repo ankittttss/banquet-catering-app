@@ -1,0 +1,13 @@
+{
+  "name": "dawat-tools",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Operational scripts for Dawat — image uploads, seeding, etc.",
+  "scripts": {
+    "upload-images": "node upload_menu_images.mjs"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.4"
+  }
+}
