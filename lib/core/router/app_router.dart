@@ -1,0 +1,170 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+
+import '../../data/models/user_role.dart';
+import '../../features/admin/screens/admin_charges_screen.dart';
+import '../../features/admin/screens/admin_home_screen.dart';
+import '../../features/admin/screens/admin_menu_screen.dart';
+import '../../features/admin/screens/admin_orders_screen.dart';
+import '../../features/auth/screens/login_screen.dart';
+import '../../features/auth/screens/otp_screen.dart';
+import '../../features/splash/splash_screen.dart';
+import '../../features/user/screens/cart_screen.dart';
+import '../../features/user/screens/checkout_screen.dart';
+import '../../features/user/screens/event_details_screen.dart';
+import '../../features/user/screens/menu_screen.dart';
+import '../../features/user/screens/my_events_screen.dart';
+import '../../features/user/screens/order_detail_screen.dart';
+import '../../features/user/screens/order_success_screen.dart';
+import '../../features/user/screens/addresses_screen.dart';
+import '../../features/user/screens/profile_screen.dart';
+import '../../features/user/screens/user_home_screen.dart';
+import '../../shared/providers/auth_providers.dart';
+import '../config/app_config.dart';
+import '../supabase/supabase_client.dart' as sb;
+import 'app_routes.dart';
+
+final appRouterProvider = Provider<GoRouter>((ref) {
+  // React to auth state so the router re-evaluates redirects.
+  final authChanges = ref.watch(authStateChangesProvider);
+
+  return GoRouter(
+    initialLocation: AppRoutes.splash,
+    refreshListenable: _RouterRefresh(authChanges),
+    redirect: (context, state) {
+      final loggedIn =
+          AppConfig.hasSupabase && sb.auth.currentUser != null;
+      final profile = ref.read(currentProfileProvider).valueOrNull;
+      final role = profile?.role ?? UserRole.user;
+
+      final loc = state.matchedLocation;
+      final isAuthRoute =
+          loc == AppRoutes.login || loc == AppRoutes.otp;
+      final isSplash = loc == AppRoutes.splash;
+
+      // Let splash show while profile loads.
+      if (isSplash) return null;
+
+      // Not signed in → force to login (unless Supabase isn't configured, in
+      // which case we let devs roam freely for UI work).
+      if (!loggedIn && AppConfig.hasSupabase && !isAuthRoute) {
+        return AppRoutes.login;
+      }
+
+      // Signed in and landing on an auth route → bounce to home.
+      if (loggedIn && isAuthRoute) {
+        return role == UserRole.admin
+            ? AppRoutes.adminHome
+            : AppRoutes.userHome;
+      }
+
+      // Block users from admin routes.
+      final isAdminRoute = loc.startsWith('/admin');
+      if (isAdminRoute && role != UserRole.admin) {
+        return AppRoutes.userHome;
+      }
+
+      return null;
+    },
+    routes: [
+      GoRoute(
+        path: AppRoutes.splash,
+        pageBuilder: (_, s) => _page(s, const SplashScreen()),
+      ),
+      GoRoute(
+        path: AppRoutes.login,
+        pageBuilder: (_, s) => _page(s, const LoginScreen()),
+      ),
+      GoRoute(
+        path: AppRoutes.otp,
+        pageBuilder: (_, s) {
+          final phone = s.uri.queryParameters['phone'] ?? '';
+          return _page(s, OtpScreen(phone: phone));
+        },
+      ),
+      GoRoute(
+        path: AppRoutes.userHome,
+        pageBuilder: (_, s) => _page(s, const UserHomeScreen()),
+      ),
+      GoRoute(
+        path: AppRoutes.profile,
+        pageBuilder: (_, s) => _page(s, const ProfileScreen()),
+      ),
+      GoRoute(
+        path: AppRoutes.addresses,
+        pageBuilder: (_, s) => _page(s, const AddressesScreen()),
+      ),
+      GoRoute(
+        path: AppRoutes.eventDetails,
+        pageBuilder: (_, s) => _page(s, const EventDetailsScreen()),
+      ),
+      GoRoute(
+        path: AppRoutes.menu,
+        pageBuilder: (_, s) => _page(s, const MenuScreen()),
+      ),
+      GoRoute(
+        path: AppRoutes.cart,
+        pageBuilder: (_, s) => _page(s, const CartScreen()),
+      ),
+      GoRoute(
+        path: AppRoutes.checkout,
+        pageBuilder: (_, s) => _page(s, const CheckoutScreen()),
+      ),
+      GoRoute(
+        path: AppRoutes.orderSuccess,
+        pageBuilder: (_, s) {
+          final id = s.uri.queryParameters['id'] ?? '';
+          return _page(s, OrderSuccessScreen(orderId: id));
+        },
+      ),
+      GoRoute(
+        path: AppRoutes.myEvents,
+        pageBuilder: (_, s) => _page(s, const MyEventsScreen()),
+      ),
+      GoRoute(
+        path: AppRoutes.orderDetail,
+        pageBuilder: (_, s) => _page(
+          s,
+          OrderDetailScreen(orderId: s.pathParameters['id']!),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.adminHome,
+        pageBuilder: (_, s) => _page(s, const AdminHomeScreen()),
+      ),
+      GoRoute(
+        path: AppRoutes.adminOrders,
+        pageBuilder: (_, s) => _page(s, const AdminOrdersScreen()),
+      ),
+      GoRoute(
+        path: AppRoutes.adminMenu,
+        pageBuilder: (_, s) => _page(s, const AdminMenuScreen()),
+      ),
+      GoRoute(
+        path: AppRoutes.adminCharges,
+        pageBuilder: (_, s) => _page(s, const AdminChargesScreen()),
+      ),
+    ],
+    errorBuilder: (_, state) => Scaffold(
+      body: Center(child: Text('Route not found: ${state.matchedLocation}')),
+    ),
+  );
+});
+
+CustomTransitionPage<void> _page(GoRouterState state, Widget child) {
+  return CustomTransitionPage(
+    key: state.pageKey,
+    child: child,
+    transitionDuration: const Duration(milliseconds: 220),
+    transitionsBuilder: (_, animation, __, child) =>
+        FadeTransition(opacity: animation, child: child),
+  );
+}
+
+class _RouterRefresh extends ChangeNotifier {
+  _RouterRefresh(AsyncValue<dynamic> authChanges) {
+    // Notify on every auth state tick.
+    authChanges.whenOrNull(data: (_) => notifyListeners());
+  }
+}

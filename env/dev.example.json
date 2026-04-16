@@ -1,0 +1,9 @@
+{
+  "_comment_1": "Copy this file to dev.json and fill in real values.",
+  "_comment_2": "dev.json is gitignored. Never commit real keys.",
+  "_comment_3": "Get these from Supabase Dashboard > Settings > API.",
+
+  "SUPABASE_URL": "https://YOUR-PROJECT-ID.supabase.co",
+  "SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6...",
+  "ENV": "dev"
+}

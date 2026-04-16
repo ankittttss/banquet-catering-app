@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#8B1E3F"/>
+      <stop offset="1" stop-color="#6A1530"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#E9C591"/>
+      <stop offset="1" stop-color="#D4A574"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="url(#bg)"/>
+  <!-- Sparkle -->
+  <path d="M48 14 L49.6 19 L54.6 20.6 L49.6 22.2 L48 27.2 L46.4 22.2 L41.4 20.6 L46.4 19 Z" fill="url(#gold)"/>
+  <!-- D monogram in Playfair-like serif -->
+  <text x="32" y="47" font-family="Georgia, 'Playfair Display', serif" font-size="38" font-weight="700"
+        text-anchor="middle" fill="#FFFBF5">D</text>
+</svg>
