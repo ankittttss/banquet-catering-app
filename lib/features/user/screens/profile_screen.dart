@@ -10,13 +10,16 @@ import '../../../core/constants/app_sizes.dart';
 import '../../../core/constants/app_text_styles.dart';
 import '../../../core/router/app_routes.dart';
 import '../../../core/supabase/supabase_client.dart' as sb;
+import '../../../core/utils/formatters.dart';
 import '../../../data/models/user_profile.dart';
 import '../../../shared/providers/auth_providers.dart';
 import '../../../shared/providers/repositories_providers.dart';
+import 'my_events_screen.dart';
 import '../../../shared/widgets/app_card.dart';
 import '../../../shared/widgets/app_scaffold.dart';
 import '../../../shared/widgets/primary_button.dart';
 import '../../../shared/widgets/status_badge.dart';
+import '../../../shared/widgets/user_bottom_nav.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -102,11 +105,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     return AppScaffold(
       appBar: AppBar(
         title: const Text('My Profile'),
-        leading: IconButton(
-          icon: const Icon(PhosphorIconsBold.arrowLeft),
-          onPressed: () => context.pop(),
-        ),
+        automaticallyImplyLeading: false,
       ),
+      bottomBar: const UserBottomNav(active: UserNavTab.profile),
       body: profileAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text('$e')),
@@ -122,6 +123,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   .animate()
                   .fadeIn(duration: 320.ms)
                   .slideY(begin: 0.05, end: 0),
+              const SizedBox(height: AppSizes.lg),
+              const _StatsRow(),
               const SizedBox(height: AppSizes.xl),
               Text('ACCOUNT', style: AppTextStyles.overline),
               const SizedBox(height: AppSizes.sm),
@@ -330,6 +333,93 @@ class _Header extends StatelessWidget {
               ],
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StatsRow extends ConsumerWidget {
+  const _StatsRow();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final orders = ref.watch(myOrdersStreamProvider).valueOrNull ?? const [];
+    final totalSpent = orders.fold<double>(0, (s, o) => s + o.total);
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: AppSizes.xs),
+      child: Row(
+        children: [
+          Expanded(
+            child: _StatCard(
+              icon: PhosphorIconsDuotone.calendarCheck,
+              value: '${orders.length}',
+              label: 'Events',
+              color: AppColors.primary,
+            ),
+          ),
+          const SizedBox(width: AppSizes.sm),
+          Expanded(
+            child: _StatCard(
+              icon: PhosphorIconsDuotone.wallet,
+              value: Formatters.currency(totalSpent),
+              label: 'Total spent',
+              color: AppColors.accentDark,
+            ),
+          ),
+          const SizedBox(width: AppSizes.sm),
+          Expanded(
+            child: _StatCard(
+              icon: PhosphorIconsDuotone.medal,
+              value: orders.length >= 3
+                  ? 'Pro'
+                  : orders.length >= 1
+                      ? 'Active'
+                      : 'New',
+              label: 'Status',
+              color: AppColors.success,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StatCard extends StatelessWidget {
+  const _StatCard({
+    required this.icon,
+    required this.value,
+    required this.label,
+    required this.color,
+  });
+  final IconData icon;
+  final String value;
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(AppSizes.md),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppSizes.radiusLg),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: color, size: 20),
+          const SizedBox(height: AppSizes.sm),
+          Text(value,
+              style: AppTextStyles.heading2.copyWith(fontSize: 16),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis),
+          Text(label,
+              style: AppTextStyles.caption,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis),
         ],
       ),
     );

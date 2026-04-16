@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
@@ -143,7 +144,9 @@ class _StatusStepper extends StatelessWidget {
           _StepRow(
             label: steps[i].label,
             done: i <= currentIndex && current != OrderStatus.cancelled,
+            active: i == currentIndex && current != OrderStatus.cancelled,
             last: i == steps.length - 1,
+            index: i,
           ),
       ],
     );
@@ -154,12 +157,16 @@ class _StepRow extends StatelessWidget {
   const _StepRow({
     required this.label,
     required this.done,
+    required this.active,
     required this.last,
+    required this.index,
   });
 
   final String label;
   final bool done;
+  final bool active;
   final bool last;
+  final int index;
 
   @override
   Widget build(BuildContext context) {
@@ -171,16 +178,33 @@ class _StepRow extends StatelessWidget {
           Column(
             children: [
               Container(
-                width: 24,
-                height: 24,
+                width: 28,
+                height: 28,
                 decoration: BoxDecoration(
                   color: done ? AppColors.primary : AppColors.surfaceAlt,
                   shape: BoxShape.circle,
                   border: Border.all(color: color, width: 2),
+                  boxShadow: active
+                      ? [
+                          BoxShadow(
+                            color:
+                                AppColors.primary.withValues(alpha: 0.3),
+                            blurRadius: 12,
+                            spreadRadius: 2,
+                          ),
+                        ]
+                      : null,
                 ),
                 child: done
                     ? const Icon(Icons.check,
-                        color: Colors.white, size: 16)
+                        color: Colors.white, size: 18)
+                        .animate(delay: (index * 120).ms)
+                        .scale(
+                          begin: const Offset(0, 0),
+                          end: const Offset(1, 1),
+                          duration: 380.ms,
+                          curve: Curves.elasticOut,
+                        )
                     : null,
               ),
               if (!last)
@@ -188,7 +212,18 @@ class _StepRow extends StatelessWidget {
                   child: Container(
                     width: 2,
                     color: color,
-                  ),
+                  )
+                      .animate(delay: (index * 120 + 200).ms)
+                      .custom(
+                        duration: 300.ms,
+                        builder: (_, value, child) => ClipRect(
+                          child: Align(
+                            alignment: Alignment.topCenter,
+                            heightFactor: done ? 1.0 : value,
+                            child: child,
+                          ),
+                        ),
+                      ),
                 ),
             ],
           ),
@@ -196,14 +231,44 @@ class _StepRow extends StatelessWidget {
           Expanded(
             child: Padding(
               padding: const EdgeInsets.only(
-                top: 2,
+                top: 4,
                 bottom: AppSizes.lg,
               ),
-              child: Text(
-                label,
-                style: done
-                    ? AppTextStyles.bodyBold
-                    : AppTextStyles.bodyMuted,
+              child: Row(
+                children: [
+                  Text(
+                    label,
+                    style: done
+                        ? AppTextStyles.bodyBold
+                        : AppTextStyles.bodyMuted,
+                  ),
+                  if (active) ...[
+                    const SizedBox(width: AppSizes.sm),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: AppSizes.sm,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppColors.primary,
+                        borderRadius:
+                            BorderRadius.circular(AppSizes.radiusPill),
+                      ),
+                      child: Text(
+                        'NOW',
+                        style: AppTextStyles.overline.copyWith(
+                          color: Colors.white,
+                          fontSize: 9,
+                        ),
+                      ),
+                    )
+                        .animate(
+                            onPlay: (c) => c.repeat(reverse: true))
+                        .fadeIn(duration: 700.ms)
+                        .then()
+                        .fadeOut(duration: 700.ms),
+                  ],
+                ],
               ),
             ),
           ),

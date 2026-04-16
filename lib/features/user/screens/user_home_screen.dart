@@ -19,9 +19,12 @@ import '../../../shared/providers/address_providers.dart';
 import '../../../shared/providers/auth_providers.dart';
 import '../../../shared/providers/event_providers.dart';
 import '../../../shared/providers/home_providers.dart';
+import '../../../shared/providers/menu_providers.dart';
 import '../../../shared/widgets/app_card.dart';
 import '../../../shared/widgets/app_scaffold.dart';
+import '../../../shared/widgets/app_skeleton.dart';
 import '../../../shared/widgets/status_badge.dart';
+import '../../../shared/widgets/user_bottom_nav.dart';
 import 'my_events_screen.dart';
 
 String _greeting() {
@@ -38,47 +41,60 @@ String _greeting() {
 class UserHomeScreen extends ConsumerWidget {
   const UserHomeScreen({super.key});
 
+  Future<void> _refresh(WidgetRef ref) async {
+    ref.invalidate(restaurantsProvider);
+    ref.invalidate(myOrdersStreamProvider);
+    ref.invalidate(addressesProvider);
+    await ref.read(restaurantsProvider.future);
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return AppScaffold(
       padded: false,
-      body: CustomScrollView(
-        slivers: [
-          const _Header(),
-          const SliverToBoxAdapter(child: _Greeting()),
-          const SliverToBoxAdapter(child: _SearchBar()),
-          const SliverToBoxAdapter(child: SizedBox(height: AppSizes.xl)),
+      body: RefreshIndicator(
+        color: AppColors.primary,
+        onRefresh: () => _refresh(ref),
+        child: CustomScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          slivers: [
+            const _Header(),
+            const SliverToBoxAdapter(child: _Greeting()),
+            const SliverToBoxAdapter(child: _SearchBar()),
+            const SliverToBoxAdapter(child: SizedBox(height: AppSizes.xl)),
 
-          const _SectionTitle(
-              overline: 'WHAT ARE YOU PLANNING', title: 'Event types'),
-          SliverToBoxAdapter(child: _EventTypeCarousel()),
+            const _SectionTitle(
+                overline: 'WHAT ARE YOU PLANNING', title: 'Event types'),
+            SliverToBoxAdapter(child: _EventTypeCarousel()),
 
-          const SliverToBoxAdapter(child: SizedBox(height: AppSizes.xl)),
-          const SliverToBoxAdapter(child: _BannerCarousel()),
+            const SliverToBoxAdapter(child: SizedBox(height: AppSizes.xl)),
+            const SliverToBoxAdapter(child: _BannerCarousel()),
 
-          const SliverToBoxAdapter(child: SizedBox(height: AppSizes.xl)),
-          const _SectionTitle(overline: 'BROWSE BY', title: 'Cuisines'),
-          SliverToBoxAdapter(child: _CuisineStrip()),
+            const SliverToBoxAdapter(child: SizedBox(height: AppSizes.xl)),
+            const _SectionTitle(
+                overline: 'BROWSE BY', title: 'Cuisines'),
+            SliverToBoxAdapter(child: _CuisineStrip()),
 
-          SliverToBoxAdapter(child: _UpcomingEventSection()),
+            SliverToBoxAdapter(child: _UpcomingEventSection()),
 
-          const SliverToBoxAdapter(child: SizedBox(height: AppSizes.xl)),
-          const _SectionTitle(
-              overline: 'HANDPICKED FOR YOU',
-              title: 'Popular restaurants',
-              trailingLabel: 'View all'),
-          SliverToBoxAdapter(child: _PopularRestaurants()),
+            const SliverToBoxAdapter(child: SizedBox(height: AppSizes.xl)),
+            const _SectionTitle(
+                overline: 'HANDPICKED FOR YOU',
+                title: 'Popular restaurants',
+                trailingLabel: 'View all'),
+            SliverToBoxAdapter(child: _PopularRestaurants()),
 
-          const SliverToBoxAdapter(child: SizedBox(height: AppSizes.xl)),
-          const _SectionTitle(
-              overline: 'WHY DAWAT', title: 'What you get'),
-          SliverToBoxAdapter(child: _FeatureStrip()),
+            const SliverToBoxAdapter(child: SizedBox(height: AppSizes.xl)),
+            const _SectionTitle(
+                overline: 'WHY DAWAT', title: 'What you get'),
+            SliverToBoxAdapter(child: _FeatureStrip()),
 
-          SliverToBoxAdapter(child: _TrustStrip()),
-          const SliverToBoxAdapter(child: SizedBox(height: AppSizes.xxxl)),
-        ],
+            SliverToBoxAdapter(child: _TrustStrip()),
+            const SliverToBoxAdapter(child: SizedBox(height: AppSizes.xxxl)),
+          ],
+        ),
       ),
-      bottomBar: const _BottomNav(),
+      bottomBar: const UserBottomNav(active: UserNavTab.home),
     );
   }
 }
@@ -859,19 +875,54 @@ class _PopularRestaurants extends ConsumerWidget {
   }
 
   Widget _loading() {
-    return SizedBox(
-      height: 248,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        padding:
-            const EdgeInsets.symmetric(horizontal: AppSizes.pagePadding),
-        separatorBuilder: (_, __) => const SizedBox(width: AppSizes.md),
-        itemCount: 3,
-        itemBuilder: (_, __) => Container(
-          width: 220,
-          decoration: BoxDecoration(
-            color: AppColors.surfaceAlt,
-            borderRadius: BorderRadius.circular(AppSizes.radiusLg),
+    return AppSkeleton(
+      loading: true,
+      child: SizedBox(
+        height: 248,
+        child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          padding:
+              const EdgeInsets.symmetric(horizontal: AppSizes.pagePadding),
+          separatorBuilder: (_, __) => const SizedBox(width: AppSizes.md),
+          itemCount: 3,
+          itemBuilder: (_, __) => Container(
+            width: 220,
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(AppSizes.radiusLg),
+              border: Border.all(color: AppColors.border),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  height: 132,
+                  decoration: BoxDecoration(
+                    color: AppColors.surfaceAlt,
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(AppSizes.radiusLg),
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.all(AppSizes.md),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                          height: 14,
+                          width: 130,
+                          color: AppColors.surfaceAlt),
+                      const SizedBox(height: 8),
+                      Container(
+                          height: 10,
+                          width: 90,
+                          color: AppColors.surfaceAlt),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -1129,87 +1180,3 @@ class _TrustStrip extends StatelessWidget {
   }
 }
 
-// ===========================================================================
-// Bottom nav
-// ===========================================================================
-
-class _BottomNav extends StatelessWidget {
-  const _BottomNav();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        color: AppColors.surface,
-        border: Border(top: BorderSide(color: AppColors.border)),
-      ),
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppSizes.lg,
-        vertical: AppSizes.sm,
-      ),
-      child: SafeArea(
-        top: false,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
-            _NavItem(
-              icon: PhosphorIconsFill.house,
-              label: 'Home',
-              selected: true,
-              onTap: () {},
-            ),
-            _NavItem(
-              icon: PhosphorIconsBold.calendarCheck,
-              label: 'Events',
-              selected: false,
-              onTap: () => context.push(AppRoutes.myEvents),
-            ),
-            _NavItem(
-              icon: PhosphorIconsBold.userCircle,
-              label: 'Profile',
-              selected: false,
-              onTap: () => context.push(AppRoutes.profile),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _NavItem extends StatelessWidget {
-  const _NavItem({
-    required this.icon,
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-  final IconData icon;
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = selected ? AppColors.primary : AppColors.textSecondary;
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(AppSizes.radiusMd),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: AppSizes.md,
-          vertical: AppSizes.sm,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, color: color, size: 22),
-            const SizedBox(height: 2),
-            Text(label,
-                style: AppTextStyles.captionBold.copyWith(color: color)),
-          ],
-        ),
-      ),
-    );
-  }
-}

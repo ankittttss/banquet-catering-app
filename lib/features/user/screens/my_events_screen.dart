@@ -14,8 +14,10 @@ import '../../../shared/providers/auth_providers.dart';
 import '../../../shared/providers/repositories_providers.dart';
 import '../../../shared/widgets/app_card.dart';
 import '../../../shared/widgets/app_scaffold.dart';
+import '../../../shared/widgets/app_skeleton.dart';
 import '../../../shared/widgets/empty_state.dart';
 import '../../../shared/widgets/status_badge.dart';
+import '../../../shared/widgets/user_bottom_nav.dart';
 
 final myOrdersStreamProvider =
     StreamProvider.autoDispose<List<OrderSummary>>((ref) {
@@ -34,13 +36,10 @@ class MyEventsScreen extends ConsumerWidget {
     return AppScaffold(
       appBar: AppBar(
         title: const Text('My Events'),
-        leading: IconButton(
-          icon: const Icon(PhosphorIconsBold.arrowLeft),
-          onPressed: () => context.pop(),
-        ),
+        automaticallyImplyLeading: false,
       ),
       body: orders.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
+        loading: () => _SkeletonList(),
         error: (e, _) => Center(child: Text('$e')),
         data: (list) {
           if (list.isEmpty) {
@@ -52,20 +51,48 @@ class MyEventsScreen extends ConsumerWidget {
               onAction: () => context.go(AppRoutes.eventDetails),
             );
           }
-          return ListView.separated(
-            padding: const EdgeInsets.symmetric(vertical: AppSizes.md),
-            itemBuilder: (_, i) {
-              final o = list[i];
-              return _OrderCard(order: o)
-                  .animate(delay: (i * 60).ms)
-                  .fadeIn(duration: 320.ms)
-                  .slideY(begin: 0.06, end: 0);
-            },
-            separatorBuilder: (_, __) =>
-                const SizedBox(height: AppSizes.md),
-            itemCount: list.length,
+          return RefreshIndicator(
+            color: AppColors.primary,
+            onRefresh: () async => ref.invalidate(myOrdersStreamProvider),
+            child: ListView.separated(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.symmetric(vertical: AppSizes.md),
+              itemBuilder: (_, i) {
+                final o = list[i];
+                return _OrderCard(order: o)
+                    .animate(delay: (i * 60).ms)
+                    .fadeIn(duration: 320.ms)
+                    .slideY(begin: 0.06, end: 0);
+              },
+              separatorBuilder: (_, __) =>
+                  const SizedBox(height: AppSizes.md),
+              itemCount: list.length,
+            ),
           );
         },
+      ),
+      bottomBar: const UserBottomNav(active: UserNavTab.events),
+    );
+  }
+}
+
+class _SkeletonList extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return AppSkeleton(
+      loading: true,
+      child: ListView.separated(
+        padding: const EdgeInsets.symmetric(vertical: AppSizes.md),
+        itemBuilder: (_, __) => Container(
+          height: 120,
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(AppSizes.radiusLg),
+          ),
+        ),
+        separatorBuilder: (_, __) =>
+            const SizedBox(height: AppSizes.md),
+        itemCount: 4,
       ),
     );
   }
