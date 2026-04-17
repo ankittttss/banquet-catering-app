@@ -7,23 +7,54 @@ import '../../data/repositories/menu_repository.dart';
 import '../../data/repositories/order_repository.dart';
 import '../../data/repositories/profile_repository.dart';
 import '../../data/repositories/stub/stub_address_repository.dart';
+import '../../data/repositories/stub/stub_charges_repository.dart';
+import '../../data/repositories/stub/stub_menu_repository.dart';
+import '../../data/repositories/stub/stub_order_repository.dart';
+import '../../data/repositories/stub/stub_profile_repository.dart';
 import '../../data/repositories/supabase/supabase_address_repository.dart';
+import '../../data/repositories/supabase/supabase_charges_repository.dart';
+import '../../data/repositories/supabase/supabase_menu_repository.dart';
+import '../../data/repositories/supabase/supabase_order_repository.dart';
+import '../../data/repositories/supabase/supabase_profile_repository.dart';
 
-final menuRepositoryProvider =
-    Provider<MenuRepository>((ref) => MenuRepository());
+/// Selects the Supabase implementation when the app is configured with
+/// credentials, otherwise falls back to in-memory stubs so the app remains
+/// runnable for UI development. Keep this the only place that branches on
+/// [AppConfig.hasSupabase] — all feature code should depend on the interfaces.
+T _pick<T>(T supabase, T stub) =>
+    AppConfig.hasSupabase ? supabase : stub;
 
-final chargesRepositoryProvider =
-    Provider<ChargesRepository>((ref) => ChargesRepository());
+final menuRepositoryProvider = Provider<MenuRepository>(
+  (ref) => _pick<MenuRepository>(
+    SupabaseMenuRepository(),
+    StubMenuRepository(),
+  ),
+);
 
-final profileRepositoryProvider =
-    Provider<ProfileRepository>((ref) => ProfileRepository());
+final chargesRepositoryProvider = Provider<ChargesRepository>(
+  (ref) => _pick<ChargesRepository>(
+    SupabaseChargesRepository(),
+    StubChargesRepository(),
+  ),
+);
 
-final orderRepositoryProvider =
-    Provider<OrderRepository>((ref) => OrderRepository());
+final profileRepositoryProvider = Provider<ProfileRepository>(
+  (ref) => _pick<ProfileRepository>(
+    SupabaseProfileRepository(),
+    StubProfileRepository(),
+  ),
+);
 
-/// Picks Supabase impl when configured; falls back to stub for local UI dev.
-final addressRepositoryProvider = Provider<AddressRepository>((ref) {
-  return AppConfig.hasSupabase
-      ? SupabaseAddressRepository()
-      : StubAddressRepository();
-});
+final orderRepositoryProvider = Provider<OrderRepository>(
+  (ref) => _pick<OrderRepository>(
+    SupabaseOrderRepository(),
+    StubOrderRepository(),
+  ),
+);
+
+final addressRepositoryProvider = Provider<AddressRepository>(
+  (ref) => _pick<AddressRepository>(
+    SupabaseAddressRepository(),
+    StubAddressRepository(),
+  ),
+);

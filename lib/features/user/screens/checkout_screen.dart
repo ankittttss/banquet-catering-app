@@ -12,7 +12,7 @@ import '../../../core/router/app_routes.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../data/models/event_draft.dart';
 import '../../../data/models/restaurant.dart';
-import '../../../data/repositories/order_repository.dart';
+import '../../../data/models/checkout_totals.dart';
 import '../../../shared/providers/auth_providers.dart';
 import '../../../shared/providers/cart_providers.dart';
 import '../../../shared/providers/charges_providers.dart';
