@@ -1,16 +1,15 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
-import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/config/app_config.dart';
-import '../../../core/constants/app_colors.dart';
-import '../../../core/constants/app_sizes.dart';
-import '../../../core/constants/app_text_styles.dart';
 import '../../../core/router/app_routes.dart';
 import '../../../core/supabase/supabase_client.dart' as sb;
 import '../../../core/utils/validators.dart';
@@ -18,10 +17,32 @@ import '../../../data/models/user_profile.dart';
 import '../../../data/models/user_role.dart';
 import '../../../shared/providers/auth_providers.dart';
 import '../../../shared/providers/repositories_providers.dart';
-import '../../../shared/widgets/app_text_field.dart';
-import '../../../shared/widgets/primary_button.dart';
 
-enum _Mode { signIn, signUp }
+// ───────────────────────── Palette ─────────────────────────
+
+class _P {
+  static const red = Color(0xFFE23744);
+  static const redDark = Color(0xFF8B2033);
+  static const gold = Color(0xFFC4922A);
+
+  static const textPrimary = Color(0xFF1A1A1A);
+  static const textLabel = Color(0xFF4A3F38);
+  static const textMuted = Color(0xFF8C8078);
+  static const textPlaceholder = Color(0xFFC4BAB2);
+
+  static const border = Color(0xFFE8E0D8);
+  static const borderSoft = Color(0xFFD0C8C0);
+  static const surface = Color(0xFFFDFBF9);
+  static const pullTab = Color(0xFFE0D8D0);
+
+  static const bgGrad1 = Color(0xFFFFF5F0);
+  static const bgGrad2 = Color(0xFFFFF0EC);
+
+  static const green = Color(0xFF1BA672);
+  static const amber = Color(0xFFE5A100);
+}
+
+enum _Mode { signIn, signUp, forgot }
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -43,6 +64,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   String? _errorMessage;
   bool _needsVerification = false;
   bool _resending = false;
+  bool _sendingReset = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _passwordCtrl.addListener(() => setState(() {}));
+  }
 
   @override
   void dispose() {
@@ -51,6 +79,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     _nameCtrl.dispose();
     super.dispose();
   }
+
+  // ────────── Auth methods (unchanged logic) ──────────
 
   Future<void> _resendVerification() async {
     final email = _emailCtrl.text.trim();
@@ -62,7 +92,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Verification email sent to $email'),
-          backgroundColor: AppColors.success,
+          backgroundColor: _P.green,
         ),
       );
     } catch (e) {
@@ -133,7 +163,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       }
 
       final user = res.user ?? sb.auth.currentUser;
-      final hasSession = res.session != null || sb.auth.currentSession != null;
+      final hasSession =
+          res.session != null || sb.auth.currentSession != null;
       if (user == null || !hasSession) {
         setState(() => _needsVerification = true);
         throw const AuthException(
@@ -141,7 +172,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         );
       }
 
-      // Only set name on first-time sign-up. Don't clobber role/name on sign-in.
       if (_mode == _Mode.signUp && _nameCtrl.text.trim().isNotEmpty) {
         try {
           await ref.read(profileRepositoryProvider).upsert(
@@ -182,424 +212,517 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     }
   }
 
+  Future<void> _sendReset() async {
+    final email = _emailCtrl.text.trim();
+    if (email.isEmpty) {
+      setState(() => _errorMessage = 'Enter your email first.');
+      return;
+    }
+    setState(() {
+      _sendingReset = true;
+      _errorMessage = null;
+    });
+    try {
+      if (AppConfig.hasSupabase) {
+        await sb.auth.resetPasswordForEmail(email);
+      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Reset link sent to $email'),
+          backgroundColor: _P.green,
+        ),
+      );
+      setState(() => _mode = _Mode.signIn);
+    } on AuthException catch (e) {
+      if (!mounted) return;
+      setState(() => _errorMessage = e.message);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _errorMessage = 'Could not send: $e');
+    } finally {
+      if (mounted) setState(() => _sendingReset = false);
+    }
+  }
+
+  // ────────── Build ──────────
+
   @override
   Widget build(BuildContext context) {
-    final isSignUp = _mode == _Mode.signUp;
-    final screenHeight = MediaQuery.of(context).size.height;
-
     return Scaffold(
-      backgroundColor: AppColors.primary,
-      body: Stack(
-        children: [
-          const _OrnateBackground(),
-          SafeArea(
-            child: SingleChildScrollView(
-              padding: EdgeInsets.only(
-                bottom: MediaQuery.of(context).viewInsets.bottom,
-              ),
-              child: ConstrainedBox(
-                constraints: BoxConstraints(minHeight: screenHeight - 60),
+      backgroundColor: _P.bgGrad1,
+      resizeToAvoidBottomInset: true,
+      body: SafeArea(
+        child: LayoutBuilder(
+          builder: (context, constraints) => SingleChildScrollView(
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(context).viewInsets.bottom,
+            ),
+            physics: const ClampingScrollPhysics(),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: constraints.maxHeight),
+              child: IntrinsicHeight(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    SizedBox(height: screenHeight * 0.08),
-                    _BrandMark(),
-                    SizedBox(height: screenHeight * 0.05),
-                    _FormCard(
-                      formKey: _formKey,
-                      isSignUp: isSignUp,
-                      emailCtrl: _emailCtrl,
-                      passwordCtrl: _passwordCtrl,
-                      nameCtrl: _nameCtrl,
-                      obscure: _obscure,
-                      loading: _loading,
-                      oauthLoading: _oauthLoading,
-                      errorMessage: _errorMessage,
-                      needsVerification: _needsVerification,
-                      resending: _resending,
-                      onResend: _resendVerification,
-                      onToggleObscure: () =>
-                          setState(() => _obscure = !_obscure),
-                      onSubmit: _submit,
-                      onGoogle: _signInWithGoogle,
-                      onToggleMode: () => setState(() {
-                        _mode = isSignUp ? _Mode.signIn : _Mode.signUp;
-                        _errorMessage = null;
-                        _needsVerification = false;
-                      }),
+                    const _Header(),
+                    Expanded(
+                      child: _FormCard(child: _buildFormBody()),
                     ),
-                    const SizedBox(height: AppSizes.xl),
                   ],
                 ),
               ),
             ),
           ),
-        ],
+        ),
       ),
     );
   }
-}
 
-// ---------------------------------------------------------------------------
-// Decorative background — gradient + soft sparkle pattern
-// ---------------------------------------------------------------------------
-
-class _OrnateBackground extends StatelessWidget {
-  const _OrnateBackground();
-
-  @override
-  Widget build(BuildContext context) {
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        const DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                Color(0xFF6A1530),
-                Color(0xFF8B1E3F),
-                Color(0xFFB23A5E),
-              ],
-            ),
-          ),
-        ),
-        // Soft gold glow top-right
-        Positioned(
-          top: -80,
-          right: -80,
-          child: Container(
-            width: 260,
-            height: 260,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: RadialGradient(
-                colors: [
-                  AppColors.accent.withValues(alpha: 0.35),
-                  AppColors.accent.withValues(alpha: 0),
-                ],
-              ),
-            ),
-          ),
-        ),
-        // Deep glow bottom-left
-        Positioned(
-          bottom: -80,
-          left: -80,
-          child: Container(
-            width: 300,
-            height: 300,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: RadialGradient(
-                colors: [
-                  const Color(0xFF6A1530).withValues(alpha: 0.6),
-                  const Color(0xFF6A1530).withValues(alpha: 0),
-                ],
-              ),
-            ),
-          ),
-        ),
-        // Floating sparkles
-        const _FloatingSparkles(),
-      ],
-    );
+  Widget _buildFormBody() {
+    switch (_mode) {
+      case _Mode.signIn:
+        return _buildSignIn();
+      case _Mode.signUp:
+        return _buildSignUp();
+      case _Mode.forgot:
+        return _buildForgot();
+    }
   }
-}
 
-class _FloatingSparkles extends StatelessWidget {
-  const _FloatingSparkles();
-
-  @override
-  Widget build(BuildContext context) {
-    return IgnorePointer(
-      child: Stack(
+  Widget _buildSignIn() {
+    return Form(
+      key: _formKey,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _sparkle(top: 70, left: 30, size: 12, delay: 0),
-          _sparkle(top: 140, right: 40, size: 16, delay: 200),
-          _sparkle(top: 220, left: 70, size: 9, delay: 400),
-          _sparkle(bottom: 160, right: 30, size: 14, delay: 600),
-          _sparkle(bottom: 80, left: 40, size: 10, delay: 800),
+          _Title('Welcome back', 'Sign in to continue hosting'),
+          const SizedBox(height: 24),
+          _FieldLabel('Email'),
+          _InputField(
+            controller: _emailCtrl,
+            hint: 'you@example.com',
+            leadingIcon: Icons.mail_outline_rounded,
+            keyboardType: TextInputType.emailAddress,
+            validator: Validators.email,
+          ),
+          const SizedBox(height: 16),
+          _FieldLabel('Password'),
+          _InputField(
+            controller: _passwordCtrl,
+            hint: 'At least 6 characters',
+            leadingIcon: Icons.lock_outline_rounded,
+            obscureText: _obscure,
+            validator: _pwValidator,
+            trailing: _EyeToggle(
+              obscure: _obscure,
+              onTap: () => setState(() => _obscure = !_obscure),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              TextButton(
+                style: TextButton.styleFrom(
+                  padding: EdgeInsets.zero,
+                  minimumSize: const Size(0, 32),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                onPressed: () {
+                  setState(() {
+                    _mode = _Mode.forgot;
+                    _errorMessage = null;
+                    _needsVerification = false;
+                  });
+                },
+                child: Text(
+                  'Forgot password?',
+                  style: GoogleFonts.outfit(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: _P.red,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (_errorMessage != null) ...[
+            const SizedBox(height: 12),
+            _ErrorBanner(
+              message: _errorMessage!,
+              needsVerification: _needsVerification,
+              resending: _resending,
+              onResend: _resendVerification,
+            ),
+          ],
+          const SizedBox(height: 12),
+          _PrimaryButton(
+            label: 'Sign in',
+            loading: _loading,
+            onPressed: _submit,
+          ),
+          const _OrDivider(),
+          _SocialRow(
+            googleLoading: _oauthLoading,
+            onGoogle: _signInWithGoogle,
+            onApple: () => _showComingSoon(context, 'Apple sign-in'),
+          ),
+          const SizedBox(height: 20),
+          _FooterToggle(
+            prefix: 'New here? ',
+            linkText: 'Create account',
+            onTap: () => setState(() {
+              _mode = _Mode.signUp;
+              _errorMessage = null;
+              _needsVerification = false;
+            }),
+          ),
+          const _TermsLine(),
         ],
       ),
     );
   }
 
-  Widget _sparkle({
-    double? top,
-    double? left,
-    double? right,
-    double? bottom,
-    required double size,
-    required int delay,
-  }) {
-    return Positioned(
-      top: top,
-      left: left,
-      right: right,
-      bottom: bottom,
-      child: Icon(
-        PhosphorIconsFill.sparkle,
-        color: AppColors.accent.withValues(alpha: 0.55),
-        size: size,
-      )
-          .animate(onPlay: (c) => c.repeat(reverse: true))
-          .fadeIn(duration: 900.ms, delay: delay.ms)
-          .scale(
-            begin: const Offset(0.7, 0.7),
-            end: const Offset(1.1, 1.1),
-            duration: 2400.ms,
-            curve: Curves.easeInOut,
+  Widget _buildSignUp() {
+    return Form(
+      key: _formKey,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _Title('Create account', 'Start planning your first event'),
+          const SizedBox(height: 24),
+          _FieldLabel('Your name'),
+          _InputField(
+            controller: _nameCtrl,
+            hint: 'Full name',
+            leadingIcon: Icons.person_outline_rounded,
+            textCapitalization: TextCapitalization.words,
           ),
+          const SizedBox(height: 16),
+          _FieldLabel('Email'),
+          _InputField(
+            controller: _emailCtrl,
+            hint: 'you@example.com',
+            leadingIcon: Icons.mail_outline_rounded,
+            keyboardType: TextInputType.emailAddress,
+            validator: Validators.email,
+          ),
+          const SizedBox(height: 16),
+          _FieldLabel('Password'),
+          _InputField(
+            controller: _passwordCtrl,
+            hint: 'At least 6 characters',
+            leadingIcon: Icons.lock_outline_rounded,
+            obscureText: _obscure,
+            validator: _pwValidator,
+            trailing: _EyeToggle(
+              obscure: _obscure,
+              onTap: () => setState(() => _obscure = !_obscure),
+            ),
+          ),
+          const SizedBox(height: 8),
+          _StrengthBar(password: _passwordCtrl.text),
+          if (_errorMessage != null) ...[
+            const SizedBox(height: 12),
+            _ErrorBanner(
+              message: _errorMessage!,
+              needsVerification: _needsVerification,
+              resending: _resending,
+              onResend: _resendVerification,
+            ),
+          ],
+          const SizedBox(height: 20),
+          _PrimaryButton(
+            label: 'Create account',
+            loading: _loading,
+            onPressed: _submit,
+          ),
+          const _OrDivider(),
+          _SocialRow(
+            googleLoading: _oauthLoading,
+            onGoogle: _signInWithGoogle,
+            onApple: () => _showComingSoon(context, 'Apple sign-in'),
+          ),
+          const SizedBox(height: 20),
+          _FooterToggle(
+            prefix: 'Already have an account? ',
+            linkText: 'Sign in',
+            onTap: () => setState(() {
+              _mode = _Mode.signIn;
+              _errorMessage = null;
+              _needsVerification = false;
+            }),
+          ),
+          const _TermsLine(),
+        ],
+      ),
     );
   }
-}
 
-// ---------------------------------------------------------------------------
-// Brand mark — big serif "Dawat" + gold sparkle accent + tagline
-// ---------------------------------------------------------------------------
-
-class _BrandMark extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
+  Widget _buildForgot() {
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            const Icon(PhosphorIconsFill.sparkle,
-                color: AppColors.accent, size: 22),
-            const SizedBox(width: AppSizes.sm),
-            Text(
-              'Dawat',
-              style: AppTextStyles.display.copyWith(
-                color: Colors.white,
-                fontSize: 56,
-                letterSpacing: -1,
-                height: 1,
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: TextButton.icon(
+            style: TextButton.styleFrom(
+              padding: EdgeInsets.zero,
+              minimumSize: const Size(0, 32),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              foregroundColor: _P.textMuted,
+            ),
+            onPressed: () => setState(() {
+              _mode = _Mode.signIn;
+              _errorMessage = null;
+            }),
+            icon: const Icon(Icons.arrow_back_rounded, size: 18),
+            label: Text(
+              'Back',
+              style: GoogleFonts.outfit(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: _P.textMuted,
               ),
             ),
-            const SizedBox(width: AppSizes.sm),
-            const Icon(PhosphorIconsFill.sparkle,
-                color: AppColors.accent, size: 22),
-          ],
-        )
-            .animate()
-            .fadeIn(duration: 500.ms)
-            .slideY(begin: -0.15, end: 0, duration: 500.ms),
-        const SizedBox(height: AppSizes.sm),
-        Container(
-          width: 44,
-          height: 1,
-          color: AppColors.accent.withValues(alpha: 0.6),
-        ),
-        const SizedBox(height: AppSizes.sm),
-        Text(
-          'HOST   WITH   HEART',
-          style: AppTextStyles.overline.copyWith(
-            color: AppColors.accent,
-            fontSize: 11,
-            letterSpacing: 5,
           ),
-        ).animate().fadeIn(delay: 300.ms, duration: 400.ms),
+        ),
+        _Title(
+          'Reset password',
+          "Enter your email and we'll send you a reset link",
+        ),
+        const SizedBox(height: 24),
+        _FieldLabel('Email'),
+        _InputField(
+          controller: _emailCtrl,
+          hint: 'you@example.com',
+          leadingIcon: Icons.mail_outline_rounded,
+          keyboardType: TextInputType.emailAddress,
+        ),
+        if (_errorMessage != null) ...[
+          const SizedBox(height: 12),
+          _ErrorBanner(
+            message: _errorMessage!,
+            needsVerification: false,
+            resending: false,
+            onResend: () {},
+          ),
+        ],
+        const SizedBox(height: 20),
+        _PrimaryButton(
+          label: 'Send reset link',
+          loading: _sendingReset,
+          onPressed: _sendReset,
+        ),
+        const SizedBox(height: 28),
+        _FooterToggle(
+          prefix: 'Remember your password? ',
+          linkText: 'Sign in',
+          onTap: () => setState(() {
+            _mode = _Mode.signIn;
+            _errorMessage = null;
+          }),
+        ),
+        const SizedBox(height: 8),
       ],
     );
   }
+
+  String? _pwValidator(String? v) {
+    if (v == null || v.isEmpty) return 'Password is required';
+    if (v.length < 6) return 'Minimum 6 characters';
+    return null;
+  }
+
+  void _showComingSoon(BuildContext context, String label) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('$label — coming soon.')),
+    );
+  }
 }
 
-// ---------------------------------------------------------------------------
-// Floating form card — cream surface on top of maroon background
-// ---------------------------------------------------------------------------
+// ───────────────────────── Header ─────────────────────────
 
-class _FormCard extends StatelessWidget {
-  const _FormCard({
-    required this.formKey,
-    required this.isSignUp,
-    required this.emailCtrl,
-    required this.passwordCtrl,
-    required this.nameCtrl,
-    required this.obscure,
-    required this.loading,
-    required this.oauthLoading,
-    required this.errorMessage,
-    required this.needsVerification,
-    required this.resending,
-    required this.onResend,
-    required this.onToggleObscure,
-    required this.onSubmit,
-    required this.onGoogle,
-    required this.onToggleMode,
-  });
-
-  final GlobalKey<FormState> formKey;
-  final bool isSignUp;
-  final TextEditingController emailCtrl;
-  final TextEditingController passwordCtrl;
-  final TextEditingController nameCtrl;
-  final bool obscure;
-  final bool loading;
-  final bool oauthLoading;
-  final String? errorMessage;
-  final bool needsVerification;
-  final bool resending;
-  final VoidCallback onResend;
-  final VoidCallback onToggleObscure;
-  final VoidCallback onSubmit;
-  final VoidCallback onGoogle;
-  final VoidCallback onToggleMode;
+class _Header extends StatelessWidget {
+  const _Header();
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: AppSizes.pagePadding),
-      padding: const EdgeInsets.fromLTRB(
-        AppSizes.xl,
-        AppSizes.xl,
-        AppSizes.xl,
-        AppSizes.xl,
-      ),
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(28, 36, 28, 36),
       decoration: BoxDecoration(
-        color: AppColors.pageBg,
-        borderRadius: BorderRadius.circular(AppSizes.radiusXl),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.25),
-            blurRadius: 40,
-            offset: const Offset(0, 20),
-          ),
-        ],
+        gradient: LinearGradient(
+          begin: const Alignment(0, -1),
+          end: const Alignment(0, 1),
+          colors: const [_P.bgGrad1, _P.bgGrad2],
+        ),
       ),
-      child: Form(
-        key: formKey,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              isSignUp ? 'Create account' : 'Welcome back',
-              style: AppTextStyles.display.copyWith(fontSize: 26),
-            ),
-            const SizedBox(height: AppSizes.xs),
-            Text(
-              isSignUp
-                  ? 'Start planning your first event'
-                  : 'Sign in to continue hosting',
-              style: AppTextStyles.bodyMuted,
-            ),
-            const SizedBox(height: AppSizes.xl),
-            if (isSignUp) ...[
-              _FieldLabel('Your name'),
-              AppTextField(
-                label: 'Full name',
-                controller: nameCtrl,
-                prefixIcon: PhosphorIconsBold.user,
+      child: Column(
+        children: [
+          // Logo mark — gradient rounded-square with dawat.png inside.
+          Container(
+            width: 72,
+            height: 72,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(20),
+              gradient: const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [_P.redDark, _P.red, _P.gold],
+                stops: [0.0, 0.5, 1.0],
               ),
-              const SizedBox(height: AppSizes.md),
-            ],
-            _FieldLabel('Email'),
-            AppTextField(
-              label: 'you@example.com',
-              controller: emailCtrl,
-              keyboardType: TextInputType.emailAddress,
-              prefixIcon: PhosphorIconsBold.envelope,
-              validator: Validators.email,
-            ),
-            const SizedBox(height: AppSizes.md),
-            _FieldLabel('Password'),
-            TextFormField(
-              controller: passwordCtrl,
-              obscureText: obscure,
-              validator: (v) {
-                if (v == null || v.isEmpty) return 'Password is required';
-                if (v.length < 6) return 'Minimum 6 characters';
-                return null;
-              },
-              decoration: InputDecoration(
-                hintText: 'At least 6 characters',
-                prefixIcon: const Icon(PhosphorIconsBold.lock),
-                suffixIcon: IconButton(
-                  icon: Icon(
-                    obscure
-                        ? PhosphorIconsBold.eye
-                        : PhosphorIconsBold.eyeSlash,
-                    size: 18,
-                  ),
-                  onPressed: onToggleObscure,
-                ),
-              ),
-            ),
-            if (errorMessage != null) ...[
-              const SizedBox(height: AppSizes.lg),
-              _AuthErrorBanner(
-                message: errorMessage!,
-                needsVerification: needsVerification,
-                resending: resending,
-                onResend: onResend,
-              ),
-            ],
-            const SizedBox(height: AppSizes.xl),
-            PrimaryButton(
-              label: isSignUp ? 'Create account' : 'Sign in',
-              icon: PhosphorIconsBold.arrowRight,
-              loading: loading,
-              onPressed: onSubmit,
-            ),
-            const SizedBox(height: AppSizes.lg),
-            Row(
-              children: [
-                const Expanded(
-                  child: Divider(color: AppColors.border),
-                ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: AppSizes.md),
-                  child: Text('OR', style: AppTextStyles.captionBold),
-                ),
-                const Expanded(
-                  child: Divider(color: AppColors.border),
+              boxShadow: [
+                BoxShadow(
+                  color: _P.red.withValues(alpha: 0.25),
+                  blurRadius: 32,
+                  offset: const Offset(0, 8),
                 ),
               ],
             ),
-            const SizedBox(height: AppSizes.lg),
-            _GoogleButton(loading: oauthLoading, onPressed: onGoogle),
-            const SizedBox(height: AppSizes.lg),
-            Center(
-              child: TextButton(
-                onPressed: onToggleMode,
-                child: Text.rich(
-                  TextSpan(
-                    text: isSignUp
-                        ? 'Already have an account? '
-                        : 'New here? ',
-                    style: AppTextStyles.bodyMuted,
-                    children: [
-                      TextSpan(
-                        text: isSignUp ? 'Sign in' : 'Create one',
-                        style: AppTextStyles.bodyBold
-                            .copyWith(color: AppColors.primary),
-                      ),
-                    ],
+            alignment: Alignment.center,
+            child: Container(
+              margin: const EdgeInsets.all(2),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.15),
+                  width: 1,
+                ),
+              ),
+              padding: const EdgeInsets.all(10),
+              child: Image.asset(
+                'assets/images/dawat.png',
+                fit: BoxFit.contain,
+                color: Colors.white,
+                colorBlendMode: BlendMode.srcIn,
+                errorBuilder: (_, __, ___) => const Center(
+                  child: Text(
+                    '🍽',
+                    style: TextStyle(fontSize: 32),
                   ),
                 ),
               ),
             ),
-            Center(
-              child: Text(
-                'By continuing you agree to our Terms & Privacy',
-                style: AppTextStyles.caption,
-                textAlign: TextAlign.center,
+          ).animate().fadeIn(duration: 360.ms).scale(
+                begin: const Offset(0.7, 0.7),
+                end: const Offset(1, 1),
+                duration: 420.ms,
+                curve: Curves.easeOutBack,
               ),
+          const SizedBox(height: 16),
+          Text(
+            'Dawat',
+            style: GoogleFonts.instrumentSerif(
+              fontSize: 36,
+              fontWeight: FontWeight.w400,
+              color: _P.textPrimary,
+              letterSpacing: -1,
             ),
-          ],
-        ),
+          ).animate().fadeIn(delay: 80.ms, duration: 320.ms),
+          const SizedBox(height: 10),
+          Container(
+            width: 32,
+            height: 2,
+            decoration: BoxDecoration(
+              color: _P.red,
+              borderRadius: BorderRadius.circular(1),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'HOST WITH HEART',
+            style: GoogleFonts.outfit(
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              color: _P.gold,
+              letterSpacing: 3.5,
+            ),
+          ),
+        ],
       ),
-    )
-        .animate()
-        .fadeIn(duration: 500.ms, delay: 200.ms)
-        .slideY(begin: 0.08, end: 0, duration: 500.ms, delay: 200.ms);
+    );
   }
 }
+
+// ───────────────────────── Form card ─────────────────────────
+
+class _FormCard extends StatelessWidget {
+  const _FormCard({required this.child});
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        boxShadow: [
+          BoxShadow(
+            color: Color(0x0A000000),
+            offset: Offset(0, -4),
+            blurRadius: 30,
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.fromLTRB(28, 20, 28, 32),
+      child: Column(
+        children: [
+          // Pull tab.
+          Container(
+            width: 36,
+            height: 4,
+            decoration: BoxDecoration(
+              color: _P.pullTab,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(height: 16),
+          child,
+        ],
+      ),
+    );
+  }
+}
+
+// ───────────────────────── Title ─────────────────────────
+
+class _Title extends StatelessWidget {
+  const _Title(this.title, this.sub);
+  final String title;
+  final String sub;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: GoogleFonts.instrumentSerif(
+            fontSize: 28,
+            fontWeight: FontWeight.w400,
+            color: _P.textPrimary,
+            height: 1.1,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          sub,
+          style: GoogleFonts.outfit(
+            fontSize: 14,
+            color: _P.textMuted,
+            fontWeight: FontWeight.w400,
+            height: 1.4,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ───────────────────────── Field label ─────────────────────────
 
 class _FieldLabel extends StatelessWidget {
   const _FieldLabel(this.text);
@@ -608,14 +731,220 @@ class _FieldLabel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: AppSizes.xs + 2),
-      child: Text(text, style: AppTextStyles.captionBold),
+      padding: const EdgeInsets.only(bottom: 7),
+      child: Text(
+        text,
+        style: GoogleFonts.outfit(
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+          color: _P.textLabel,
+        ),
+      ),
     );
   }
 }
 
-class _GoogleButton extends StatelessWidget {
-  const _GoogleButton({required this.loading, required this.onPressed});
+// ───────────────────────── Input field ─────────────────────────
+
+class _InputField extends StatefulWidget {
+  const _InputField({
+    required this.controller,
+    required this.hint,
+    required this.leadingIcon,
+    this.keyboardType,
+    this.obscureText = false,
+    this.validator,
+    this.trailing,
+    this.textCapitalization = TextCapitalization.none,
+  });
+
+  final TextEditingController controller;
+  final String hint;
+  final IconData leadingIcon;
+  final TextInputType? keyboardType;
+  final bool obscureText;
+  final FormFieldValidator<String>? validator;
+  final Widget? trailing;
+  final TextCapitalization textCapitalization;
+
+  @override
+  State<_InputField> createState() => _InputFieldState();
+}
+
+class _InputFieldState extends State<_InputField> {
+  final _focus = FocusNode();
+  bool _focused = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _focus.addListener(() {
+      setState(() => _focused = _focus.hasFocus);
+    });
+  }
+
+  @override
+  void dispose() {
+    _focus.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
+      decoration: BoxDecoration(
+        color: _focused ? Colors.white : _P.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: _focused ? _P.red : _P.border,
+          width: 1.5,
+        ),
+        boxShadow: _focused
+            ? [
+                BoxShadow(
+                  color: _P.red.withValues(alpha: 0.08),
+                  blurRadius: 6,
+                  spreadRadius: 2,
+                ),
+              ]
+            : null,
+      ),
+      child: TextFormField(
+        controller: widget.controller,
+        focusNode: _focus,
+        keyboardType: widget.keyboardType,
+        obscureText: widget.obscureText,
+        textCapitalization: widget.textCapitalization,
+        validator: widget.validator,
+        style: GoogleFonts.outfit(
+          fontSize: 15,
+          fontWeight: FontWeight.w400,
+          color: _P.textPrimary,
+        ),
+        decoration: InputDecoration(
+          isDense: true,
+          contentPadding: const EdgeInsets.symmetric(vertical: 15),
+          hintText: widget.hint,
+          hintStyle: GoogleFonts.outfit(
+            fontSize: 15,
+            color: _P.textPlaceholder,
+            fontWeight: FontWeight.w400,
+          ),
+          prefixIcon: Padding(
+            padding: const EdgeInsets.only(left: 16, right: 12),
+            child: Icon(
+              widget.leadingIcon,
+              size: 20,
+              color: _focused ? _P.red : _P.textPlaceholder,
+            ),
+          ),
+          prefixIconConstraints:
+              const BoxConstraints(minWidth: 0, minHeight: 0),
+          suffixIcon: widget.trailing == null
+              ? null
+              : Padding(
+                  padding: const EdgeInsets.only(right: 10),
+                  child: widget.trailing,
+                ),
+          suffixIconConstraints:
+              const BoxConstraints(minWidth: 0, minHeight: 0),
+          border: InputBorder.none,
+          enabledBorder: InputBorder.none,
+          focusedBorder: InputBorder.none,
+          errorBorder: InputBorder.none,
+          focusedErrorBorder: InputBorder.none,
+          errorStyle: GoogleFonts.outfit(
+            color: _P.red,
+            fontSize: 12,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _EyeToggle extends StatelessWidget {
+  const _EyeToggle({required this.obscure, required this.onTap});
+  final bool obscure;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      customBorder: const CircleBorder(),
+      child: Padding(
+        padding: const EdgeInsets.all(4),
+        child: Icon(
+          obscure
+              ? Icons.visibility_outlined
+              : Icons.visibility_off_outlined,
+          size: 20,
+          color: _P.textMuted,
+        ),
+      ),
+    );
+  }
+}
+
+// ───────────────────────── Strength bar ─────────────────────────
+
+class _StrengthBar extends StatelessWidget {
+  const _StrengthBar({required this.password});
+  final String password;
+
+  @override
+  Widget build(BuildContext context) {
+    final score = _score(password);
+    Color c;
+    if (score <= 1) {
+      c = _P.red;
+    } else if (score <= 2) {
+      c = _P.amber;
+    } else {
+      c = _P.green;
+    }
+
+    return Row(
+      children: List.generate(4, (i) {
+        final on = password.isNotEmpty && i < score;
+        return Expanded(
+          child: Container(
+            margin: EdgeInsets.only(right: i == 3 ? 0 : 4),
+            height: 3,
+            decoration: BoxDecoration(
+              color: on ? c : _P.border,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+        );
+      }),
+    );
+  }
+
+  int _score(String v) {
+    if (v.isEmpty) return 0;
+    var s = 0;
+    if (v.length >= 6) s++;
+    if (v.length >= 8) s++;
+    if (RegExp(r'[A-Z]').hasMatch(v) && RegExp(r'[0-9]').hasMatch(v)) s++;
+    if (RegExp(r'[^A-Za-z0-9]').hasMatch(v)) s++;
+    return s;
+  }
+}
+
+// ───────────────────────── Primary button ─────────────────────────
+
+class _PrimaryButton extends StatelessWidget {
+  const _PrimaryButton({
+    required this.label,
+    required this.loading,
+    required this.onPressed,
+  });
+
+  final String label;
   final bool loading;
   final VoidCallback onPressed;
 
@@ -623,45 +952,191 @@ class _GoogleButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return SizedBox(
       width: double.infinity,
-      height: AppSizes.buttonHeight,
-      child: OutlinedButton(
-        onPressed: loading ? null : onPressed,
-        style: OutlinedButton.styleFrom(
-          foregroundColor: AppColors.textPrimary,
-          side: const BorderSide(color: AppColors.border, width: 1.2),
-          backgroundColor: AppColors.surface,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(AppSizes.radiusMd),
+      height: 54,
+      child: Material(
+        color: _P.red,
+        borderRadius: BorderRadius.circular(16),
+        elevation: 4,
+        shadowColor: _P.red.withValues(alpha: 0.25),
+        child: InkWell(
+          onTap: loading
+              ? null
+              : () {
+                  HapticFeedback.selectionClick();
+                  onPressed();
+                },
+          borderRadius: BorderRadius.circular(16),
+          child: Center(
+            child: loading
+                ? const SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(
+                      color: Colors.white,
+                      strokeWidth: 2.4,
+                    ),
+                  )
+                : Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.arrow_forward_rounded,
+                          color: Colors.white, size: 18),
+                      const SizedBox(width: 8),
+                      Text(
+                        label,
+                        style: GoogleFonts.outfit(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
+                  ),
           ),
         ),
-        child: loading
-            ? const SizedBox(
-                height: 20,
-                width: 20,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              )
-            : Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  SvgPicture.asset(
-                    'assets/icons/google_g.svg',
-                    width: 20,
-                    height: 20,
-                  ),
-                  const SizedBox(width: AppSizes.md),
-                  Text(
-                    'Continue with Google',
-                    style: AppTextStyles.bodyBold,
-                  ),
-                ],
-              ),
       ),
     );
   }
 }
 
-class _AuthErrorBanner extends StatelessWidget {
-  const _AuthErrorBanner({
+// ───────────────────────── OR divider ─────────────────────────
+
+class _OrDivider extends StatelessWidget {
+  const _OrDivider();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 22),
+      child: Row(
+        children: [
+          const Expanded(child: Divider(color: _P.border, thickness: 1)),
+          const SizedBox(width: 14),
+          Text(
+            'OR',
+            style: GoogleFonts.outfit(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: _P.textPlaceholder,
+              letterSpacing: 1,
+            ),
+          ),
+          const SizedBox(width: 14),
+          const Expanded(child: Divider(color: _P.border, thickness: 1)),
+        ],
+      ),
+    );
+  }
+}
+
+// ───────────────────────── Social row ─────────────────────────
+
+class _SocialRow extends StatelessWidget {
+  const _SocialRow({
+    required this.googleLoading,
+    required this.onGoogle,
+    required this.onApple,
+  });
+
+  final bool googleLoading;
+  final VoidCallback onGoogle;
+  final VoidCallback onApple;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: _SocialButton(
+            onTap: onGoogle,
+            loading: googleLoading,
+            label: 'Google',
+            leading: SvgPicture.asset(
+              'assets/icons/google_g.svg',
+              width: 20,
+              height: 20,
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: _SocialButton(
+            onTap: onApple,
+            loading: false,
+            label: 'Apple',
+            leading: const Icon(
+              Icons.apple_rounded,
+              size: 22,
+              color: _P.textPrimary,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _SocialButton extends StatelessWidget {
+  const _SocialButton({
+    required this.onTap,
+    required this.loading,
+    required this.label,
+    required this.leading,
+  });
+
+  final VoidCallback onTap;
+  final bool loading;
+  final String label;
+  final Widget leading;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 52,
+      child: Material(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
+          onTap: loading ? null : onTap,
+          borderRadius: BorderRadius.circular(14),
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: _P.border, width: 1.5),
+            ),
+            alignment: Alignment.center,
+            child: loading
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      leading,
+                      const SizedBox(width: 10),
+                      Text(
+                        label,
+                        style: GoogleFonts.outfit(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: _P.textLabel,
+                        ),
+                      ),
+                    ],
+                  ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ───────────────────────── Error banner ─────────────────────────
+
+class _ErrorBanner extends StatelessWidget {
+  const _ErrorBanner({
     required this.message,
     required this.needsVerification,
     required this.resending,
@@ -677,11 +1152,11 @@ class _AuthErrorBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(AppSizes.md),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: AppColors.error.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(AppSizes.radiusMd),
-        border: Border.all(color: AppColors.error.withValues(alpha: 0.35)),
+        color: _P.red.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: _P.red.withValues(alpha: 0.35)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -689,22 +1164,32 @@ class _AuthErrorBanner extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Icon(PhosphorIconsBold.warningCircle,
-                  color: AppColors.error, size: 18),
-              const SizedBox(width: AppSizes.sm),
+              const Icon(Icons.error_outline_rounded,
+                  color: _P.red, size: 18),
+              const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   message,
-                  style: AppTextStyles.body.copyWith(color: AppColors.error),
+                  style: GoogleFonts.outfit(
+                    fontSize: 13,
+                    color: _P.red,
+                    fontWeight: FontWeight.w500,
+                    height: 1.4,
+                  ),
                 ),
               ),
             ],
           ),
           if (needsVerification) ...[
-            const SizedBox(height: AppSizes.sm),
+            const SizedBox(height: 6),
             Align(
               alignment: Alignment.centerLeft,
               child: TextButton.icon(
+                style: TextButton.styleFrom(
+                  padding: EdgeInsets.zero,
+                  minimumSize: const Size(0, 28),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
                 onPressed: resending ? null : onResend,
                 icon: resending
                     ? const SizedBox(
@@ -712,11 +1197,15 @@ class _AuthErrorBanner extends StatelessWidget {
                         height: 14,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : const Icon(PhosphorIconsBold.paperPlaneTilt, size: 14),
+                    : const Icon(Icons.send_rounded,
+                        size: 14, color: _P.red),
                 label: Text(
                   resending ? 'Sending…' : 'Resend verification email',
-                  style: AppTextStyles.bodyBold
-                      .copyWith(color: AppColors.primary),
+                  style: GoogleFonts.outfit(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: _P.red,
+                  ),
                 ),
               ),
             ),
@@ -726,3 +1215,72 @@ class _AuthErrorBanner extends StatelessWidget {
     );
   }
 }
+
+// ───────────────────────── Footer toggle ─────────────────────────
+
+class _FooterToggle extends StatelessWidget {
+  const _FooterToggle({
+    required this.prefix,
+    required this.linkText,
+    required this.onTap,
+  });
+
+  final String prefix;
+  final String linkText;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Text.rich(
+        TextSpan(
+          children: [
+            TextSpan(
+              text: prefix,
+              style: GoogleFonts.outfit(
+                fontSize: 14,
+                color: _P.textMuted,
+              ),
+            ),
+            TextSpan(
+              text: linkText,
+              style: GoogleFonts.outfit(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: _P.red,
+              ),
+              recognizer: _tapRecognizer(onTap),
+            ),
+          ],
+        ),
+        textAlign: TextAlign.center,
+      ),
+    );
+  }
+}
+
+class _TermsLine extends StatelessWidget {
+  const _TermsLine();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Text(
+        'By continuing you agree to our Terms & Privacy Policy',
+        textAlign: TextAlign.center,
+        style: GoogleFonts.outfit(
+          fontSize: 11,
+          color: _P.textPlaceholder,
+          fontWeight: FontWeight.w400,
+          height: 1.5,
+        ),
+      ),
+    );
+  }
+}
+
+// ───────────────────────── Helpers ─────────────────────────
+
+TapGestureRecognizer _tapRecognizer(VoidCallback onTap) =>
+    TapGestureRecognizer()..onTap = onTap;

@@ -407,15 +407,7 @@ class _EventDetailsBlock extends StatelessWidget {
           ),
           const SizedBox(height: AppSizes.sm),
           InkWell(
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                fullscreenDialog: true,
-                builder: (_) => Scaffold(
-                  appBar: AppBar(title: const Text('Event details')),
-                  body: const _InlineHint(),
-                ),
-              ),
-            ),
+            onTap: () => context.push(AppRoutes.eventDetails),
             child: Text(
               'Edit event details →',
               style: AppTextStyles.bodyBold
@@ -454,20 +446,6 @@ class _EventRow extends StatelessWidget {
       ),
     );
   }
-}
-
-class _InlineHint extends StatelessWidget {
-  const _InlineHint();
-  @override
-  Widget build(BuildContext context) => const Center(
-        child: Padding(
-          padding: EdgeInsets.all(AppSizes.pagePadding),
-          child: Text(
-            'Event edit flow ships in Phase 4.\nUse the Events tab for now.',
-            textAlign: TextAlign.center,
-          ),
-        ),
-      );
 }
 
 // ───────────────────────── Bill details ─────────────────────────

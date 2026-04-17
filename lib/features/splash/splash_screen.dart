@@ -70,16 +70,16 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              width: 96,
-              height: 96,
+              width: 140,
+              height: 140,
+              padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
                 color: Colors.white.withValues(alpha: 0.14),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(
-                PhosphorIconsDuotone.confetti,
-                color: Colors.white,
-                size: 48,
+              child: Image.asset(
+                'assets/images/dawat.png',
+                fit: BoxFit.contain,
               ),
             ).animate().scale(
                   duration: 500.ms,

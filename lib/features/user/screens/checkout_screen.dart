@@ -39,14 +39,30 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   _PaymentMethod _payment = _PaymentMethod.upi;
 
   Future<void> _placeOrder(CheckoutTotals totals) async {
+    final draft = ref.read(eventDraftProvider);
+    final address = ref.read(defaultAddressProvider);
+
+    // Make sure we have enough to insert the event row (date/location/session
+    // /times are NOT NULL in Postgres, so we backfill sensible defaults rather
+    // than letting the insert fail with a type error).
+    final filled = _ensureDraftComplete(draft, address?.fullAddress);
+    if (filled == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+              'Please add a delivery address before placing the order.'),
+        ),
+      );
+      return;
+    }
+
     setState(() => _placing = true);
     try {
       final userId = ref.read(currentUserIdProvider) ?? 'local-user';
-      final draft = ref.read(eventDraftProvider);
       final cart = ref.read(cartProvider);
       final orderId = await ref.read(orderRepositoryProvider).placeOrder(
             userId: userId,
-            event: draft,
+            event: filled,
             cart: cart,
             totals: totals,
           );
@@ -55,14 +71,54 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       ref.read(cartProvider.notifier).clear();
       ref.read(eventDraftProvider.notifier).reset();
       context.go('${AppRoutes.orderSuccess}?id=$orderId');
-    } catch (e) {
+    } catch (e, st) {
+      debugPrint('placeOrder failed: $e\n$st');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not place order: $e')),
+        SnackBar(
+          content: Text('Could not place order: ${_friendlyError(e)}'),
+          duration: const Duration(seconds: 5),
+        ),
       );
     } finally {
       if (mounted) setState(() => _placing = false);
     }
+  }
+
+  /// Fills in reasonable defaults for any missing event fields so the insert
+  /// always has a valid payload. Returns null only when we can't infer a
+  /// delivery location (no saved address + empty draft).
+  EventDraft? _ensureDraftComplete(EventDraft d, String? fallbackLocation) {
+    final location = (d.location != null && d.location!.trim().isNotEmpty)
+        ? d.location
+        : fallbackLocation;
+    if (location == null || location.trim().isEmpty) return null;
+
+    final now = DateTime.now();
+    final date = d.date ?? now.add(const Duration(days: 3));
+    final session = d.session ?? 'Dinner';
+    final start = d.startTime ??
+        DateTime(date.year, date.month, date.day, 19, 0);
+    final end = d.endTime ??
+        DateTime(date.year, date.month, date.day, 22, 0);
+    final guests = d.guestCount > 0 ? d.guestCount : 50;
+
+    return d.copyWith(
+      date: date,
+      location: location,
+      session: session,
+      startTime: start,
+      endTime: end,
+      guestCount: guests,
+    );
+  }
+
+  String _friendlyError(Object e) {
+    final s = e.toString();
+    // Postgrest errors ship with message/hint/details; pull the first line.
+    final firstLine = s.split('\n').first;
+    if (firstLine.length > 140) return '${firstLine.substring(0, 140)}…';
+    return firstLine;
   }
 
   @override
