@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -33,27 +34,30 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   final _ctrl = PageController();
   int _page = 0;
 
-  final _slides = const [
-    _Slide(
+  static const _slides = <_QuoteSlide>[
+    _QuoteSlide(
       icon: PhosphorIconsDuotone.confetti,
-      title: 'Plan any event,\nany size.',
-      subtitle:
-          'Weddings, birthdays, corporate lunches — pick an event type and we\'ll handle the rest.',
       accent: AppColors.primary,
+      eyebrow: 'WELCOME TO DAWAT',
+      english: 'Every meal\ntells a story.',
+      hindi: 'हर भोजन एक कहानी कहता है।',
+      telugu: 'ప్రతి భోజనం ఒక కథ చెబుతుంది.',
     ),
-    _Slide(
+    _QuoteSlide(
       icon: PhosphorIconsDuotone.forkKnife,
-      title: 'Curated menus\nfrom top chefs.',
-      subtitle:
-          'Multi-cuisine thalis, live counters, plated courses — mix and match to your taste.',
       accent: AppColors.accentDark,
+      eyebrow: 'CRAFT  ·  शिल्प  ·  నైపుణ్యం',
+      english: 'Crafted with love,\nserved with pride.',
+      hindi: 'प्रेम से बनाया, गर्व से परोसा।',
+      telugu: 'ప్రేమతో తయారు చేసి, గర్వంగా వడ్డిస్తాం.',
     ),
-    _Slide(
+    _QuoteSlide(
       icon: PhosphorIconsDuotone.sparkle,
-      title: 'Setup, service,\ndelivered.',
-      subtitle:
-          'Buffet setup, trained service staff, and on-time delivery — included in every booking.',
       accent: AppColors.primary,
+      eyebrow: 'YOUR CELEBRATION',
+      english: 'Your celebration,\nour craft.',
+      hindi: 'आपका उत्सव, हमारा कौशल।',
+      telugu: 'మీ వేడుక, మా నైపుణ్యం.',
     ),
   ];
 
@@ -90,13 +94,47 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton(
-                onPressed: _skip,
-                child: Text('Skip',
-                    style: AppTextStyles.bodyBold
-                        .copyWith(color: AppColors.textSecondary)),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                AppSizes.lg,
+                AppSizes.sm,
+                AppSizes.lg,
+                0,
+              ),
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: Material(
+                  color: AppColors.primarySoft,
+                  shape: const StadiumBorder(),
+                  child: InkWell(
+                    onTap: _skip,
+                    customBorder: const StadiumBorder(),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: AppSizes.md,
+                        vertical: AppSizes.xs,
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            'Skip',
+                            style: AppTextStyles.captionBold.copyWith(
+                              color: AppColors.primary,
+                              letterSpacing: 0.6,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          const Icon(
+                            PhosphorIconsBold.arrowRight,
+                            size: 12,
+                            color: AppColors.primary,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
               ),
             ),
             Expanded(
@@ -166,56 +204,104 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 }
 
-class _Slide extends StatelessWidget {
-  const _Slide({
+class _QuoteSlide extends StatelessWidget {
+  const _QuoteSlide({
     required this.icon,
-    required this.title,
-    required this.subtitle,
     required this.accent,
+    required this.eyebrow,
+    required this.english,
+    required this.hindi,
+    required this.telugu,
   });
 
   final IconData icon;
-  final String title;
-  final String subtitle;
   final Color accent;
+  final String eyebrow;
+  final String english;
+  final String hindi;
+  final String telugu;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
+    final englishStyle = GoogleFonts.playfairDisplay(
+      fontSize: 34,
+      fontWeight: FontWeight.w700,
+      color: AppColors.textPrimary,
+      height: 1.1,
+      letterSpacing: -0.5,
+    );
+    final hindiStyle = GoogleFonts.notoSerifDevanagari(
+      fontSize: 20,
+      fontWeight: FontWeight.w600,
+      color: AppColors.textPrimary,
+      height: 1.4,
+    );
+    final teluguStyle = GoogleFonts.notoSerifTelugu(
+      fontSize: 18,
+      fontWeight: FontWeight.w600,
+      color: AppColors.textSecondary,
+      height: 1.4,
+    );
+
+    return SingleChildScrollView(
       padding: const EdgeInsets.symmetric(horizontal: AppSizes.pagePadding),
       child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 180,
-            height: 180,
-            decoration: BoxDecoration(
-              color: accent.withValues(alpha: 0.1),
-              shape: BoxShape.circle,
-            ),
-            alignment: Alignment.center,
-            child: Icon(icon, size: 90, color: accent),
+          const SizedBox(height: AppSizes.lg),
+          Center(
+            child: Container(
+              width: 140,
+              height: 140,
+              decoration: BoxDecoration(
+                color: accent.withValues(alpha: 0.1),
+                shape: BoxShape.circle,
+              ),
+              alignment: Alignment.center,
+              child: Icon(icon, size: 70, color: accent),
+            )
+                .animate()
+                .scale(
+                  begin: const Offset(0.7, 0.7),
+                  end: const Offset(1, 1),
+                  duration: 500.ms,
+                  curve: Curves.easeOutBack,
+                )
+                .fadeIn(),
+          ),
+          const SizedBox(height: AppSizes.xl),
+          Text(
+            eyebrow,
+            style: AppTextStyles.overline.copyWith(color: accent),
           )
               .animate()
-              .scale(
-                begin: const Offset(0.7, 0.7),
-                end: const Offset(1, 1),
-                duration: 500.ms,
-                curve: Curves.easeOutBack,
-              )
-              .fadeIn(),
-          const SizedBox(height: AppSizes.xxl),
-          Text(title,
-                  style: AppTextStyles.display
-                      .copyWith(fontSize: 36, height: 1.1))
-              .animate()
-              .fadeIn(delay: 120.ms, duration: 380.ms)
+              .fadeIn(delay: 80.ms, duration: 320.ms)
               .slideY(begin: 0.1, end: 0),
-          const SizedBox(height: AppSizes.md),
-          Text(subtitle, style: AppTextStyles.bodyMuted)
+          const SizedBox(height: AppSizes.sm),
+          Text(english, style: englishStyle)
               .animate()
-              .fadeIn(delay: 260.ms, duration: 380.ms),
+              .fadeIn(delay: 140.ms, duration: 380.ms)
+              .slideY(begin: 0.1, end: 0),
+          const SizedBox(height: AppSizes.lg),
+          Container(
+            width: 40,
+            height: 2,
+            decoration: BoxDecoration(
+              color: accent.withValues(alpha: 0.5),
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ).animate().fadeIn(delay: 220.ms, duration: 260.ms),
+          const SizedBox(height: AppSizes.md),
+          Text(hindi, style: hindiStyle)
+              .animate()
+              .fadeIn(delay: 260.ms, duration: 380.ms)
+              .slideY(begin: 0.08, end: 0),
+          const SizedBox(height: AppSizes.sm),
+          Text(telugu, style: teluguStyle)
+              .animate()
+              .fadeIn(delay: 360.ms, duration: 380.ms)
+              .slideY(begin: 0.08, end: 0),
+          const SizedBox(height: AppSizes.xl),
         ],
       ),
     );

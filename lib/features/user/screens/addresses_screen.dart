@@ -1,256 +1,345 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_sizes.dart';
 import '../../../core/constants/app_text_styles.dart';
+import '../../../core/router/app_routes.dart';
 import '../../../data/models/user_address.dart';
-import '../../../shared/presentation/address_label_presentation.dart';
 import '../../../shared/providers/address_providers.dart';
-import '../../../shared/widgets/app_error_view.dart';
 import '../../../shared/providers/repositories_providers.dart';
-import '../../../shared/widgets/app_card.dart';
 import '../../../shared/widgets/app_scaffold.dart';
 import '../../../shared/widgets/empty_state.dart';
-import '../../../shared/widgets/primary_button.dart';
-import '../../../shared/widgets/status_badge.dart';
 
 class AddressesScreen extends ConsumerWidget {
   const AddressesScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final list = ref.watch(addressesProvider);
+    final async = ref.watch(addressesProvider);
 
     return AppScaffold(
+      padded: false,
       appBar: AppBar(
-        title: const Text('My Addresses'),
+        title: const Text('Saved addresses'),
         leading: IconButton(
-          icon: const Icon(PhosphorIconsBold.arrowLeft),
-          onPressed: () => context.pop(),
+          icon: const Icon(Icons.arrow_back_rounded),
+          onPressed: () => context.canPop()
+              ? context.pop()
+              : context.go(AppRoutes.profile),
         ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.add_rounded, color: AppColors.primary),
+            onPressed: () => _openEditor(context, ref),
+          ),
+        ],
       ),
-      body: list.when(
+      body: async.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => AppErrorView(
-            error: e, onRetry: () => ref.invalidate(addressesProvider)),
-        data: (addresses) {
+        error: (e, _) => EmptyState(
+          icon: Icons.cloud_off_rounded,
+          title: 'Couldn\'t load addresses',
+          message: '$e',
+          actionLabel: 'Retry',
+          onAction: () => ref.invalidate(addressesProvider),
+        ),
+        data: (list) {
+          if (list.isEmpty) {
+            return EmptyState(
+              icon: Icons.location_on_rounded,
+              title: 'No saved addresses',
+              message:
+                  'Add your home, work, or venue addresses to speed up checkout.',
+              actionLabel: 'Add address',
+              onAction: () => _openEditor(context, ref),
+            );
+          }
           return ListView(
-            padding: const EdgeInsets.only(bottom: 120),
+            padding: const EdgeInsets.symmetric(vertical: AppSizes.sm),
             children: [
-              const SizedBox(height: AppSizes.sm),
-              if (addresses.isEmpty)
-                const SizedBox(
-                  height: 360,
-                  child: EmptyState(
-                    title: 'No saved addresses',
-                    message:
-                        'Save your home, work and other venues — reuse them when planning events.',
-                    icon: Icons.place_outlined,
+              for (int i = 0; i < list.length; i++)
+                _AddressRow(
+                  address: list[i],
+                  onEdit: () => _openEditor(context, ref, existing: list[i]),
+                  onDelete: () => _confirmDelete(context, ref, list[i]),
+                  onSetDefault: () async {
+                    HapticFeedback.selectionClick();
+                    await _setDefault(ref, list[i]);
+                  },
+                ).animate().fadeIn(duration: 220.ms, delay: (30 * i).ms),
+              const SizedBox(height: AppSizes.lg),
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppSizes.pagePadding,
+                ),
+                child: OutlinedButton.icon(
+                  onPressed: () => _openEditor(context, ref),
+                  icon: const Icon(Icons.add_rounded, size: 18),
+                  label: const Text('Add new address'),
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size.fromHeight(48),
+                    foregroundColor: AppColors.primary,
+                    side: const BorderSide(color: AppColors.border),
+                    shape: RoundedRectangleBorder(
+                      borderRadius:
+                          BorderRadius.circular(AppSizes.radiusSm),
+                    ),
                   ),
-                )
-              else
-                for (int i = 0; i < addresses.length; i++)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: AppSizes.md),
-                    child: _AddressTile(address: addresses[i])
-                        .animate(delay: (i * 60).ms)
-                        .fadeIn(duration: 300.ms)
-                        .slideY(begin: 0.06, end: 0),
-                  ),
+                ),
+              ),
             ],
           );
         },
       ),
-      bottomBar: SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.all(AppSizes.lg),
-          child: PrimaryButton(
-            label: 'Add new address',
-            icon: PhosphorIconsBold.plusCircle,
-            onPressed: () => _openEditor(context, ref, null),
+    );
+  }
+
+  Future<void> _setDefault(WidgetRef ref, UserAddress a) async {
+    try {
+      await ref.read(addressRepositoryProvider).setDefault(a.userId, a.id);
+      ref.invalidate(addressesProvider);
+    } catch (_) {
+      // ignore — UI reflects last successful state
+    }
+  }
+
+  Future<void> _confirmDelete(
+    BuildContext context,
+    WidgetRef ref,
+    UserAddress a,
+  ) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Remove address?'),
+        content: Text(a.fullAddress),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
           ),
+          FilledButton(
+            style:
+                FilledButton.styleFrom(backgroundColor: AppColors.primary),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) {
+      await ref.read(addressRepositoryProvider).delete(a.id);
+      ref.invalidate(addressesProvider);
+    }
+  }
+
+  Future<void> _openEditor(
+    BuildContext context,
+    WidgetRef ref, {
+    UserAddress? existing,
+  }) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(AppSizes.radiusXl),
+        ),
+      ),
+      builder: (_) => _Editor(existing: existing),
+    );
+    ref.invalidate(addressesProvider);
+  }
+}
+
+// ───────────────────────── Address row ─────────────────────────
+
+class _AddressRow extends StatelessWidget {
+  const _AddressRow({
+    required this.address,
+    required this.onEdit,
+    required this.onDelete,
+    required this.onSetDefault,
+  });
+
+  final UserAddress address;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+  final VoidCallback onSetDefault;
+
+  (IconData, Color, Color) _iconStyle() {
+    switch (address.label) {
+      case AddressLabel.home:
+        return (Icons.home_rounded, AppColors.primarySoft, AppColors.primary);
+      case AddressLabel.work:
+        return (
+          Icons.business_rounded,
+          AppColors.catBlueLt,
+          AppColors.catBlue,
+        );
+      case AddressLabel.other:
+        return (
+          Icons.location_on_rounded,
+          AppColors.surfaceAlt,
+          AppColors.textSecondary,
+        );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final (icon, bg, fg) = _iconStyle();
+    return InkWell(
+      onTap: onEdit,
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSizes.pagePadding,
+          vertical: AppSizes.md,
+        ),
+        decoration: const BoxDecoration(
+          border: Border(bottom: BorderSide(color: AppColors.divider)),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: bg,
+                borderRadius: BorderRadius.circular(AppSizes.radiusSm),
+              ),
+              alignment: Alignment.center,
+              child: Icon(icon, color: fg, size: 20),
+            ),
+            const SizedBox(width: AppSizes.md),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(address.label.label,
+                          style: AppTextStyles.bodyBold),
+                      if (address.isDefault) ...[
+                        const SizedBox(width: AppSizes.sm),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppColors.primary,
+                            borderRadius:
+                                BorderRadius.circular(AppSizes.radiusXs),
+                          ),
+                          child: Text(
+                            'DEFAULT',
+                            style: AppTextStyles.captionBold.copyWith(
+                              color: Colors.white,
+                              fontSize: 9,
+                              letterSpacing: 0.6,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    address.fullAddress,
+                    style: AppTextStyles.caption.copyWith(fontSize: 12),
+                  ),
+                  if (!address.isDefault) ...[
+                    const SizedBox(height: 6),
+                    InkWell(
+                      onTap: onSetDefault,
+                      child: Text(
+                        'Set as default',
+                        style: AppTextStyles.captionBold.copyWith(
+                          color: AppColors.primary,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.more_vert_rounded,
+                  color: AppColors.textMuted, size: 20),
+              onSelected: (v) {
+                if (v == 'edit') onEdit();
+                if (v == 'delete') onDelete();
+              },
+              itemBuilder: (_) => const [
+                PopupMenuItem(value: 'edit', child: Text('Edit')),
+                PopupMenuItem(value: 'delete', child: Text('Remove')),
+              ],
+            ),
+          ],
         ),
       ),
     );
   }
 }
 
-Future<void> _openEditor(
-    BuildContext context, WidgetRef ref, UserAddress? existing) {
-  return showModalBottomSheet<void>(
-    context: context,
-    isScrollControlled: true,
-    useSafeArea: true,
-    backgroundColor: AppColors.surface,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(
-        top: Radius.circular(AppSizes.radiusXl),
-      ),
-    ),
-    builder: (ctx) => Padding(
-      padding: EdgeInsets.only(
-        bottom: MediaQuery.of(ctx).viewInsets.bottom,
-      ),
-      child: _AddressEditor(existing: existing),
-    ),
-  );
-}
+// ───────────────────────── Editor bottom-sheet ─────────────────────────
 
-class _AddressTile extends ConsumerWidget {
-  const _AddressTile({required this.address});
-  final UserAddress address;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return AppCard(
-      onTap: () => _openEditor(context, ref, address),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: AppColors.primarySoft,
-                  borderRadius: BorderRadius.circular(AppSizes.radiusMd),
-                ),
-                child: Icon(address.label.icon,
-                    color: AppColors.primary, size: 24),
-              ),
-              const SizedBox(width: AppSizes.md),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Text(address.label.label,
-                            style: AppTextStyles.heading3),
-                        if (address.isDefault) ...[
-                          const SizedBox(width: AppSizes.sm),
-                          const StatusBadge(
-                            label: 'DEFAULT',
-                            tone: StatusTone.success,
-                          ),
-                        ],
-                      ],
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      address.fullAddress,
-                      style: AppTextStyles.caption,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ),
-              ),
-              IconButton(
-                icon: const Icon(PhosphorIconsBold.trash,
-                    size: 20, color: AppColors.error),
-                onPressed: () => _confirmDelete(context, ref),
-              ),
-            ],
-          ),
-          if (!address.isDefault) ...[
-            const Divider(height: AppSizes.xl),
-            TextButton.icon(
-              onPressed: () async {
-                await ref
-                    .read(addressRepositoryProvider)
-                    .setDefault(address.userId, address.id);
-                ref.invalidate(addressesProvider);
-              },
-              icon: const Icon(PhosphorIconsBold.star, size: 16),
-              label: const Text('Make default'),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Future<void> _confirmDelete(BuildContext context, WidgetRef ref) async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (dCtx) => AlertDialog(
-        title: const Text('Delete address?'),
-        content: Text(address.fullAddress),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dCtx, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(dCtx, true),
-            child: Text('Delete',
-                style: TextStyle(color: AppColors.error)),
-          ),
-        ],
-      ),
-    );
-    if (confirm != true) return;
-    await ref.read(addressRepositoryProvider).delete(address.id);
-    ref.invalidate(addressesProvider);
-  }
-}
-
-// ---------------------------------------------------------------------------
-
-class _AddressEditor extends ConsumerStatefulWidget {
-  const _AddressEditor({required this.existing});
+class _Editor extends ConsumerStatefulWidget {
+  const _Editor({this.existing});
   final UserAddress? existing;
 
   @override
-  ConsumerState<_AddressEditor> createState() => _AddressEditorState();
+  ConsumerState<_Editor> createState() => _EditorState();
 }
 
-class _AddressEditorState extends ConsumerState<_AddressEditor> {
+class _EditorState extends ConsumerState<_Editor> {
   late AddressLabel _label;
-  late TextEditingController _addressCtrl;
-  late bool _isDefault;
+  late TextEditingController _addrCtrl;
+  bool _isDefault = false;
   bool _saving = false;
 
   @override
   void initState() {
     super.initState();
     _label = widget.existing?.label ?? AddressLabel.home;
-    _addressCtrl =
+    _addrCtrl =
         TextEditingController(text: widget.existing?.fullAddress ?? '');
     _isDefault = widget.existing?.isDefault ?? false;
   }
 
   @override
   void dispose() {
-    _addressCtrl.dispose();
+    _addrCtrl.dispose();
     super.dispose();
   }
 
   Future<void> _save() async {
-    if (_addressCtrl.text.trim().isEmpty) return;
+    final txt = _addrCtrl.text.trim();
+    if (txt.length < 3) return;
     setState(() => _saving = true);
     try {
-      final repo = ref.read(addressRepositoryProvider);
-      await repo.save(UserAddressInput(
-        id: widget.existing?.id,
-        label: _label,
-        fullAddress: _addressCtrl.text.trim(),
-        isDefault: _isDefault,
-      ));
-      ref.invalidate(addressesProvider);
+      await ref.read(addressRepositoryProvider).save(
+            UserAddressInput(
+              id: widget.existing?.id,
+              label: _label,
+              fullAddress: txt,
+              isDefault: _isDefault,
+            ),
+          );
       if (!mounted) return;
       Navigator.of(context).pop();
-    } on Exception catch (e) {
+    } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Save failed: $e')),
+        SnackBar(content: Text('Could not save: $e')),
       );
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -259,23 +348,22 @@ class _AddressEditorState extends ConsumerState<_AddressEditor> {
 
   @override
   Widget build(BuildContext context) {
-    final isNew = widget.existing == null;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        AppSizes.pagePadding,
-        AppSizes.lg,
-        AppSizes.pagePadding,
-        AppSizes.xl,
+      padding: EdgeInsets.only(
+        left: AppSizes.pagePadding,
+        right: AppSizes.pagePadding,
+        top: AppSizes.md,
+        bottom: MediaQuery.of(context).viewInsets.bottom + AppSizes.lg,
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(isNew ? 'Add address' : 'Edit address',
-              style: AppTextStyles.heading1),
-          const SizedBox(height: AppSizes.lg),
-          Text('LABEL', style: AppTextStyles.overline),
-          const SizedBox(height: AppSizes.sm),
+          Text(
+            widget.existing == null ? 'Add address' : 'Edit address',
+            style: AppTextStyles.heading1,
+          ),
+          const SizedBox(height: AppSizes.md),
           Wrap(
             spacing: AppSizes.sm,
             children: [
@@ -284,35 +372,79 @@ class _AddressEditorState extends ConsumerState<_AddressEditor> {
                   label: Text(l.label),
                   selected: _label == l,
                   onSelected: (_) => setState(() => _label = l),
+                  selectedColor: AppColors.primarySoft,
+                  backgroundColor: AppColors.surfaceAlt,
+                  side: BorderSide(
+                    color: _label == l
+                        ? AppColors.primary
+                        : AppColors.border,
+                  ),
+                  labelStyle: AppTextStyles.captionBold.copyWith(
+                    color: _label == l
+                        ? AppColors.primary
+                        : AppColors.textSecondary,
+                    fontSize: 12,
+                  ),
                 ),
             ],
           ),
-          const SizedBox(height: AppSizes.lg),
-          Text('ADDRESS', style: AppTextStyles.overline),
-          const SizedBox(height: AppSizes.sm),
+          const SizedBox(height: AppSizes.md),
           TextField(
-            controller: _addressCtrl,
-            maxLines: 3,
-            minLines: 3,
-            decoration: const InputDecoration(
-              hintText: 'House / street / city / pincode',
-              prefixIcon: Icon(PhosphorIconsBold.mapPin),
+            controller: _addrCtrl,
+            minLines: 2,
+            maxLines: 4,
+            decoration: InputDecoration(
+              hintText: 'House / flat, street, city, PIN',
+              hintStyle:
+                  AppTextStyles.body.copyWith(color: AppColors.textMuted),
+              filled: true,
+              fillColor: AppColors.surfaceAlt,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(AppSizes.radiusSm),
+                borderSide: const BorderSide(color: AppColors.border),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(AppSizes.radiusSm),
+                borderSide: const BorderSide(color: AppColors.border),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(AppSizes.radiusSm),
+                borderSide:
+                    const BorderSide(color: AppColors.primary, width: 1.4),
+              ),
             ),
           ),
-          const SizedBox(height: AppSizes.md),
+          const SizedBox(height: AppSizes.sm),
           SwitchListTile.adaptive(
+            contentPadding: EdgeInsets.zero,
+            activeThumbColor: AppColors.primary,
             value: _isDefault,
             onChanged: (v) => setState(() => _isDefault = v),
-            title: const Text('Set as default address'),
-            subtitle: const Text('Pre-filled when planning a new event'),
-            contentPadding: EdgeInsets.zero,
+            title: Text('Set as default',
+                style: AppTextStyles.body.copyWith(fontSize: 13)),
           ),
-          const SizedBox(height: AppSizes.lg),
-          PrimaryButton(
-            label: isNew ? 'Save address' : 'Save changes',
-            icon: PhosphorIconsBold.checkCircle,
-            loading: _saving,
-            onPressed: _save,
+          const SizedBox(height: AppSizes.md),
+          FilledButton(
+            onPressed: _saving ? null : _save,
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              minimumSize: const Size.fromHeight(48),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(AppSizes.radiusSm),
+              ),
+            ),
+            child: _saving
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                        color: Colors.white, strokeWidth: 2),
+                  )
+                : Text(
+                    widget.existing == null ? 'Add address' : 'Save',
+                    style: AppTextStyles.buttonLabel
+                        .copyWith(color: Colors.white),
+                  ),
           ),
         ],
       ),

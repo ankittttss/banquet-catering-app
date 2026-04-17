@@ -35,19 +35,10 @@ class SupabaseAddressRepository implements AddressRepository {
     await supabase.from('user_addresses').delete().eq('id', id);
   }
 
-  /// Sets a single address as default by:
-  ///   1. Clearing all current defaults for the user.
-  ///   2. Setting is_default=true on the target.
-  /// Both in one round-trip where possible; partial unique index enforces safety.
+  /// Atomic default toggle via [set_default_address] RPC — no race with the
+  /// partial unique index.
   @override
   Future<void> setDefault(String userId, String id) async {
-    await supabase
-        .from('user_addresses')
-        .update({'is_default': false})
-        .eq('user_id', userId)
-        .neq('id', id);
-    await supabase
-        .from('user_addresses')
-        .update({'is_default': true}).eq('id', id);
+    await supabase.rpc('set_default_address', params: {'p_id': id});
   }
 }

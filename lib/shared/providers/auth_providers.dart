@@ -24,12 +24,25 @@ final currentUserIdProvider = Provider<String?>((ref) {
 });
 
 /// Loads the profile row for the current user. null when signed out.
+/// If the auth user exists but the `profiles` row is missing (e.g. the
+/// handle_new_user trigger didn't fire), we auto-create a default row.
 final currentProfileProvider =
     FutureProvider<UserProfile?>((ref) async {
   final userId = ref.watch(currentUserIdProvider);
   if (userId == null) return null;
   final repo = ref.read(profileRepositoryProvider);
-  return repo.fetchById(userId);
+  final existing = await repo.fetchById(userId);
+  if (existing != null) return existing;
+
+  if (!AppConfig.hasSupabase) return null;
+  final user = sb.auth.currentUser;
+  if (user == null) return null;
+  return repo.upsert(UserProfile(
+    id: userId,
+    role: UserRole.user,
+    email: user.email,
+    phone: user.phone,
+  ));
 });
 
 /// Convenience — resolves role to user/admin (defaults to user).

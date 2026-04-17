@@ -192,11 +192,13 @@ class AppTheme {
       ),
 
       scrollbarTheme: ScrollbarThemeData(
-        thumbColor: WidgetStateProperty.all(
-          AppColors.primary.withValues(alpha: 0.3),
-        ),
-        thickness: WidgetStateProperty.all(4),
-        radius: const Radius.circular(8),
+        thumbColor: WidgetStateProperty.all(Colors.transparent),
+        trackColor: WidgetStateProperty.all(Colors.transparent),
+        trackBorderColor: WidgetStateProperty.all(Colors.transparent),
+        thickness: WidgetStateProperty.all(0),
+        radius: const Radius.circular(0),
+        thumbVisibility: WidgetStateProperty.all(false),
+        trackVisibility: WidgetStateProperty.all(false),
       ),
 
       tabBarTheme: TabBarThemeData(
@@ -218,7 +220,7 @@ class AppTheme {
   }
 
   static TextTheme _textTheme() {
-    return GoogleFonts.interTextTheme().copyWith(
+    return GoogleFonts.plusJakartaSansTextTheme().copyWith(
       displayLarge: AppTextStyles.display,
       displayMedium: AppTextStyles.displaySm,
       headlineLarge: AppTextStyles.heading1,

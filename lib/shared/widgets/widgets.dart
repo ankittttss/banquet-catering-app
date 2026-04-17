@@ -14,7 +14,6 @@ export 'filters_sheet.dart';
 export 'menu_item_customize_sheet.dart';
 export 'menu_item_thumb.dart';
 export 'mobile_frame.dart';
-export 'notifications_sheet.dart';
 export 'price_row.dart';
 export 'primary_button.dart';
 export 'qty_selector.dart';

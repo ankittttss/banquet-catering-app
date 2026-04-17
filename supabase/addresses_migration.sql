@@ -41,6 +41,45 @@ create policy "addresses_admin_read"
 -- Accepts a NULL id to mean "create new".
 -- Returns the final row.
 -- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- Atomic "set this address as default" — flips the default in a single txn.
+-- Safer than doing two client-side updates against the partial unique index.
+-- ----------------------------------------------------------------------------
+create or replace function public.set_default_address(p_id uuid)
+returns public.user_addresses
+language plpgsql
+security invoker
+set search_path = public
+as $$
+declare
+  v_uid uuid := auth.uid();
+  v_row public.user_addresses;
+begin
+  if v_uid is null then
+    raise exception 'not authenticated';
+  end if;
+
+  -- Ensure target belongs to caller.
+  if not exists (
+    select 1 from public.user_addresses
+     where id = p_id and user_id = v_uid
+  ) then
+    raise exception 'address not found or not yours';
+  end if;
+
+  update public.user_addresses
+     set is_default = false, updated_at = now()
+   where user_id = v_uid and is_default and id <> p_id;
+
+  update public.user_addresses
+     set is_default = true, updated_at = now()
+   where id = p_id
+  returning * into v_row;
+
+  return v_row;
+end;
+$$;
+
 create or replace function public.upsert_address(
   p_id          uuid,
   p_label       text,

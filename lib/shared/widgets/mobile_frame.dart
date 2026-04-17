@@ -20,7 +20,7 @@ class MobileFrame extends StatelessWidget {
     if (!useFrame) return child;
 
     return ColoredBox(
-      color: const Color(0xFF1F1F1F),
+      color: AppColors.surfaceAlt,
       child: Center(
         child: ClipRRect(
           borderRadius: BorderRadius.circular(32),
@@ -31,7 +31,7 @@ class MobileFrame extends StatelessWidget {
               color: AppColors.pageBg,
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.35),
+                  color: AppColors.primary.withValues(alpha: 0.10),
                   blurRadius: 40,
                   offset: const Offset(0, 12),
                 ),

@@ -15,6 +15,7 @@ class AppRoutes {
   static const restaurantDetail = '/user/restaurants/:id'; // template
   static const search = '/user/search';
   static const favorites = '/user/favorites';
+  static const notifications = '/user/notifications';
   static const cart = '/user/cart';
   static const checkout = '/user/checkout';
   static const orderSuccess = '/user/order-success';

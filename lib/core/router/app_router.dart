@@ -20,6 +20,7 @@ import '../../features/user/screens/order_detail_screen.dart';
 import '../../features/user/screens/order_success_screen.dart';
 import '../../features/user/screens/addresses_screen.dart';
 import '../../features/user/screens/favorites_screen.dart';
+import '../../features/user/screens/notifications_screen.dart';
 import '../../features/user/screens/profile_screen.dart';
 import '../../features/user/screens/restaurant_detail_screen.dart';
 import '../../features/user/screens/search_screen.dart';
@@ -127,6 +128,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: AppRoutes.favorites,
         pageBuilder: (_, s) => _page(s, const FavoritesScreen()),
+      ),
+      GoRoute(
+        path: AppRoutes.notifications,
+        pageBuilder: (_, s) => _page(s, const NotificationsScreen()),
       ),
       GoRoute(
         path: AppRoutes.cart,

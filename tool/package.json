@@ -5,9 +5,11 @@
   "type": "module",
   "description": "Operational scripts for Dawat — image uploads, seeding, etc.",
   "scripts": {
-    "upload-images": "node upload_menu_images.mjs"
+    "upload-images": "node upload_menu_images.mjs",
+    "migrate": "node run_migrations.mjs"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.45.4"
+    "@supabase/supabase-js": "^2.45.4",
+    "pg": "^8.12.0"
   }
 }

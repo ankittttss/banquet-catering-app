@@ -3,20 +3,68 @@ import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_sizes.dart';
 import '../../../core/constants/app_text_styles.dart';
 import '../../../core/router/app_routes.dart';
 import '../../../core/utils/formatters.dart';
-import '../../../shared/presentation/address_label_presentation.dart';
+import '../../../core/utils/material_icon_map.dart';
+import '../../../data/models/event_category.dart';
 import '../../../shared/providers/address_providers.dart';
 import '../../../shared/providers/event_providers.dart';
-import '../../../shared/widgets/app_card.dart';
+import '../../../shared/providers/home_providers.dart';
 import '../../../shared/widgets/app_scaffold.dart';
-import '../../../shared/widgets/category_chip.dart';
-import '../../../shared/widgets/primary_button.dart';
+
+// Local package presets — shown in the planner. Could move to backend later.
+class _Package {
+  const _Package({
+    required this.id,
+    required this.name,
+    required this.description,
+    required this.pricePerPlate,
+    required this.iconName,
+    required this.bgHex,
+    required this.iconHex,
+  });
+  final String id;
+  final String name;
+  final String description;
+  final double pricePerPlate;
+  final String iconName;
+  final String bgHex;
+  final String iconHex;
+}
+
+const _packages = <_Package>[
+  _Package(
+    id: 'premium',
+    name: 'Premium Feast',
+    description: '4 starters + 3 mains + 2 desserts + drinks',
+    pricePerPlate: 450,
+    iconName: 'auto_awesome',
+    bgHex: '#FFF8E7',
+    iconHex: '#E5A100',
+  ),
+  _Package(
+    id: 'classic',
+    name: 'Classic Meal',
+    description: '2 starters + 2 mains + 1 dessert',
+    pricePerPlate: 300,
+    iconName: 'set_meal',
+    bgHex: '#EBF4FF',
+    iconHex: '#2B6CB0',
+  ),
+  _Package(
+    id: 'budget',
+    name: 'Budget Bite',
+    description: '1 starter + 1 main + 1 dessert',
+    pricePerPlate: 180,
+    iconName: 'rice_bowl',
+    bgHex: '#EAFAF1',
+    iconHex: '#1BA672',
+  ),
+];
 
 class EventDetailsScreen extends ConsumerStatefulWidget {
   const EventDetailsScreen({super.key});
@@ -27,311 +75,508 @@ class EventDetailsScreen extends ConsumerStatefulWidget {
 }
 
 class _EventDetailsScreenState extends ConsumerState<EventDetailsScreen> {
-  final _locationCtrl = TextEditingController();
-  final _guestsCtrl = TextEditingController(text: '50');
+  String? _categorySlug;
+  String _packageId = 'premium';
 
   @override
   void initState() {
     super.initState();
-    final current = ref.read(eventDraftProvider);
-    if (current.location != null && current.location!.trim().isNotEmpty) {
-      _locationCtrl.text = current.location!;
-    } else {
-      // Pre-fill with default saved address when no location set yet.
-      final def = ref.read(defaultAddressProvider);
-      if (def != null) {
-        _locationCtrl.text = def.fullAddress;
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          ref
-              .read(eventDraftProvider.notifier)
-              .setLocation(def.fullAddress);
-        });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // Pre-fill location from default saved address if empty.
+      final draft = ref.read(eventDraftProvider);
+      if (draft.location == null || draft.location!.trim().isEmpty) {
+        final def = ref.read(defaultAddressProvider);
+        if (def != null) {
+          ref.read(eventDraftProvider.notifier).setLocation(def.fullAddress);
+        }
       }
-    }
-    _guestsCtrl.text = current.guestCount.toString();
-  }
-
-  Future<void> _pickSavedAddress() async {
-    final addresses = await ref.read(addressesProvider.future);
-    if (!mounted) return;
-    if (addresses.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text('No saved addresses. Add some from your profile.')),
-      );
-      return;
-    }
-    await showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: AppColors.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(
-          top: Radius.circular(AppSizes.radiusXl),
-        ),
-      ),
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(AppSizes.pagePadding),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Choose a saved address',
-                  style: AppTextStyles.heading2),
-              const SizedBox(height: AppSizes.md),
-              for (final a in addresses)
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: Icon(a.label.icon, color: AppColors.primary),
-                  title: Text(a.label.label,
-                      style: AppTextStyles.bodyBold),
-                  subtitle: Text(
-                    a.fullAddress,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  onTap: () {
-                    _locationCtrl.text = a.fullAddress;
-                    ref
-                        .read(eventDraftProvider.notifier)
-                        .setLocation(a.fullAddress);
-                    Navigator.of(ctx).pop();
-                  },
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  @override
-  void dispose() {
-    _locationCtrl.dispose();
-    _guestsCtrl.dispose();
-    super.dispose();
+    });
   }
 
   Future<void> _pickDate() async {
     final now = DateTime.now();
     final picked = await showDatePicker(
       context: context,
-      initialDate: now.add(const Duration(days: 2)),
-      firstDate: now.add(const Duration(hours: 24)),
+      initialDate: ref.read(eventDraftProvider).date ??
+          now.add(const Duration(days: 3)),
+      firstDate: now,
       lastDate: now.add(const Duration(days: 365)),
+      builder: (ctx, child) => Theme(
+        data: Theme.of(ctx).copyWith(
+          colorScheme: Theme.of(ctx).colorScheme.copyWith(
+                primary: AppColors.primary,
+              ),
+        ),
+        child: child!,
+      ),
     );
     if (picked != null) {
       ref.read(eventDraftProvider.notifier).setDate(picked);
     }
   }
 
-  Future<void> _pickTime(bool isStart) async {
+  Future<void> _pickTime() async {
+    final now = DateTime.now();
+    final draft = ref.read(eventDraftProvider);
+    final initial = draft.startTime == null
+        ? const TimeOfDay(hour: 19, minute: 0)
+        : TimeOfDay.fromDateTime(draft.startTime!);
     final picked = await showTimePicker(
       context: context,
-      initialTime: const TimeOfDay(hour: 19, minute: 0),
+      initialTime: initial,
+      builder: (ctx, child) => Theme(
+        data: Theme.of(ctx).copyWith(
+          colorScheme: Theme.of(ctx).colorScheme.copyWith(
+                primary: AppColors.primary,
+              ),
+        ),
+        child: child!,
+      ),
     );
-    if (picked == null) return;
-    final now = DateTime.now();
-    final dt = DateTime(now.year, now.month, now.day, picked.hour, picked.minute);
-    final notifier = ref.read(eventDraftProvider.notifier);
-    isStart ? notifier.setStartTime(dt) : notifier.setEndTime(dt);
+    if (picked != null) {
+      final date = draft.date ?? now;
+      final start = DateTime(
+        date.year,
+        date.month,
+        date.day,
+        picked.hour,
+        picked.minute,
+      );
+      ref.read(eventDraftProvider.notifier).setStartTime(start);
+      // Default 3-hour duration if end not set.
+      if (draft.endTime == null) {
+        ref
+            .read(eventDraftProvider.notifier)
+            .setEndTime(start.add(const Duration(hours: 3)));
+      }
+    }
+  }
+
+  void _applyCategory(EventCategory cat) {
+    HapticFeedback.selectionClick();
+    setState(() => _categorySlug = cat.slug);
+    ref.read(eventDraftProvider.notifier).setSession(cat.defaultSession);
+    ref
+        .read(eventDraftProvider.notifier)
+        .setGuestCount(cat.defaultGuestCount);
+  }
+
+  void _bumpGuests(int delta) {
+    final draft = ref.read(eventDraftProvider);
+    final next = (draft.guestCount + delta).clamp(5, 5000);
+    ref.read(eventDraftProvider.notifier).setGuestCount(next);
   }
 
   @override
   Widget build(BuildContext context) {
     final draft = ref.watch(eventDraftProvider);
+    final cats = ref.watch(eventCategoriesProvider).valueOrNull ?? const [];
 
     return AppScaffold(
+      padded: false,
       appBar: AppBar(
-        title: const Text('Event Details'),
+        title: const Text('Plan your event'),
         leading: IconButton(
-          icon: const Icon(PhosphorIconsBold.arrowLeft),
-          onPressed: () => context.pop(),
+          icon: const Icon(Icons.arrow_back_rounded),
+          onPressed: () => context.canPop()
+              ? context.pop()
+              : context.go(AppRoutes.userHome),
         ),
       ),
       body: ListView(
+        padding: const EdgeInsets.only(bottom: 120),
         children: [
-          const SizedBox(height: AppSizes.sm),
-          Text('WHEN', style: AppTextStyles.overline),
-          const SizedBox(height: AppSizes.sm),
-          AppCard(
-            onTap: _pickDate,
-            child: Row(
-              children: [
-                const Icon(PhosphorIconsDuotone.calendar,
-                    color: AppColors.primary, size: 28),
-                const SizedBox(width: AppSizes.md),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Event date', style: AppTextStyles.captionBold),
-                      const SizedBox(height: 2),
-                      Text(
-                        draft.date == null
-                            ? 'Pick a date'
-                            : Formatters.date(draft.date!),
-                        style: AppTextStyles.heading3,
-                      ),
-                    ],
-                  ),
-                ),
-                const Icon(PhosphorIconsBold.caretRight,
-                    color: AppColors.textMuted),
-              ],
+          _Section(
+            title: 'Event type',
+            child: _CategoryGrid(
+              categories: cats,
+              selectedSlug: _categorySlug,
+              onSelect: _applyCategory,
             ),
           ),
-          const SizedBox(height: AppSizes.lg),
-          Text('SESSION', style: AppTextStyles.overline),
-          const SizedBox(height: AppSizes.sm),
-          Wrap(
-            spacing: AppSizes.sm,
-            children: [
-              for (final s in ['Lunch', 'High Tea', 'Dinner'])
-                CategoryChip(
-                  label: s,
-                  selected: draft.session == s,
-                  onTap: () {
-                    HapticFeedback.selectionClick();
-                    ref.read(eventDraftProvider.notifier).setSession(s);
-                  },
-                ),
-            ],
-          ),
-          const SizedBox(height: AppSizes.lg),
-          Row(
-            children: [
-              Expanded(
-                child: AppCard(
-                  onTap: () => _pickTime(true),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: AppSizes.md,
-                    vertical: AppSizes.md,
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Start time', style: AppTextStyles.captionBold),
-                      const SizedBox(height: 2),
-                      Text(
-                        draft.startTime == null
-                            ? '—'
-                            : Formatters.time(draft.startTime!),
-                        style: AppTextStyles.heading3,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(width: AppSizes.md),
-              Expanded(
-                child: AppCard(
-                  onTap: () => _pickTime(false),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: AppSizes.md,
-                    vertical: AppSizes.md,
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('End time', style: AppTextStyles.captionBold),
-                      const SizedBox(height: 2),
-                      Text(
-                        draft.endTime == null
-                            ? '—'
-                            : Formatters.time(draft.endTime!),
-                        style: AppTextStyles.heading3,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: AppSizes.lg),
-          Row(
-            children: [
-              Text('WHERE', style: AppTextStyles.overline),
-              const Spacer(),
-              TextButton.icon(
-                onPressed: () => _pickSavedAddress(),
-                icon: const Icon(PhosphorIconsBold.bookmarks, size: 16),
-                label: const Text('Saved'),
-                style: TextButton.styleFrom(
-                  minimumSize: const Size(0, 0),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: AppSizes.sm,
-                    vertical: 0,
-                  ),
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: AppSizes.sm),
-          TextField(
-            controller: _locationCtrl,
-            maxLines: 2,
-            minLines: 2,
-            decoration: const InputDecoration(
-              hintText: 'Venue or full address',
-              prefixIcon: Icon(PhosphorIconsBold.mapPin),
+          _Section(
+            title: 'Number of guests',
+            child: _GuestCounter(
+              count: draft.guestCount,
+              onMinus: () => _bumpGuests(-5),
+              onPlus: () => _bumpGuests(5),
             ),
-            onChanged: (v) =>
-                ref.read(eventDraftProvider.notifier).setLocation(v),
           ),
-          const SizedBox(height: AppSizes.lg),
-          Text('GUESTS', style: AppTextStyles.overline),
-          const SizedBox(height: AppSizes.sm),
-          AppCard(
-            child: Row(
+          _Section(
+            title: 'Date & time',
+            child: Column(
               children: [
-                const Icon(PhosphorIconsDuotone.users,
-                    color: AppColors.primary, size: 28),
-                const SizedBox(width: AppSizes.md),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Guest count', style: AppTextStyles.captionBold),
-                      TextField(
-                        controller: _guestsCtrl,
-                        keyboardType: TextInputType.number,
-                        style: AppTextStyles.heading3,
-                        decoration: const InputDecoration(
-                          border: InputBorder.none,
-                          enabledBorder: InputBorder.none,
-                          focusedBorder: InputBorder.none,
-                          contentPadding: EdgeInsets.zero,
-                          filled: false,
-                        ),
-                        inputFormatters: [
-                          FilteringTextInputFormatter.digitsOnly
-                        ],
-                        onChanged: (v) {
-                          final n = int.tryParse(v) ?? 0;
-                          ref
-                              .read(eventDraftProvider.notifier)
-                              .setGuestCount(n);
-                        },
-                      ),
-                    ],
-                  ),
+                _PickerRow(
+                  icon: Icons.calendar_today_rounded,
+                  value: draft.date == null
+                      ? 'Pick a date'
+                      : Formatters.date(draft.date!),
+                  onTap: _pickDate,
+                ),
+                const SizedBox(height: AppSizes.sm),
+                _PickerRow(
+                  icon: Icons.schedule_rounded,
+                  value: draft.startTime == null
+                      ? 'Pick a time'
+                      : _formatTime(draft.startTime!),
+                  onTap: _pickTime,
                 ),
               ],
             ),
           ),
-          const SizedBox(height: AppSizes.xxl),
-          PrimaryButton(
-            label: 'Continue to menu',
-            icon: PhosphorIconsBold.arrowRight,
-            onPressed: draft.isComplete
-                ? () => context.push(AppRoutes.menu)
-                : null,
+          _Section(
+            title: 'Choose a package',
+            child: Column(
+              children: [
+                for (final p in _packages)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: AppSizes.sm),
+                    child: _PackageCard(
+                      pkg: p,
+                      selected: _packageId == p.id,
+                      onTap: () {
+                        HapticFeedback.selectionClick();
+                        setState(() => _packageId = p.id);
+                      },
+                    ),
+                  ),
+              ],
+            ),
           ),
-          const SizedBox(height: AppSizes.lg),
+          const SizedBox(height: AppSizes.md),
+          Padding(
+            padding:
+                const EdgeInsets.symmetric(horizontal: AppSizes.pagePadding),
+            child: FilledButton(
+              onPressed: draft.date == null
+                  ? null
+                  : () => context.go(AppRoutes.userHome),
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                minimumSize: const Size.fromHeight(52),
+                disabledBackgroundColor: AppColors.border,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(AppSizes.radiusSm),
+                ),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    'Browse restaurants',
+                    style: AppTextStyles.buttonLabel
+                        .copyWith(color: Colors.white, fontSize: 15),
+                  ),
+                  const SizedBox(width: 4),
+                  const Icon(Icons.arrow_forward_rounded,
+                      color: Colors.white, size: 18),
+                ],
+              ),
+            ),
+          ),
         ],
-      ).animate().fadeIn(duration: 300.ms),
+      ),
+    );
+  }
+
+  String _formatTime(DateTime t) {
+    final h = t.hour % 12 == 0 ? 12 : t.hour % 12;
+    final m = t.minute.toString().padLeft(2, '0');
+    final am = t.hour < 12 ? 'AM' : 'PM';
+    return '$h:$m $am';
+  }
+}
+
+// ───────────────────────── Section ─────────────────────────
+
+class _Section extends StatelessWidget {
+  const _Section({required this.title, required this.child});
+  final String title;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(
+        AppSizes.pagePadding,
+        AppSizes.md,
+        AppSizes.pagePadding,
+        0,
+      ),
+      padding: const EdgeInsets.all(AppSizes.md + 2),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        border: Border.all(color: AppColors.border),
+        borderRadius: BorderRadius.circular(AppSizes.radiusMd),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: AppTextStyles.heading3),
+          const SizedBox(height: AppSizes.md),
+          child,
+        ],
+      ),
+    ).animate().fadeIn(duration: 240.ms);
+  }
+}
+
+// ───────────────────────── Category chips ─────────────────────────
+
+class _CategoryGrid extends StatelessWidget {
+  const _CategoryGrid({
+    required this.categories,
+    required this.selectedSlug,
+    required this.onSelect,
+  });
+
+  final List<EventCategory> categories;
+  final String? selectedSlug;
+  final ValueChanged<EventCategory> onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    if (categories.isEmpty) {
+      return const SizedBox(
+        height: 80,
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+    return Wrap(
+      spacing: AppSizes.sm,
+      runSpacing: AppSizes.sm,
+      children: [
+        for (final c in categories)
+          _CategoryChip(
+            category: c,
+            selected: c.slug == selectedSlug,
+            onTap: () => onSelect(c),
+          ),
+      ],
+    );
+  }
+}
+
+class _CategoryChip extends StatelessWidget {
+  const _CategoryChip({
+    required this.category,
+    required this.selected,
+    required this.onTap,
+  });
+  final EventCategory category;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final fg = AppColors.fromHex(category.iconHex,
+        fallback: AppColors.primary);
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(AppSizes.radiusPill),
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSizes.md,
+          vertical: AppSizes.sm,
+        ),
+        decoration: BoxDecoration(
+          color: selected
+              ? fg.withValues(alpha: 0.12)
+              : AppColors.surfaceAlt,
+          border: Border.all(
+            color: selected ? fg : AppColors.border,
+            width: selected ? 1.4 : 1,
+          ),
+          borderRadius: BorderRadius.circular(AppSizes.radiusPill),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(materialIconByName(category.iconName),
+                color: fg, size: 16),
+            const SizedBox(width: 6),
+            Text(
+              category.name,
+              style: AppTextStyles.captionBold.copyWith(
+                color: selected ? fg : AppColors.textSecondary,
+                fontSize: 12,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ───────────────────────── Guest counter ─────────────────────────
+
+class _GuestCounter extends StatelessWidget {
+  const _GuestCounter({
+    required this.count,
+    required this.onMinus,
+    required this.onPlus,
+  });
+  final int count;
+  final VoidCallback onMinus;
+  final VoidCallback onPlus;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        _GuestBtn(icon: Icons.remove_rounded, onTap: onMinus),
+        Expanded(
+          child: Center(
+            child: Text(
+              '$count',
+              style: AppTextStyles.display.copyWith(
+                fontSize: 24,
+                color: AppColors.textPrimary,
+              ),
+            ),
+          ),
+        ),
+        _GuestBtn(icon: Icons.add_rounded, onTap: onPlus),
+      ],
+    );
+  }
+}
+
+class _GuestBtn extends StatelessWidget {
+  const _GuestBtn({required this.icon, required this.onTap});
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: () {
+        HapticFeedback.selectionClick();
+        onTap();
+      },
+      customBorder: const CircleBorder(),
+      child: Container(
+        width: 44,
+        height: 44,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          border: Border.all(color: AppColors.border),
+          color: AppColors.surface,
+        ),
+        alignment: Alignment.center,
+        child: Icon(icon, color: AppColors.textSecondary),
+      ),
+    );
+  }
+}
+
+// ───────────────────────── Picker row ─────────────────────────
+
+class _PickerRow extends StatelessWidget {
+  const _PickerRow({
+    required this.icon,
+    required this.value,
+    required this.onTap,
+  });
+  final IconData icon;
+  final String value;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(AppSizes.radiusSm),
+      child: Container(
+        height: 48,
+        padding: const EdgeInsets.symmetric(horizontal: AppSizes.md),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceAlt,
+          border: Border.all(color: AppColors.border),
+          borderRadius: BorderRadius.circular(AppSizes.radiusSm),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, color: AppColors.textMuted, size: 20),
+            const SizedBox(width: AppSizes.sm),
+            Expanded(child: Text(value, style: AppTextStyles.body)),
+            const Icon(Icons.chevron_right_rounded,
+                color: AppColors.textMuted),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ───────────────────────── Package card ─────────────────────────
+
+class _PackageCard extends StatelessWidget {
+  const _PackageCard({
+    required this.pkg,
+    required this.selected,
+    required this.onTap,
+  });
+  final _Package pkg;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final bg = AppColors.fromHex(pkg.bgHex);
+    final fg = AppColors.fromHex(pkg.iconHex, fallback: AppColors.accent);
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(AppSizes.radiusSm),
+      child: Container(
+        padding: const EdgeInsets.all(AppSizes.md),
+        decoration: BoxDecoration(
+          color: selected ? AppColors.primarySoft : AppColors.surface,
+          border: Border.all(
+            color: selected ? AppColors.primary : AppColors.border,
+            width: selected ? 1.4 : 1,
+          ),
+          borderRadius: BorderRadius.circular(AppSizes.radiusSm),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: bg,
+                borderRadius: BorderRadius.circular(AppSizes.radiusSm),
+              ),
+              alignment: Alignment.center,
+              child: Icon(materialIconByName(pkg.iconName),
+                  color: fg, size: 24),
+            ),
+            const SizedBox(width: AppSizes.md),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(pkg.name, style: AppTextStyles.bodyBold),
+                  const SizedBox(height: 2),
+                  Text(
+                    pkg.description,
+                    style: AppTextStyles.caption.copyWith(fontSize: 11),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '₹${pkg.pricePerPlate.toStringAsFixed(0)}/plate',
+                    style: AppTextStyles.bodyBold
+                        .copyWith(color: AppColors.primary, fontSize: 14),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

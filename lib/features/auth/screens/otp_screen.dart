@@ -71,7 +71,7 @@ class _OtpScreenState extends ConsumerState<OtpScreen> {
       context.go(role == UserRole.admin
           ? AppRoutes.adminHome
           : AppRoutes.userHome);
-    } on Exception catch (e) {
+    } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Invalid OTP: $e')),

@@ -22,6 +22,7 @@ class SupabaseMenuRepository implements MenuRepository {
         .from('restaurants')
         .select()
         .eq('is_active', true)
+        .order('popularity_score', ascending: false)
         .order('name');
     return rows.map<Restaurant>(Restaurant.fromMap).toList(growable: false);
   }

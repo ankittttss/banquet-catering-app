@@ -3,116 +3,143 @@ import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_sizes.dart';
 import '../../../core/constants/app_text_styles.dart';
-import '../../../core/utils/formatters.dart';
-import '../../../data/models/menu_item.dart';
-import '../../../shared/providers/cart_providers.dart';
+import '../../../core/router/app_routes.dart';
+import '../../../data/models/restaurant.dart';
 import '../../../shared/providers/favorites_providers.dart';
 import '../../../shared/providers/menu_providers.dart';
 import '../../../shared/widgets/app_scaffold.dart';
 import '../../../shared/widgets/empty_state.dart';
-import '../../../shared/widgets/qty_selector.dart';
-import '../../../shared/widgets/veg_dot.dart';
+import '../../../shared/widgets/safe_net_image.dart';
 
 class FavoritesScreen extends ConsumerWidget {
   const FavoritesScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final favs = ref.watch(favoritesProvider).valueOrNull ?? const <String>{};
-    final items =
-        ref.watch(menuItemsProvider).valueOrNull ?? const <MenuItem>[];
-    final list =
-        items.where((i) => favs.contains(i.id)).toList(growable: false);
+    final favSet = ref.watch(favoritesProvider).valueOrNull ?? const <String>{};
+    final restaurants =
+        ref.watch(restaurantsProvider).valueOrNull ?? const <Restaurant>[];
+    final favorites =
+        restaurants.where((r) => favSet.contains(r.id)).toList();
 
     return AppScaffold(
+      padded: false,
       appBar: AppBar(
         title: const Text('Favorites'),
         leading: IconButton(
-          icon: const Icon(PhosphorIconsBold.arrowLeft),
-          onPressed: () => context.pop(),
+          icon: const Icon(Icons.arrow_back_rounded),
+          onPressed: () => context.canPop()
+              ? context.pop()
+              : context.go(AppRoutes.profile),
         ),
       ),
-      body: list.isEmpty
-          ? const EmptyState(
+      body: favorites.isEmpty
+          ? EmptyState(
+              icon: Icons.favorite_border_rounded,
               title: 'No favorites yet',
               message:
-                  'Tap the heart icon on any dish to save it here for later.',
-              icon: Icons.favorite_outline_rounded,
+                  'Tap the heart on any restaurant to save it here for quick reorders.',
+              actionLabel: 'Browse restaurants',
+              onAction: () => context.go(AppRoutes.userHome),
             )
-          : ListView.separated(
-              padding: const EdgeInsets.symmetric(vertical: AppSizes.md),
-              itemBuilder: (_, i) => _FavoriteRow(item: list[i])
-                  .animate(delay: (i * 40).ms)
-                  .fadeIn(duration: 260.ms),
-              separatorBuilder: (_, __) =>
-                  const SizedBox(height: AppSizes.xs),
-              itemCount: list.length,
+          : ListView.builder(
+              padding: const EdgeInsets.symmetric(vertical: AppSizes.sm),
+              itemCount: favorites.length,
+              itemBuilder: (_, i) => _FavRow(restaurant: favorites[i])
+                  .animate()
+                  .fadeIn(duration: 220.ms, delay: (30 * i).ms),
             ),
     );
   }
 }
 
-class _FavoriteRow extends ConsumerWidget {
-  const _FavoriteRow({required this.item});
-  final MenuItem item;
+class _FavRow extends ConsumerWidget {
+  const _FavRow({required this.restaurant});
+  final Restaurant restaurant;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final qty = ref.watch(cartProvider.select((list) {
-      final idx = list.indexWhere((c) => c.item.id == item.id);
-      return idx == -1 ? 0 : list[idx].qty;
-    }));
-    return Padding(
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppSizes.pagePadding,
-        vertical: AppSizes.xs,
-      ),
+    final bg = AppColors.fromHex(restaurant.heroBgHex,
+        fallback: AppColors.primarySoft);
+
+    return InkWell(
+      onTap: () => context.push(AppRoutes.restaurantDetailFor(restaurant.id)),
       child: Container(
-        padding: const EdgeInsets.all(AppSizes.md),
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(AppSizes.radiusLg),
-          border: Border.all(color: AppColors.border),
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSizes.pagePadding,
+          vertical: AppSizes.md,
+        ),
+        decoration: const BoxDecoration(
+          border: Border(bottom: BorderSide(color: AppColors.divider)),
         ),
         child: Row(
           children: [
-            VegDot(isVeg: item.isVeg),
-            const SizedBox(width: AppSizes.sm),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(AppSizes.radiusSm),
+              child: SizedBox(
+                width: 70,
+                height: 70,
+                child: restaurant.logoUrl != null
+                    ? SafeNetImage(
+                        url: restaurant.logoUrl!,
+                        errorBuilder: (_) => _fallback(bg),
+                      )
+                    : _fallback(bg),
+              ),
+            ),
+            const SizedBox(width: AppSizes.md),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(item.name, style: AppTextStyles.bodyBold),
-                  const SizedBox(height: 2),
-                  Text(Formatters.currency(item.price),
-                      style: AppTextStyles.caption),
+                  Text(restaurant.name, style: AppTextStyles.bodyBold),
+                  if (restaurant.cuisinesDisplay != null) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      '${restaurant.cuisinesDisplay!}'
+                      '${restaurant.rating == null ? '' : ' · ★ ${restaurant.rating!.toStringAsFixed(1)}'}',
+                      style: AppTextStyles.caption.copyWith(fontSize: 12),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
                 ],
               ),
             ),
-            IconButton(
-              icon: const Icon(PhosphorIconsFill.heart,
-                  color: AppColors.primary),
-              onPressed: () {
+            InkWell(
+              onTap: () {
                 HapticFeedback.selectionClick();
-                ref
-                    .read(favoritesProvider.notifier)
-                    .toggle(item.id);
+                ref.read(favoritesProvider.notifier).toggle(restaurant.id);
               },
-            ),
-            const SizedBox(width: AppSizes.xs),
-            QtySelector(
-              quantity: qty,
-              onAdd: () => ref.read(cartProvider.notifier).add(item),
-              onRemove: () => ref.read(cartProvider.notifier).remove(item),
+              customBorder: const CircleBorder(),
+              child: Container(
+                width: 36,
+                height: 36,
+                decoration: const BoxDecoration(
+                  color: AppColors.primarySoft,
+                  shape: BoxShape.circle,
+                ),
+                alignment: Alignment.center,
+                child: const Icon(Icons.favorite_rounded,
+                    color: AppColors.primary, size: 20),
+              ),
             ),
           ],
         ),
       ),
     );
   }
+
+  Widget _fallback(Color bg) => Container(
+        color: bg,
+        alignment: Alignment.center,
+        child: Text(
+          restaurant.heroEmoji ?? '🍽️',
+          style: const TextStyle(fontSize: 28),
+        ),
+      );
 }

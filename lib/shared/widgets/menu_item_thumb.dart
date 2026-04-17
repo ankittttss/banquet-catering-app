@@ -1,14 +1,14 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_sizes.dart';
 import '../../core/constants/app_text_styles.dart';
 import '../utils/gradient_palette.dart';
+import 'safe_net_image.dart';
 
 /// Premium food-item thumbnail. Shows [imageUrl] via CachedNetworkImage when
-/// present; otherwise renders a deterministic gradient avatar with the
-/// item's initial. Optionally overlays a veg/non-veg dot in the corner.
+/// present; otherwise falls back to a deterministic foodish-api image based on
+/// dish keywords, and finally to a gradient avatar with the item's initial.
 class MenuItemThumb extends StatelessWidget {
   const MenuItemThumb({
     super.key,
@@ -33,7 +33,9 @@ class MenuItemThumb extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final gradient = GradientPalette.linearFor(name);
-    final hasImage = imageUrl != null && imageUrl!.isNotEmpty;
+    final resolved = (imageUrl != null && imageUrl!.isNotEmpty)
+        ? imageUrl!
+        : FoodImageResolver.urlFor(name, isVeg: isVeg);
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(borderRadius),
@@ -44,22 +46,104 @@ class MenuItemThumb extends StatelessWidget {
           fit: StackFit.expand,
           children: [
             Container(decoration: BoxDecoration(gradient: gradient)),
-            if (hasImage)
-              CachedNetworkImage(
-                imageUrl: imageUrl!,
-                fit: BoxFit.cover,
-                placeholder: (_, __) => _Initial(
-                    initial: _initial, fontSize: size * 0.38),
-                errorWidget: (_, __, ___) => _Initial(
-                    initial: _initial, fontSize: size * 0.38),
-              )
-            else
-              _Initial(initial: _initial, fontSize: size * 0.38),
+            SafeNetImage(
+              url: resolved,
+              errorBuilder: (_) =>
+                  _Initial(initial: _initial, fontSize: size * 0.38),
+              placeholder: (_) =>
+                  _Initial(initial: _initial, fontSize: size * 0.38),
+            ),
             if (showVegDot) _VegDotCorner(isVeg: isVeg, size: size * 0.14),
           ],
         ),
       ),
     );
+  }
+}
+
+/// Deterministic food-image resolver. Picks a category-appropriate image from
+/// foodish-api.com (free, CORS-enabled) based on keywords in the dish name.
+/// Ensures every dish has a photo, even when the DB `image_url` is null.
+class FoodImageResolver {
+  FoodImageResolver._();
+
+  static const _base = 'https://foodish-api.com/images';
+
+  // foodish-api categories and their image counts (as of 2026).
+  static const Map<String, int> _counts = {
+    'biryani': 40,
+    'burger': 33,
+    'butter-chicken': 15,
+    'dessert': 53,
+    'dosa': 29,
+    'idly': 31,
+    'pasta': 40,
+    'pizza': 40,
+    'rice': 41,
+    'samosa': 30,
+  };
+
+  /// Returns a stable URL for [name]. Same name always resolves to same photo.
+  static String urlFor(String name, {bool isVeg = true}) {
+    final n = name.toLowerCase();
+    final cat = _categoryFor(n, isVeg: isVeg);
+    final count = _counts[cat]!;
+    // Deterministic hash of name → index in category.
+    final idx = (name.codeUnits.fold<int>(0, (s, c) => s + c) % count) + 1;
+    return '$_base/$cat/$cat$idx.jpg';
+  }
+
+  static String _categoryFor(String n, {required bool isVeg}) {
+    if (n.contains('biryani') || n.contains('pulao')) return 'biryani';
+    if (n.contains('dosa') || n.contains('uttapam')) return 'dosa';
+    if (n.contains('idly') || n.contains('idli') || n.contains('vada')) {
+      return 'idly';
+    }
+    if (n.contains('samosa') ||
+        n.contains('pakora') ||
+        n.contains('chaat') ||
+        n.contains('papad')) {
+      return 'samosa';
+    }
+    if (n.contains('pizza')) return 'pizza';
+    if (n.contains('pasta') || n.contains('noodle')) return 'pasta';
+    if (n.contains('burger')) return 'burger';
+    if (n.contains('gulab') ||
+        n.contains('jamun') ||
+        n.contains('halwa') ||
+        n.contains('kheer') ||
+        n.contains('phirni') ||
+        n.contains('rasmalai') ||
+        n.contains('kulfi') ||
+        n.contains('bebinca') ||
+        n.contains('mohan') ||
+        n.contains('barfi') ||
+        n.contains('laddu') ||
+        n.contains('shahi tukda') ||
+        n.contains('falooda') ||
+        n.contains('dessert') ||
+        n.contains('sweet')) {
+      return 'dessert';
+    }
+    if (!isVeg ||
+        n.contains('chicken') ||
+        n.contains('mutton') ||
+        n.contains('lamb') ||
+        n.contains('fish') ||
+        n.contains('prawn') ||
+        n.contains('tikka') ||
+        n.contains('kebab') ||
+        n.contains('curry') ||
+        n.contains('masala') ||
+        n.contains('makhani') ||
+        n.contains('rogan') ||
+        n.contains('lababdar') ||
+        n.contains('do pyaza') ||
+        n.contains('paneer')) {
+      return 'butter-chicken';
+    }
+    // Default: rice-based (dal, khichdi, thali, naan, paratha all look fine).
+    return 'rice';
   }
 }
 

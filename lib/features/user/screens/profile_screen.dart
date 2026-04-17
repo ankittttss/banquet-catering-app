@@ -1,252 +1,135 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:phosphor_flutter/phosphor_flutter.dart';
 
-import '../../../core/config/app_config.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_sizes.dart';
 import '../../../core/constants/app_text_styles.dart';
 import '../../../core/router/app_routes.dart';
 import '../../../core/supabase/supabase_client.dart' as sb;
-import '../../../core/utils/formatters.dart';
 import '../../../data/models/user_profile.dart';
 import '../../../shared/providers/auth_providers.dart';
-import '../../../shared/providers/repositories_providers.dart';
-import 'my_events_screen.dart';
-import '../../../shared/widgets/app_card.dart';
-import '../../../shared/widgets/app_error_view.dart';
+import '../../../shared/providers/notification_providers.dart';
 import '../../../shared/widgets/app_scaffold.dart';
-import '../../../shared/widgets/primary_button.dart';
-import '../../../shared/widgets/status_badge.dart';
 import '../../../shared/widgets/user_bottom_nav.dart';
 
-class ProfileScreen extends ConsumerStatefulWidget {
+class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
 
   @override
-  ConsumerState<ProfileScreen> createState() => _ProfileScreenState();
-}
-
-class _ProfileScreenState extends ConsumerState<ProfileScreen> {
-  final _nameCtrl = TextEditingController();
-  bool _editing = false;
-  bool _saving = false;
-  bool _hydrated = false;
-
-  @override
-  void dispose() {
-    _nameCtrl.dispose();
-    super.dispose();
-  }
-
-  void _hydrate(UserProfile profile) {
-    if (_hydrated) return;
-    _nameCtrl.text = profile.name ?? '';
-    _hydrated = true;
-  }
-
-  Future<void> _save(UserProfile profile) async {
-    setState(() => _saving = true);
-    try {
-      await ref.read(profileRepositoryProvider).upsert(
-            profile.copyWith(name: _nameCtrl.text.trim()),
-          );
-      ref.invalidate(currentProfileProvider);
-      if (!mounted) return;
-      setState(() => _editing = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Profile updated')),
-      );
-    } on Exception catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Save failed: $e')),
-      );
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
-  }
-
-  Future<void> _signOut() async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (dCtx) => AlertDialog(
-        title: const Text('Sign out?'),
-        content: const Text('You will need to sign in again to place new bookings.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dCtx, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(dCtx, true),
-            child: Text(
-              'Sign out',
-              style: TextStyle(color: AppColors.error),
-            ),
-          ),
-        ],
-      ),
-    );
-    if (confirm != true) return;
-
-    if (AppConfig.hasSupabase) {
-      await sb.auth.signOut();
-    }
-    if (!mounted) return;
-    context.go(AppRoutes.login);
-  }
-
-  @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final profileAsync = ref.watch(currentProfileProvider);
+    final unread = ref.watch(unreadNotificationCountProvider);
 
     return AppScaffold(
+      padded: false,
       appBar: AppBar(
-        title: const Text('My Profile'),
+        title: const Text('Profile'),
         automaticallyImplyLeading: false,
       ),
       bottomBar: const UserBottomNav(active: UserNavTab.profile),
       body: profileAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => AppErrorView(
-            error: e,
-            onRetry: () => ref.invalidate(currentProfileProvider)),
+        error: (e, _) => Center(child: Text('$e')),
         data: (profile) {
-          if (profile == null) {
-            return const Center(child: Text('Not signed in'));
-          }
-          _hydrate(profile);
-          return ListView(
-            children: [
-              const SizedBox(height: AppSizes.lg),
-              _Header(profile: profile)
-                  .animate()
-                  .fadeIn(duration: 320.ms)
-                  .slideY(begin: 0.05, end: 0),
-              const SizedBox(height: AppSizes.lg),
-              const _StatsRow(),
-              const SizedBox(height: AppSizes.xl),
-              Text('ACCOUNT', style: AppTextStyles.overline),
-              const SizedBox(height: AppSizes.sm),
-              AppCard(
-                padding: const EdgeInsets.all(AppSizes.lg),
-                child: Column(
-                  children: [
-                    _FieldRow(
-                      label: 'Name',
-                      icon: PhosphorIconsBold.user,
-                      child: _editing
-                          ? TextField(
-                              controller: _nameCtrl,
-                              autofocus: true,
-                              decoration: const InputDecoration(
-                                hintText: 'Your name',
-                                contentPadding: EdgeInsets.symmetric(
-                                  horizontal: AppSizes.md,
-                                  vertical: AppSizes.sm,
-                                ),
-                              ),
-                            )
-                          : Text(
-                              profile.name?.isNotEmpty == true
-                                  ? profile.name!
-                                  : 'Not set',
-                              style: AppTextStyles.bodyBold,
-                            ),
-                    ),
-                    const Divider(height: AppSizes.xl),
-                    _FieldRow(
-                      label: 'Email',
-                      icon: PhosphorIconsBold.envelope,
-                      child: Text(
-                        profile.email ?? 'Not set',
-                        style: AppTextStyles.body,
-                      ),
-                    ),
-                    if (profile.phone != null) ...[
-                      const Divider(height: AppSizes.xl),
-                      _FieldRow(
-                        label: 'Phone',
-                        icon: PhosphorIconsBold.phone,
-                        child:
-                            Text(profile.phone!, style: AppTextStyles.body),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              const SizedBox(height: AppSizes.lg),
-              if (_editing) ...[
-                PrimaryButton(
-                  label: 'Save changes',
-                  icon: PhosphorIconsBold.checkCircle,
-                  loading: _saving,
-                  onPressed: () => _save(profile),
-                ),
-                const SizedBox(height: AppSizes.sm),
-                PrimaryButton(
-                  label: 'Cancel',
-                  variant: AppButtonVariant.ghost,
-                  onPressed: () {
-                    _hydrated = false;
-                    _hydrate(profile);
-                    setState(() => _editing = false);
-                  },
-                ),
-              ] else
-                PrimaryButton(
-                  label: 'Edit profile',
-                  icon: PhosphorIconsBold.pencilSimple,
-                  variant: AppButtonVariant.secondary,
-                  onPressed: () => setState(() => _editing = true),
-                ),
-              const SizedBox(height: AppSizes.xl),
-              Text('QUICK LINKS', style: AppTextStyles.overline),
-              const SizedBox(height: AppSizes.sm),
-              _ProfileLink(
-                icon: PhosphorIconsDuotone.calendarCheck,
-                iconColor: AppColors.accentDark,
-                iconBg: AppColors.accentSoft,
-                label: 'My events',
-                onTap: () => context.push(AppRoutes.myEvents),
-              ),
-              const SizedBox(height: AppSizes.sm),
-              _ProfileLink(
-                icon: PhosphorIconsDuotone.mapPinArea,
-                iconColor: AppColors.primary,
-                iconBg: AppColors.primarySoft,
-                label: 'My addresses',
-                onTap: () => context.push(AppRoutes.addresses),
-              ),
-              const SizedBox(height: AppSizes.sm),
-              _ProfileLink(
-                icon: PhosphorIconsDuotone.heart,
-                iconColor: AppColors.primary,
-                iconBg: AppColors.primarySoft,
-                label: 'Favorites',
-                onTap: () => context.push(AppRoutes.favorites),
-              ),
-              const SizedBox(height: AppSizes.xxl),
-              OutlinedButton.icon(
-                onPressed: _signOut,
-                icon: const Icon(PhosphorIconsBold.signOut),
-                label: const Text('Sign out'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: AppColors.error,
-                  side: BorderSide(
-                    color: AppColors.error.withValues(alpha: 0.5),
-                  ),
-                  minimumSize: const Size.fromHeight(AppSizes.buttonHeight),
-                ),
-              ),
-              const SizedBox(height: AppSizes.lg),
-            ],
-          );
+          if (profile == null) return const _SignedOutView();
+          return _SignedInView(profile: profile, unread: unread);
         },
       ),
+    );
+  }
+}
+
+// ───────────────────────── Signed-in layout ─────────────────────────
+
+class _SignedInView extends ConsumerWidget {
+  const _SignedInView({required this.profile, required this.unread});
+  final UserProfile profile;
+  final int unread;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return ListView(
+      padding: const EdgeInsets.only(bottom: AppSizes.xxxl),
+      children: [
+        const SizedBox(height: AppSizes.sm),
+        _Header(profile: profile)
+            .animate()
+            .fadeIn(duration: 260.ms)
+            .slideY(begin: 0.04, end: 0),
+        const SizedBox(height: AppSizes.md),
+        _ProfileTile(
+          icon: Icons.receipt_long_rounded,
+          label: 'My orders',
+          iconBg: AppColors.primarySoft,
+          iconColor: AppColors.primary,
+          onTap: () => context.go(AppRoutes.myEvents),
+        ),
+        _ProfileTile(
+          icon: Icons.favorite_rounded,
+          label: 'Favorites',
+          iconBg: AppColors.catPinkLt,
+          iconColor: AppColors.catPink,
+          onTap: () => context.push(AppRoutes.favorites),
+        ),
+        _ProfileTile(
+          icon: Icons.location_on_rounded,
+          label: 'Saved addresses',
+          iconBg: AppColors.catBlueLt,
+          iconColor: AppColors.catBlue,
+          onTap: () => context.push(AppRoutes.addresses),
+        ),
+        _ProfileTile(
+          icon: Icons.payments_rounded,
+          label: 'Payment methods',
+          iconBg: AppColors.catGreenLt,
+          iconColor: AppColors.catGreen,
+          onTap: () {},
+        ),
+        _ProfileTile(
+          icon: Icons.notifications_rounded,
+          label: 'Notifications',
+          iconBg: AppColors.catGoldLt,
+          iconColor: AppColors.catGold,
+          badge: unread > 0 ? unread : null,
+          onTap: () => context.push(AppRoutes.notifications),
+        ),
+        _ProfileTile(
+          icon: Icons.help_rounded,
+          label: 'Help & support',
+          iconBg: AppColors.catPurpleLt,
+          iconColor: AppColors.catPurple,
+          onTap: () {},
+        ),
+        _ProfileTile(
+          icon: Icons.info_rounded,
+          label: 'About',
+          iconBg: AppColors.surfaceAlt,
+          iconColor: AppColors.textSecondary,
+          onTap: () {},
+        ),
+        _ProfileTile(
+          icon: Icons.logout_rounded,
+          label: 'Log out',
+          labelColor: AppColors.primary,
+          iconBg: AppColors.primarySoft,
+          iconColor: AppColors.primary,
+          showChevron: false,
+          onTap: () async {
+            HapticFeedback.mediumImpact();
+            try {
+              await sb.auth.signOut();
+            } catch (_) {
+              // ignore — best effort
+            }
+            ref.invalidate(currentProfileProvider);
+            if (!context.mounted) return;
+            context.go(AppRoutes.login);
+          },
+        ),
+      ],
     );
   }
 }
@@ -256,91 +139,63 @@ class _Header extends StatelessWidget {
   final UserProfile profile;
 
   String _initials() {
-    final src = (profile.name?.trim().isNotEmpty == true
-            ? profile.name!
-            : profile.email ?? 'User')
-        .trim();
-    final parts = src.split(RegExp(r'\s+'));
-    if (parts.length >= 2) {
-      return (parts.first[0] + parts[1][0]).toUpperCase();
+    final name = profile.name?.trim() ?? '';
+    if (name.isEmpty) {
+      final email = profile.email ?? '';
+      return email.isEmpty ? 'U' : email[0].toUpperCase();
     }
-    return src.substring(0, src.length < 2 ? src.length : 2).toUpperCase();
+    final parts = name.split(RegExp(r'\s+'));
+    if (parts.length == 1) return parts.first[0].toUpperCase();
+    return '${parts.first[0]}${parts.last[0]}'.toUpperCase();
   }
 
   @override
   Widget build(BuildContext context) {
+    final displayName = profile.name?.trim().isNotEmpty == true
+        ? profile.name!
+        : (profile.email ?? 'User');
+    final sub =
+        [profile.phone, profile.email].where((e) => e != null).join(' · ');
+
     return Container(
-      padding: const EdgeInsets.all(AppSizes.xl),
+      margin:
+          const EdgeInsets.symmetric(horizontal: AppSizes.pagePadding),
+      padding: const EdgeInsets.all(AppSizes.md + 4),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: AppColors.heroGradient,
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(AppSizes.radiusXl),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.primary.withValues(alpha: 0.2),
-            blurRadius: 20,
-            offset: const Offset(0, 10),
-          ),
-        ],
+        color: AppColors.surfaceAlt,
+        borderRadius: BorderRadius.circular(AppSizes.radiusMd),
       ),
       child: Row(
         children: [
           Container(
-            width: 72,
-            height: 72,
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.2),
+            width: 60,
+            height: 60,
+            decoration: const BoxDecoration(
+              color: AppColors.primarySoft,
               shape: BoxShape.circle,
-              border: Border.all(
-                color: Colors.white.withValues(alpha: 0.45),
-                width: 2,
-              ),
             ),
             alignment: Alignment.center,
             child: Text(
               _initials(),
-              style: AppTextStyles.heading1.copyWith(
-                color: Colors.white,
-                fontSize: 26,
-                letterSpacing: 1,
-              ),
+              style: AppTextStyles.display
+                  .copyWith(fontSize: 22, color: AppColors.primary),
             ),
           ),
-          const SizedBox(width: AppSizes.lg),
+          const SizedBox(width: AppSizes.md),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
-                  profile.name?.trim().isNotEmpty == true
-                      ? profile.name!
-                      : 'Set your name',
-                  style: AppTextStyles.heading1.copyWith(
-                    color: Colors.white,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                if (profile.email != null)
+                Text(displayName, style: AppTextStyles.heading1),
+                if (sub.isNotEmpty) ...[
+                  const SizedBox(height: 2),
                   Text(
-                    profile.email!,
-                    style: AppTextStyles.body.copyWith(
-                      color: Colors.white.withValues(alpha: 0.85),
-                    ),
+                    sub,
+                    style: AppTextStyles.caption.copyWith(fontSize: 13),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
-                const SizedBox(height: AppSizes.sm),
-                StatusBadge(
-                  label: profile.role.label.toUpperCase(),
-                  tone: profile.isAdmin
-                      ? StatusTone.warning
-                      : StatusTone.info,
-                ),
+                ],
               ],
             ),
           ),
@@ -350,156 +205,139 @@ class _Header extends StatelessWidget {
   }
 }
 
-class _StatsRow extends ConsumerWidget {
-  const _StatsRow();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final orders = ref.watch(myOrdersStreamProvider).valueOrNull ?? const [];
-    final totalSpent = orders.fold<double>(0, (s, o) => s + o.total);
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: AppSizes.xs),
-      child: Row(
-        children: [
-          Expanded(
-            child: _StatCard(
-              icon: PhosphorIconsDuotone.calendarCheck,
-              value: '${orders.length}',
-              label: 'Events',
-              color: AppColors.primary,
-            ),
-          ),
-          const SizedBox(width: AppSizes.sm),
-          Expanded(
-            child: _StatCard(
-              icon: PhosphorIconsDuotone.wallet,
-              value: Formatters.currency(totalSpent),
-              label: 'Total spent',
-              color: AppColors.accentDark,
-            ),
-          ),
-          const SizedBox(width: AppSizes.sm),
-          Expanded(
-            child: _StatCard(
-              icon: PhosphorIconsDuotone.medal,
-              value: orders.length >= 3
-                  ? 'Pro'
-                  : orders.length >= 1
-                      ? 'Active'
-                      : 'New',
-              label: 'Status',
-              color: AppColors.success,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _StatCard extends StatelessWidget {
-  const _StatCard({
+class _ProfileTile extends StatelessWidget {
+  const _ProfileTile({
     required this.icon,
-    required this.value,
     required this.label,
-    required this.color,
-  });
-  final IconData icon;
-  final String value;
-  final String label;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(AppSizes.md),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(AppSizes.radiusLg),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, color: color, size: 20),
-          const SizedBox(height: AppSizes.sm),
-          Text(value,
-              style: AppTextStyles.heading2.copyWith(fontSize: 16),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis),
-          Text(label,
-              style: AppTextStyles.caption,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis),
-        ],
-      ),
-    );
-  }
-}
-
-class _ProfileLink extends StatelessWidget {
-  const _ProfileLink({
-    required this.icon,
-    required this.iconColor,
     required this.iconBg,
-    required this.label,
+    required this.iconColor,
     required this.onTap,
+    this.labelColor,
+    this.showChevron = true,
+    this.badge,
   });
+
   final IconData icon;
-  final Color iconColor;
-  final Color iconBg;
   final String label;
+  final Color iconBg;
+  final Color iconColor;
   final VoidCallback onTap;
+  final Color? labelColor;
+  final bool showChevron;
+  final int? badge;
 
   @override
   Widget build(BuildContext context) {
-    return AppCard(
+    return InkWell(
       onTap: onTap,
-      child: Row(
-        children: [
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: iconBg,
-              borderRadius: BorderRadius.circular(AppSizes.radiusMd),
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSizes.pagePadding,
+          vertical: AppSizes.md,
+        ),
+        decoration: const BoxDecoration(
+          border: Border(bottom: BorderSide(color: AppColors.divider)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: iconBg,
+                borderRadius: BorderRadius.circular(AppSizes.radiusSm),
+              ),
+              alignment: Alignment.center,
+              child: Icon(icon, color: iconColor, size: 20),
             ),
-            child: Icon(icon, color: iconColor, size: 22),
-          ),
-          const SizedBox(width: AppSizes.md),
-          Expanded(child: Text(label, style: AppTextStyles.bodyBold)),
-          const Icon(PhosphorIconsBold.caretRight,
-              color: AppColors.textMuted),
-        ],
+            const SizedBox(width: AppSizes.md),
+            Expanded(
+              child: Text(
+                label,
+                style: AppTextStyles.bodyBold.copyWith(
+                  color: labelColor ?? AppColors.textPrimary,
+                ),
+              ),
+            ),
+            if (badge != null) ...[
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 7,
+                  vertical: 2,
+                ),
+                decoration: BoxDecoration(
+                  color: AppColors.primary,
+                  borderRadius: BorderRadius.circular(AppSizes.radiusPill),
+                ),
+                child: Text(
+                  '$badge',
+                  style: AppTextStyles.captionBold.copyWith(
+                    color: Colors.white,
+                    fontSize: 11,
+                  ),
+                ),
+              ),
+              const SizedBox(width: AppSizes.sm),
+            ],
+            if (showChevron)
+              const Icon(Icons.chevron_right_rounded,
+                  color: AppColors.textMuted, size: 20),
+          ],
+        ),
       ),
     );
   }
 }
 
-class _FieldRow extends StatelessWidget {
-  const _FieldRow({
-    required this.label,
-    required this.icon,
-    required this.child,
-  });
-  final String label;
-  final IconData icon;
-  final Widget child;
+// ───────────────────────── Signed-out view ─────────────────────────
+
+class _SignedOutView extends StatelessWidget {
+  const _SignedOutView();
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        Icon(icon, size: 18, color: AppColors.textSecondary),
-        const SizedBox(width: AppSizes.md),
-        SizedBox(
-          width: 60,
-          child: Text(label, style: AppTextStyles.captionBold),
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSizes.xl),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 80,
+              height: 80,
+              decoration: const BoxDecoration(
+                color: AppColors.primarySoft,
+                shape: BoxShape.circle,
+              ),
+              alignment: Alignment.center,
+              child: const Icon(Icons.person_outline_rounded,
+                  size: 38, color: AppColors.primary),
+            ),
+            const SizedBox(height: AppSizes.lg),
+            Text('You\'re signed out', style: AppTextStyles.heading1),
+            const SizedBox(height: AppSizes.xs),
+            Text(
+              'Sign in to manage events, saved addresses, and more.',
+              textAlign: TextAlign.center,
+              style: AppTextStyles.bodyMuted,
+            ),
+            const SizedBox(height: AppSizes.xl),
+            FilledButton.icon(
+              onPressed: () => context.go(AppRoutes.login),
+              icon: const Icon(Icons.login_rounded, size: 18),
+              label: const Text('Sign in'),
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppSizes.xl,
+                  vertical: AppSizes.md,
+                ),
+                shape: const StadiumBorder(),
+              ),
+            ),
+          ],
         ),
-        const SizedBox(width: AppSizes.md),
-        Expanded(child: child),
-      ],
+      ),
     );
   }
 }

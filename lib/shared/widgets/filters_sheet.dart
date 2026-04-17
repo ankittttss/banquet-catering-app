@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -31,7 +32,7 @@ class _FiltersSheet extends ConsumerWidget {
     final f = ref.watch(menuFiltersProvider);
     final notifier = ref.read(menuFiltersProvider.notifier);
 
-    return Padding(
+    return SingleChildScrollView(
       padding: EdgeInsets.fromLTRB(
         AppSizes.pagePadding,
         0,
@@ -47,85 +48,116 @@ class _FiltersSheet extends ConsumerWidget {
               Text('Filters', style: AppTextStyles.heading1),
               const Spacer(),
               if (f.isActive)
-                TextButton(
+                TextButton.icon(
                   onPressed: notifier.reset,
-                  child: Text('Clear all',
-                      style: AppTextStyles.bodyBold
-                          .copyWith(color: AppColors.error)),
+                  icon: const Icon(PhosphorIconsBold.arrowCounterClockwise,
+                      size: 14),
+                  label: const Text('Reset'),
+                  style: TextButton.styleFrom(
+                    foregroundColor: AppColors.error,
+                  ),
                 ),
             ],
           ),
           const SizedBox(height: AppSizes.lg),
-          Text('PREFERENCE', style: AppTextStyles.overline),
+
+          // Dietary preference
+          _SectionLabel('DIETARY PREFERENCE'),
           const SizedBox(height: AppSizes.sm),
-          SwitchListTile.adaptive(
+          _VegOnlyCard(
             value: f.vegOnly,
-            onChanged: (_) => notifier.toggleVeg(),
-            contentPadding: EdgeInsets.zero,
-            title: Row(
-              children: [
-                Container(
-                  width: 18,
-                  height: 18,
-                  decoration: BoxDecoration(
-                    border: Border.all(color: AppColors.veg, width: 1.6),
-                    borderRadius: BorderRadius.circular(3),
-                  ),
-                  child: Center(
-                    child: Container(
-                      width: 8,
-                      height: 8,
-                      decoration: const BoxDecoration(
-                        color: AppColors.veg,
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: AppSizes.sm),
-                Text('Veg only', style: AppTextStyles.bodyBold),
-              ],
-            ),
-            subtitle: const Text('Show only vegetarian dishes'),
+            onToggle: () {
+              HapticFeedback.selectionClick();
+              notifier.toggleVeg();
+            },
           ),
-          const Divider(height: AppSizes.xl),
-          Text('MAX PRICE', style: AppTextStyles.overline),
-          const SizedBox(height: AppSizes.sm),
+
+          const SizedBox(height: AppSizes.xl),
+
+          // Price
           Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Text('\u20B9 0', style: AppTextStyles.caption),
-              Expanded(
-                child: Slider(
-                  value: f.maxPrice,
-                  min: 50,
-                  max: 500,
-                  divisions: 9,
-                  activeColor: AppColors.primary,
-                  label: '\u20B9${f.maxPrice.toStringAsFixed(0)}',
-                  onChanged: notifier.setMaxPrice,
+              _SectionLabel('MAX PRICE PER ITEM'),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppSizes.sm,
+                  vertical: 2,
+                ),
+                decoration: BoxDecoration(
+                  color: AppColors.primarySoft,
+                  borderRadius:
+                      BorderRadius.circular(AppSizes.radiusPill),
+                ),
+                child: Text(
+                  '\u20B9 ${f.maxPrice.toStringAsFixed(0)}',
+                  style: AppTextStyles.captionBold
+                      .copyWith(color: AppColors.primary),
                 ),
               ),
-              Text('\u20B9 ${f.maxPrice.toStringAsFixed(0)}',
-                  style: AppTextStyles.bodyBold),
             ],
           ),
-          const Divider(height: AppSizes.xl),
-          Text('SORT BY', style: AppTextStyles.overline),
-          const SizedBox(height: AppSizes.sm),
-          Wrap(
-            spacing: AppSizes.sm,
+          const SizedBox(height: AppSizes.xs),
+          SliderTheme(
+            data: SliderTheme.of(context).copyWith(
+              activeTrackColor: AppColors.primary,
+              inactiveTrackColor: AppColors.border,
+              thumbColor: AppColors.primary,
+              overlayColor: AppColors.primary.withValues(alpha: 0.1),
+              trackHeight: 4,
+            ),
+            child: Slider(
+              value: f.maxPrice,
+              min: 50,
+              max: 500,
+              divisions: 9,
+              onChanged: notifier.setMaxPrice,
+            ),
+          ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              _sortChip('Default', MenuSort.defaultOrder, f, notifier,
-                  PhosphorIconsBold.sparkle),
-              _sortChip('Price: low → high', MenuSort.priceAsc, f, notifier,
-                  PhosphorIconsBold.sortAscending),
-              _sortChip('Price: high → low', MenuSort.priceDesc, f, notifier,
-                  PhosphorIconsBold.sortDescending),
+              Text('\u20B9 50', style: AppTextStyles.caption),
+              Text('\u20B9 500', style: AppTextStyles.caption),
             ],
           ),
+
+          const SizedBox(height: AppSizes.xl),
+
+          // Sort
+          _SectionLabel('SORT BY'),
+          const SizedBox(height: AppSizes.sm),
+          _SortOption(
+            label: 'Recommended',
+            helper: 'Our pick for your event',
+            icon: PhosphorIconsDuotone.sparkle,
+            value: MenuSort.defaultOrder,
+            current: f.sort,
+            onPick: notifier.setSort,
+          ),
+          const SizedBox(height: AppSizes.xs),
+          _SortOption(
+            label: 'Price \u2014 low to high',
+            helper: 'Budget-friendly first',
+            icon: PhosphorIconsDuotone.sortAscending,
+            value: MenuSort.priceAsc,
+            current: f.sort,
+            onPick: notifier.setSort,
+          ),
+          const SizedBox(height: AppSizes.xs),
+          _SortOption(
+            label: 'Price \u2014 high to low',
+            helper: 'Premium dishes first',
+            icon: PhosphorIconsDuotone.sortDescending,
+            value: MenuSort.priceDesc,
+            current: f.sort,
+            onPick: notifier.setSort,
+          ),
+
           const SizedBox(height: AppSizes.xl),
           PrimaryButton(
-            label: 'Apply filters',
+            label: 'Show results',
             icon: PhosphorIconsBold.checkCircle,
             onPressed: () => Navigator.of(context).pop(),
           ),
@@ -133,37 +165,161 @@ class _FiltersSheet extends ConsumerWidget {
       ),
     );
   }
+}
 
-  Widget _sortChip(String label, MenuSort value, MenuFilters current,
-      MenuFiltersController notifier, IconData icon) {
-    final sel = current.sort == value;
+class _SectionLabel extends StatelessWidget {
+  const _SectionLabel(this.text);
+  final String text;
+  @override
+  Widget build(BuildContext context) {
+    return Text(text, style: AppTextStyles.overline);
+  }
+}
+
+class _VegOnlyCard extends StatelessWidget {
+  const _VegOnlyCard({required this.value, required this.onToggle});
+  final bool value;
+  final VoidCallback onToggle;
+
+  @override
+  Widget build(BuildContext context) {
     return InkWell(
-      onTap: () => notifier.setSort(value),
-      borderRadius: BorderRadius.circular(AppSizes.radiusPill),
+      onTap: onToggle,
+      borderRadius: BorderRadius.circular(AppSizes.radiusLg),
       child: Container(
-        padding: const EdgeInsets.symmetric(
-          horizontal: AppSizes.md,
-          vertical: AppSizes.sm,
-        ),
+        padding: const EdgeInsets.all(AppSizes.md),
         decoration: BoxDecoration(
-          color: sel ? AppColors.primary : AppColors.surface,
-          borderRadius: BorderRadius.circular(AppSizes.radiusPill),
+          color: value
+              ? AppColors.veg.withValues(alpha: 0.08)
+              : AppColors.surface,
+          borderRadius: BorderRadius.circular(AppSizes.radiusLg),
           border: Border.all(
-            color: sel ? AppColors.primary : AppColors.border,
+            color: value
+                ? AppColors.veg.withValues(alpha: 0.6)
+                : AppColors.border,
+            width: value ? 1.6 : 1,
           ),
         ),
         child: Row(
-          mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon,
-                size: 14,
-                color: sel ? Colors.white : AppColors.textPrimary),
-            const SizedBox(width: AppSizes.xs),
-            Text(label,
-                style: AppTextStyles.bodyBold.copyWith(
-                  color: sel ? Colors.white : AppColors.textPrimary,
-                  fontSize: 13,
-                )),
+            _VegSymbol(active: value),
+            const SizedBox(width: AppSizes.md),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Veg only', style: AppTextStyles.bodyBold),
+                  const SizedBox(height: 2),
+                  Text('Hide non-vegetarian dishes',
+                      style: AppTextStyles.caption),
+                ],
+              ),
+            ),
+            Switch.adaptive(
+              value: value,
+              onChanged: (_) => onToggle(),
+              activeThumbColor: AppColors.veg,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _VegSymbol extends StatelessWidget {
+  const _VegSymbol({required this.active});
+  final bool active;
+  @override
+  Widget build(BuildContext context) {
+    final color = active ? AppColors.veg : AppColors.textMuted;
+    return Container(
+      width: 22,
+      height: 22,
+      decoration: BoxDecoration(
+        border: Border.all(color: color, width: 1.8),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Center(
+        child: Container(
+          width: 10,
+          height: 10,
+          decoration: BoxDecoration(
+            color: color,
+            shape: BoxShape.circle,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SortOption extends StatelessWidget {
+  const _SortOption({
+    required this.label,
+    required this.helper,
+    required this.icon,
+    required this.value,
+    required this.current,
+    required this.onPick,
+  });
+  final String label;
+  final String helper;
+  final IconData icon;
+  final MenuSort value;
+  final MenuSort current;
+  final ValueChanged<MenuSort> onPick;
+
+  @override
+  Widget build(BuildContext context) {
+    final selected = current == value;
+    return InkWell(
+      onTap: () {
+        HapticFeedback.selectionClick();
+        onPick(value);
+      },
+      borderRadius: BorderRadius.circular(AppSizes.radiusLg),
+      child: Container(
+        padding: const EdgeInsets.all(AppSizes.md),
+        decoration: BoxDecoration(
+          color: selected ? AppColors.primarySoft : AppColors.surface,
+          borderRadius: BorderRadius.circular(AppSizes.radiusLg),
+          border: Border.all(
+            color: selected ? AppColors.primary : AppColors.border,
+            width: selected ? 1.5 : 1,
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: selected ? AppColors.primary : AppColors.surfaceAlt,
+                borderRadius: BorderRadius.circular(AppSizes.radiusSm),
+              ),
+              child: Icon(
+                icon,
+                size: 20,
+                color: selected ? Colors.white : AppColors.textSecondary,
+              ),
+            ),
+            const SizedBox(width: AppSizes.md),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(label, style: AppTextStyles.bodyBold),
+                  Text(helper, style: AppTextStyles.caption),
+                ],
+              ),
+            ),
+            if (selected)
+              const Icon(
+                PhosphorIconsFill.checkCircle,
+                color: AppColors.primary,
+                size: 22,
+              ),
           ],
         ),
       ),

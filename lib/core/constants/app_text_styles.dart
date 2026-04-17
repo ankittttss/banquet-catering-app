@@ -3,113 +3,113 @@ import 'package:google_fonts/google_fonts.dart';
 
 import 'app_colors.dart';
 
-/// Typography: Playfair Display (serif) for display/totals — reads "fine dining".
-/// Inter (sans) for body, labels, buttons — clean modern readability.
+/// Typography: Plus Jakarta Sans for everything — modern, rounded sans-serif
+/// that matches the Zomato-style prototype. Clean readability, good weights.
 class AppTextStyles {
   AppTextStyles._();
 
-  // --- Display (serif) ---
-  static TextStyle display = GoogleFonts.playfairDisplay(
-    fontSize: 34,
-    fontWeight: FontWeight.w700,
+  // --- Display (big hero text) ---
+  static TextStyle display = GoogleFonts.plusJakartaSans(
+    fontSize: 28,
+    fontWeight: FontWeight.w800,
     color: AppColors.textPrimary,
-    height: 1.1,
+    height: 1.15,
+    letterSpacing: -0.8,
+  );
+
+  static TextStyle displaySm = GoogleFonts.plusJakartaSans(
+    fontSize: 22,
+    fontWeight: FontWeight.w800,
+    color: AppColors.textPrimary,
+    height: 1.2,
     letterSpacing: -0.5,
   );
 
-  static TextStyle displaySm = GoogleFonts.playfairDisplay(
-    fontSize: 26,
-    fontWeight: FontWeight.w700,
-    color: AppColors.textPrimary,
-    height: 1.15,
-    letterSpacing: -0.3,
-  );
-
-  /// Used for totals / invoice-like amounts (premium feel).
-  static TextStyle totalAmount = GoogleFonts.playfairDisplay(
-    fontSize: 28,
-    fontWeight: FontWeight.w700,
+  static TextStyle totalAmount = GoogleFonts.plusJakartaSans(
+    fontSize: 22,
+    fontWeight: FontWeight.w800,
     color: AppColors.primary,
     letterSpacing: -0.3,
   );
 
-  // --- Headings (sans) ---
-  static TextStyle heading1 = GoogleFonts.inter(
-    fontSize: 22,
-    fontWeight: FontWeight.w700,
-    color: AppColors.textPrimary,
-    height: 1.2,
-    letterSpacing: -0.2,
-  );
-
-  static TextStyle heading2 = GoogleFonts.inter(
+  // --- Headings ---
+  static TextStyle heading1 = GoogleFonts.plusJakartaSans(
     fontSize: 18,
     fontWeight: FontWeight.w700,
     color: AppColors.textPrimary,
     height: 1.25,
+    letterSpacing: -0.4,
   );
 
-  static TextStyle heading3 = GoogleFonts.inter(
+  static TextStyle heading2 = GoogleFonts.plusJakartaSans(
+    fontSize: 16,
+    fontWeight: FontWeight.w700,
+    color: AppColors.textPrimary,
+    height: 1.3,
+    letterSpacing: -0.2,
+  );
+
+  static TextStyle heading3 = GoogleFonts.plusJakartaSans(
     fontSize: 15,
     fontWeight: FontWeight.w600,
     color: AppColors.textPrimary,
   );
 
   // --- Body ---
-  static TextStyle body = GoogleFonts.inter(
+  static TextStyle body = GoogleFonts.plusJakartaSans(
     fontSize: 14,
     color: AppColors.textPrimary,
     height: 1.4,
   );
 
-  static TextStyle bodyBold = GoogleFonts.inter(
+  static TextStyle bodyBold = GoogleFonts.plusJakartaSans(
     fontSize: 14,
     fontWeight: FontWeight.w600,
     color: AppColors.textPrimary,
   );
 
-  static TextStyle bodyMuted = GoogleFonts.inter(
+  static TextStyle bodyMuted = GoogleFonts.plusJakartaSans(
     fontSize: 14,
     color: AppColors.textSecondary,
     height: 1.4,
   );
 
   // --- Caption / Label ---
-  static TextStyle caption = GoogleFonts.inter(
+  static TextStyle caption = GoogleFonts.plusJakartaSans(
     fontSize: 12,
     color: AppColors.textSecondary,
     height: 1.3,
   );
 
-  static TextStyle captionBold = GoogleFonts.inter(
+  static TextStyle captionBold = GoogleFonts.plusJakartaSans(
     fontSize: 11,
-    fontWeight: FontWeight.w600,
+    fontWeight: FontWeight.w700,
     color: AppColors.textSecondary,
-    letterSpacing: 0.6,
+    letterSpacing: 0.4,
   );
 
-  static TextStyle overline = GoogleFonts.inter(
-    fontSize: 11,
+  static TextStyle overline = GoogleFonts.plusJakartaSans(
+    fontSize: 10,
     fontWeight: FontWeight.w700,
     color: AppColors.accentDark,
     letterSpacing: 1.2,
   );
 
   // --- Buttons ---
-  static TextStyle buttonLabel = GoogleFonts.inter(
-    fontSize: 15,
-    fontWeight: FontWeight.w600,
+  static TextStyle buttonLabel = GoogleFonts.plusJakartaSans(
+    fontSize: 14,
+    fontWeight: FontWeight.w700,
     letterSpacing: 0.2,
   );
 
   // --- Price ---
-  static TextStyle price = GoogleFonts.inter(
+  static TextStyle price = GoogleFonts.plusJakartaSans(
     fontSize: 15,
-    fontWeight: FontWeight.w600,
+    fontWeight: FontWeight.w700,
     color: AppColors.textPrimary,
   );
 
-  static TextStyle priceStrike = GoogleFonts.inter(
+  static TextStyle priceStrike = GoogleFonts.plusJakartaSans(
     fontSize: 13,
     color: AppColors.textMuted,
     decoration: TextDecoration.lineThrough,

@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_sizes.dart';
@@ -10,28 +10,12 @@ import '../../../core/constants/app_text_styles.dart';
 import '../../../core/router/app_routes.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../data/models/order.dart';
-import '../../../shared/presentation/order_status_presentation.dart';
-import '../../../shared/providers/auth_providers.dart';
-import '../../../shared/providers/repositories_providers.dart';
-import '../../../shared/widgets/app_card.dart';
-import '../../../shared/widgets/app_error_view.dart';
+import '../../../data/models/restaurant.dart';
+import '../../../shared/providers/menu_providers.dart';
+import '../../../shared/providers/order_providers.dart';
 import '../../../shared/widgets/app_scaffold.dart';
-import '../../../shared/widgets/app_skeleton.dart';
 import '../../../shared/widgets/empty_state.dart';
-import '../../../shared/widgets/status_badge.dart';
 import '../../../shared/widgets/user_bottom_nav.dart';
-
-final myOrdersStreamProvider =
-    StreamProvider.autoDispose<List<OrderSummary>>((ref) {
-  final userId = ref.watch(currentUserIdProvider);
-  if (userId == null) return const Stream.empty();
-  return ref.read(orderRepositoryProvider).streamMyOrders(userId);
-});
-
-final _viewModeProvider =
-    StateProvider<_ViewMode>((ref) => _ViewMode.list);
-
-enum _ViewMode { list, calendar }
 
 class MyEventsScreen extends ConsumerWidget {
   const MyEventsScreen({super.key});
@@ -39,364 +23,266 @@ class MyEventsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final orders = ref.watch(myOrdersStreamProvider);
-    final mode = ref.watch(_viewModeProvider);
+    final restaurants =
+        ref.watch(restaurantsProvider).valueOrNull ?? const <Restaurant>[];
 
     return AppScaffold(
+      padded: false,
       appBar: AppBar(
-        title: const Text('My Events'),
+        title: const Text('My orders'),
         automaticallyImplyLeading: false,
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: AppSizes.md),
-            child: _ViewToggle(mode: mode),
-          ),
-        ],
       ),
+      bottomBar: const UserBottomNav(active: UserNavTab.orders),
       body: orders.when(
-        loading: () => _SkeletonList(),
-        error: (e, _) => AppErrorView(
-            error: e,
-            onRetry: () => ref.invalidate(myOrdersStreamProvider)),
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (e, _) => EmptyState(
+          icon: Icons.cloud_off_rounded,
+          title: 'Couldn\'t load orders',
+          message: '$e',
+          actionLabel: 'Retry',
+          onAction: () => ref.invalidate(myOrdersStreamProvider),
+        ),
         data: (list) {
           if (list.isEmpty) {
             return EmptyState(
-              title: 'No events yet',
-              message: 'Your first booking will show up here.',
-              icon: PhosphorIconsDuotone.calendarPlus,
-              actionLabel: 'Plan your first event',
-              onAction: () => context.go(AppRoutes.eventDetails),
+              icon: Icons.receipt_long_rounded,
+              title: 'No orders yet',
+              message: 'Your bookings will appear here.',
+              actionLabel: 'Start a new event',
+              onAction: () => context.push(AppRoutes.eventDetails),
             );
           }
           return RefreshIndicator(
             color: AppColors.primary,
-            onRefresh: () async => ref.invalidate(myOrdersStreamProvider),
-            child: mode == _ViewMode.list
-                ? ListView.separated(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    padding:
-                        const EdgeInsets.symmetric(vertical: AppSizes.md),
-                    itemBuilder: (_, i) {
-                      final o = list[i];
-                      return _OrderCard(order: o)
-                          .animate(delay: (i * 60).ms)
-                          .fadeIn(duration: 320.ms)
-                          .slideY(begin: 0.06, end: 0);
-                    },
-                    separatorBuilder: (_, __) =>
-                        const SizedBox(height: AppSizes.md),
-                    itemCount: list.length,
-                  )
-                : SingleChildScrollView(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    child: _CalendarView(orders: list),
-                  ),
+            onRefresh: () async =>
+                ref.invalidate(myOrdersStreamProvider),
+            child: ListView.separated(
+              padding: const EdgeInsets.symmetric(vertical: AppSizes.md),
+              itemCount: list.length,
+              separatorBuilder: (_, __) =>
+                  const SizedBox(height: AppSizes.sm),
+              itemBuilder: (_, i) => _OrderCard(
+                order: list[i],
+                restaurants: restaurants,
+              ).animate().fadeIn(duration: 260.ms, delay: (40 * i).ms),
+            ),
           );
         },
       ),
-      bottomBar: const UserBottomNav(active: UserNavTab.events),
     );
   }
 }
 
-class _ViewToggle extends ConsumerWidget {
-  const _ViewToggle({required this.mode});
-  final _ViewMode mode;
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return Container(
-      padding: const EdgeInsets.all(3),
-      decoration: BoxDecoration(
-        color: AppColors.surfaceAlt,
-        borderRadius: BorderRadius.circular(AppSizes.radiusPill),
-      ),
-      child: Row(
-        children: [
-          _toggle(
-            icon: PhosphorIconsBold.listBullets,
-            selected: mode == _ViewMode.list,
-            onTap: () => ref.read(_viewModeProvider.notifier).state =
-                _ViewMode.list,
-          ),
-          _toggle(
-            icon: PhosphorIconsBold.calendar,
-            selected: mode == _ViewMode.calendar,
-            onTap: () => ref.read(_viewModeProvider.notifier).state =
-                _ViewMode.calendar,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _toggle(
-      {required IconData icon,
-      required bool selected,
-      required VoidCallback onTap}) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(AppSizes.radiusPill),
-      child: Container(
-        padding: const EdgeInsets.symmetric(
-          horizontal: AppSizes.md,
-          vertical: AppSizes.xs,
-        ),
-        decoration: BoxDecoration(
-          color: selected ? AppColors.surface : Colors.transparent,
-          borderRadius: BorderRadius.circular(AppSizes.radiusPill),
-          boxShadow: selected
-              ? [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.06),
-                    blurRadius: 6,
-                    offset: const Offset(0, 2),
-                  ),
-                ]
-              : null,
-        ),
-        child: Icon(icon,
-            size: 16,
-            color: selected ? AppColors.primary : AppColors.textSecondary),
-      ),
-    );
-  }
-}
-
-class _CalendarView extends StatefulWidget {
-  const _CalendarView({required this.orders});
-  final List<OrderSummary> orders;
-
-  @override
-  State<_CalendarView> createState() => _CalendarViewState();
-}
-
-class _CalendarViewState extends State<_CalendarView> {
-  late DateTime _cursor;
-
-  @override
-  void initState() {
-    super.initState();
-    final now = DateTime.now();
-    _cursor = DateTime(now.year, now.month);
-  }
-
-  String _monthLabel(DateTime d) {
-    const names = [
-      'January', 'February', 'March', 'April', 'May', 'June',
-      'July', 'August', 'September', 'October', 'November', 'December',
-    ];
-    return '${names[d.month - 1]} ${d.year}';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final daysInMonth = DateUtils.getDaysInMonth(_cursor.year, _cursor.month);
-    final firstWeekday = DateTime(_cursor.year, _cursor.month, 1).weekday; // 1=Mon
-    final leadingBlanks = firstWeekday - 1;
-    final today = DateTime.now();
-
-    final byDay = <int, List<OrderSummary>>{};
-    for (final o in widget.orders) {
-      if (o.eventDate == null) continue;
-      if (o.eventDate!.year != _cursor.year ||
-          o.eventDate!.month != _cursor.month) continue;
-      byDay.putIfAbsent(o.eventDate!.day, () => []).add(o);
-    }
-
-    return Padding(
-      padding: const EdgeInsets.all(AppSizes.pagePadding),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              IconButton(
-                icon: const Icon(PhosphorIconsBold.caretLeft),
-                onPressed: () => setState(() => _cursor =
-                    DateTime(_cursor.year, _cursor.month - 1)),
-              ),
-              Expanded(
-                child: Center(
-                  child: Text(_monthLabel(_cursor),
-                      style: AppTextStyles.heading2),
-                ),
-              ),
-              IconButton(
-                icon: const Icon(PhosphorIconsBold.caretRight),
-                onPressed: () => setState(() => _cursor =
-                    DateTime(_cursor.year, _cursor.month + 1)),
-              ),
-            ],
-          ),
-          const SizedBox(height: AppSizes.sm),
-          Row(
-            children: [
-              for (final d in ['M', 'T', 'W', 'T', 'F', 'S', 'S'])
-                Expanded(
-                  child: Center(
-                    child: Text(d, style: AppTextStyles.captionBold),
-                  ),
-                ),
-            ],
-          ),
-          const SizedBox(height: AppSizes.xs),
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: leadingBlanks + daysInMonth,
-            gridDelegate:
-                const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 7,
-              childAspectRatio: 1,
-            ),
-            itemBuilder: (_, i) {
-              if (i < leadingBlanks) return const SizedBox();
-              final day = i - leadingBlanks + 1;
-              final events = byDay[day] ?? const [];
-              final isToday = today.year == _cursor.year &&
-                  today.month == _cursor.month &&
-                  today.day == day;
-
-              return GestureDetector(
-                onTap: events.isEmpty
-                    ? null
-                    : () => context
-                        .push(AppRoutes.orderDetailFor(events.first.id)),
-                child: Container(
-                  margin: const EdgeInsets.all(2),
-                  decoration: BoxDecoration(
-                    color: events.isNotEmpty
-                        ? AppColors.primarySoft
-                        : Colors.transparent,
-                    borderRadius:
-                        BorderRadius.circular(AppSizes.radiusSm),
-                    border: isToday
-                        ? Border.all(color: AppColors.primary, width: 1.5)
-                        : null,
-                  ),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        '$day',
-                        style: AppTextStyles.bodyBold.copyWith(
-                          color: events.isNotEmpty
-                              ? AppColors.primary
-                              : AppColors.textPrimary,
-                        ),
-                      ),
-                      if (events.isNotEmpty) ...[
-                        const SizedBox(height: 2),
-                        Container(
-                          width: 4,
-                          height: 4,
-                          decoration: const BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: AppColors.primary,
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              );
-            },
-          ),
-          const SizedBox(height: AppSizes.lg),
-          if (byDay.isEmpty)
-            Padding(
-              padding: const EdgeInsets.all(AppSizes.xl),
-              child: Text('No events this month',
-                  style: AppTextStyles.bodyMuted),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SkeletonList extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return AppSkeleton(
-      loading: true,
-      child: ListView.separated(
-        padding: const EdgeInsets.symmetric(vertical: AppSizes.md),
-        itemBuilder: (_, __) => Container(
-          height: 120,
-          decoration: BoxDecoration(
-            color: AppColors.surface,
-            borderRadius: BorderRadius.circular(AppSizes.radiusLg),
-          ),
-        ),
-        separatorBuilder: (_, __) =>
-            const SizedBox(height: AppSizes.md),
-        itemCount: 4,
-      ),
-    );
-  }
-}
+// ───────────────────────── Order card ─────────────────────────
 
 class _OrderCard extends StatelessWidget {
-  const _OrderCard({required this.order});
+  const _OrderCard({required this.order, required this.restaurants});
   final OrderSummary order;
+  final List<Restaurant> restaurants;
 
   @override
   Widget build(BuildContext context) {
-    return AppCard(
-      onTap: () => context.push(AppRoutes.orderDetailFor(order.id)),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Text(
-                order.eventDate == null
-                    ? 'Date TBD'
-                    : Formatters.date(order.eventDate!),
-                style: AppTextStyles.heading2
-                    .copyWith(color: AppColors.primary),
-              ),
-              const Spacer(),
-              StatusBadge(
-                label: order.orderStatus.label,
-                tone: order.orderStatus.tone,
-              ),
-            ],
-          ),
-          const SizedBox(height: AppSizes.sm),
-          Row(
-            children: [
-              const Icon(PhosphorIconsBold.users,
-                  size: 14, color: AppColors.textSecondary),
-              const SizedBox(width: AppSizes.xs),
-              Text('${order.guestCount ?? "—"} guests',
-                  style: AppTextStyles.caption),
-              const SizedBox(width: AppSizes.md),
-              const Icon(PhosphorIconsBold.receipt,
-                  size: 14, color: AppColors.textSecondary),
-              const SizedBox(width: AppSizes.xs),
-              Text(Formatters.currency(order.total),
-                  style: AppTextStyles.captionBold),
-            ],
-          ),
-          if (order.location != null) ...[
-            const SizedBox(height: AppSizes.xs),
-            Row(
+    final r = restaurants.isEmpty
+        ? null
+        : restaurants.first; // Phase 3 doesn't join order→restaurant; use first for label.
+    final bg = AppColors.fromHex(r?.heroBgHex, fallback: AppColors.primarySoft);
+    final badge = _StatusBadge(status: order.orderStatus);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: AppSizes.pagePadding),
+      child: Material(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppSizes.radiusMd),
+        child: InkWell(
+          onTap: () {
+            HapticFeedback.lightImpact();
+            context.push(AppRoutes.orderDetailFor(order.id));
+          },
+          borderRadius: BorderRadius.circular(AppSizes.radiusMd),
+          child: Container(
+            padding: const EdgeInsets.all(AppSizes.md),
+            decoration: BoxDecoration(
+              border: Border.all(color: AppColors.border),
+              borderRadius: BorderRadius.circular(AppSizes.radiusMd),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Icon(PhosphorIconsBold.mapPin,
-                    size: 14, color: AppColors.textSecondary),
-                const SizedBox(width: AppSizes.xs),
-                Expanded(
-                  child: Text(
-                    order.location!,
-                    style: AppTextStyles.caption,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
+                Row(
+                  children: [
+                    Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: bg,
+                        borderRadius:
+                            BorderRadius.circular(AppSizes.radiusSm),
+                      ),
+                      alignment: Alignment.center,
+                      child: Text(
+                        r?.heroEmoji ?? '🍽️',
+                        style: const TextStyle(fontSize: 20),
+                      ),
+                    ),
+                    const SizedBox(width: AppSizes.md),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Order #${order.id.substring(0, 6).toUpperCase()}',
+                            style: AppTextStyles.heading3,
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            _dateLabel(order.createdAt),
+                            style: AppTextStyles.caption,
+                          ),
+                        ],
+                      ),
+                    ),
+                    badge,
+                  ],
+                ),
+                const SizedBox(height: AppSizes.md),
+                Container(
+                  height: 1,
+                  color: AppColors.divider,
+                ),
+                const SizedBox(height: AppSizes.md),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        Formatters.currency(order.total),
+                        style: AppTextStyles.bodyBold.copyWith(fontSize: 15),
+                      ),
+                    ),
+                    if (order.orderStatus == OrderStatus.delivered ||
+                        order.orderStatus == OrderStatus.cancelled)
+                      _ReorderButton(
+                        onTap: () {
+                          HapticFeedback.selectionClick();
+                          context.push(AppRoutes.userHome);
+                        },
+                      )
+                    else
+                      _TrackButton(
+                        onTap: () => context
+                            .push(AppRoutes.orderDetailFor(order.id)),
+                      ),
+                  ],
                 ),
               ],
             ),
-          ],
-        ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _dateLabel(DateTime d) {
+    final now = DateTime.now();
+    final diff = now.difference(d);
+    if (diff.inDays == 0) return 'Today · ${_clock(d)}';
+    if (diff.inDays == 1) return 'Yesterday · ${_clock(d)}';
+    return Formatters.date(d);
+  }
+
+  String _clock(DateTime d) {
+    final h = d.hour % 12 == 0 ? 12 : d.hour % 12;
+    final m = d.minute.toString().padLeft(2, '0');
+    final am = d.hour < 12 ? 'AM' : 'PM';
+    return '$h:$m $am';
+  }
+}
+
+class _StatusBadge extends StatelessWidget {
+  const _StatusBadge({required this.status});
+  final OrderStatus status;
+
+  @override
+  Widget build(BuildContext context) {
+    final (bg, fg) = switch (status) {
+      OrderStatus.delivered => (AppColors.catGreenLt, AppColors.success),
+      OrderStatus.cancelled => (AppColors.primarySoft, AppColors.primary),
+      OrderStatus.dispatched => (AppColors.catBlueLt, AppColors.info),
+      OrderStatus.preparing => (AppColors.catGoldLt, AppColors.warning),
+      _ => (AppColors.surfaceAlt, AppColors.textSecondary),
+    };
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: AppSizes.sm, vertical: 4),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(AppSizes.radiusPill),
+      ),
+      child: Text(
+        status.label,
+        style: AppTextStyles.captionBold.copyWith(
+          color: fg,
+          fontSize: 11,
+        ),
+      ),
+    );
+  }
+}
+
+class _ReorderButton extends StatelessWidget {
+  const _ReorderButton({required this.onTap});
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return OutlinedButton(
+      onPressed: onTap,
+      style: OutlinedButton.styleFrom(
+        foregroundColor: AppColors.primary,
+        side: const BorderSide(color: AppColors.primary, width: 1.2),
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSizes.md,
+          vertical: 6,
+        ),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppSizes.radiusSm),
+        ),
+        minimumSize: const Size(0, 32),
+      ),
+      child: Text(
+        'Reorder',
+        style: AppTextStyles.captionBold.copyWith(
+          color: AppColors.primary,
+          fontSize: 12,
+        ),
+      ),
+    );
+  }
+}
+
+class _TrackButton extends StatelessWidget {
+  const _TrackButton({required this.onTap});
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return FilledButton(
+      onPressed: onTap,
+      style: FilledButton.styleFrom(
+        backgroundColor: AppColors.primary,
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSizes.md,
+          vertical: 6,
+        ),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppSizes.radiusSm),
+        ),
+        minimumSize: const Size(0, 32),
+      ),
+      child: Text(
+        'Track',
+        style: AppTextStyles.captionBold.copyWith(
+          color: Colors.white,
+          fontSize: 12,
+        ),
       ),
     );
   }

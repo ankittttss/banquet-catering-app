@@ -40,6 +40,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   bool _loading = false;
   bool _oauthLoading = false;
   bool _obscure = true;
+  String? _errorMessage;
+  bool _needsVerification = false;
+  bool _resending = false;
 
   @override
   void dispose() {
@@ -47,6 +50,29 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     _passwordCtrl.dispose();
     _nameCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _resendVerification() async {
+    final email = _emailCtrl.text.trim();
+    if (email.isEmpty || !AppConfig.hasSupabase) return;
+    setState(() => _resending = true);
+    try {
+      await sb.auth.resend(type: OtpType.signup, email: email);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Verification email sent to $email'),
+          backgroundColor: AppColors.success,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not resend: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _resending = false);
+    }
   }
 
   Future<void> _signInWithGoogle() async {
@@ -68,7 +94,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(e.message)),
       );
-    } on Exception catch (e) {
+    } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Sign-in failed: $e')),
@@ -80,7 +106,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
-    setState(() => _loading = true);
+    setState(() {
+      _loading = true;
+      _errorMessage = null;
+      _needsVerification = false;
+    });
 
     final email = _emailCtrl.text.trim();
     final password = _passwordCtrl.text;
@@ -103,26 +133,32 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       }
 
       final user = res.user ?? sb.auth.currentUser;
-      if (user == null) {
+      final hasSession = res.session != null || sb.auth.currentSession != null;
+      if (user == null || !hasSession) {
+        setState(() => _needsVerification = true);
         throw const AuthException(
-          'Check your email to confirm sign-up, then sign in.',
+          'Verify your email first. Check your inbox for the confirmation link.',
         );
       }
 
-      await ref.read(profileRepositoryProvider).upsert(
-            UserProfile(
-              id: user.id,
-              role: UserRole.user,
-              email: email,
-              name: _mode == _Mode.signUp
-                  ? _nameCtrl.text.trim().isEmpty
-                      ? null
-                      : _nameCtrl.text.trim()
-                  : null,
-            ),
-          );
-      ref.invalidate(currentProfileProvider);
+      // Only set name on first-time sign-up. Don't clobber role/name on sign-in.
+      if (_mode == _Mode.signUp && _nameCtrl.text.trim().isNotEmpty) {
+        try {
+          await ref.read(profileRepositoryProvider).upsert(
+                UserProfile(
+                  id: user.id,
+                  role: UserRole.user,
+                  email: email,
+                  name: _nameCtrl.text.trim(),
+                ),
+              );
+        } catch (_) {
+          // trigger may not have populated yet — currentProfileProvider
+          // will auto-create a default row on first read.
+        }
+      }
 
+      ref.invalidate(currentProfileProvider);
       final profile = await ref.read(currentProfileProvider.future);
       if (!mounted) return;
       final role = profile?.role ?? UserRole.user;
@@ -131,14 +167,16 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           : AppRoutes.userHome);
     } on AuthException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message)),
-      );
-    } on Exception catch (e) {
+      final msg = e.message.toLowerCase();
+      setState(() {
+        _errorMessage = e.message;
+        if (msg.contains('not confirmed') || msg.contains('verify')) {
+          _needsVerification = true;
+        }
+      });
+    } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Something went wrong: $e')),
-      );
+      setState(() => _errorMessage = 'Sign-in failed: $e');
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -176,12 +214,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       obscure: _obscure,
                       loading: _loading,
                       oauthLoading: _oauthLoading,
+                      errorMessage: _errorMessage,
+                      needsVerification: _needsVerification,
+                      resending: _resending,
+                      onResend: _resendVerification,
                       onToggleObscure: () =>
                           setState(() => _obscure = !_obscure),
                       onSubmit: _submit,
                       onGoogle: _signInWithGoogle,
                       onToggleMode: () => setState(() {
                         _mode = isSignUp ? _Mode.signIn : _Mode.signUp;
+                        _errorMessage = null;
+                        _needsVerification = false;
                       }),
                     ),
                     const SizedBox(height: AppSizes.xl),
@@ -379,6 +423,10 @@ class _FormCard extends StatelessWidget {
     required this.obscure,
     required this.loading,
     required this.oauthLoading,
+    required this.errorMessage,
+    required this.needsVerification,
+    required this.resending,
+    required this.onResend,
     required this.onToggleObscure,
     required this.onSubmit,
     required this.onGoogle,
@@ -393,6 +441,10 @@ class _FormCard extends StatelessWidget {
   final bool obscure;
   final bool loading;
   final bool oauthLoading;
+  final String? errorMessage;
+  final bool needsVerification;
+  final bool resending;
+  final VoidCallback onResend;
   final VoidCallback onToggleObscure;
   final VoidCallback onSubmit;
   final VoidCallback onGoogle;
@@ -477,6 +529,15 @@ class _FormCard extends StatelessWidget {
                 ),
               ),
             ),
+            if (errorMessage != null) ...[
+              const SizedBox(height: AppSizes.lg),
+              _AuthErrorBanner(
+                message: errorMessage!,
+                needsVerification: needsVerification,
+                resending: resending,
+                onResend: onResend,
+              ),
+            ],
             const SizedBox(height: AppSizes.xl),
             PrimaryButton(
               label: isSignUp ? 'Create account' : 'Sign in',
@@ -594,6 +655,73 @@ class _GoogleButton extends StatelessWidget {
                   ),
                 ],
               ),
+      ),
+    );
+  }
+}
+
+class _AuthErrorBanner extends StatelessWidget {
+  const _AuthErrorBanner({
+    required this.message,
+    required this.needsVerification,
+    required this.resending,
+    required this.onResend,
+  });
+
+  final String message;
+  final bool needsVerification;
+  final bool resending;
+  final VoidCallback onResend;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(AppSizes.md),
+      decoration: BoxDecoration(
+        color: AppColors.error.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(AppSizes.radiusMd),
+        border: Border.all(color: AppColors.error.withValues(alpha: 0.35)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(PhosphorIconsBold.warningCircle,
+                  color: AppColors.error, size: 18),
+              const SizedBox(width: AppSizes.sm),
+              Expanded(
+                child: Text(
+                  message,
+                  style: AppTextStyles.body.copyWith(color: AppColors.error),
+                ),
+              ),
+            ],
+          ),
+          if (needsVerification) ...[
+            const SizedBox(height: AppSizes.sm),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: resending ? null : onResend,
+                icon: resending
+                    ? const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(PhosphorIconsBold.paperPlaneTilt, size: 14),
+                label: Text(
+                  resending ? 'Sending…' : 'Resend verification email',
+                  style: AppTextStyles.bodyBold
+                      .copyWith(color: AppColors.primary),
+                ),
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }

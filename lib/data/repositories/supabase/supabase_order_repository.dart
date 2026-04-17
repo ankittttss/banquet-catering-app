@@ -57,11 +57,14 @@ class SupabaseOrderRepository implements OrderRepository {
 
   @override
   Stream<List<OrderSummary>> streamMyOrders(String userId) {
+    // Realtime stream of the user's orders (without the events join — streams
+    // don't support joins). We expose placed/confirmed/... timestamps and
+    // driver metadata directly on orders, which is enough for the tracker.
     return supabase
         .from('orders')
         .stream(primaryKey: ['id'])
         .eq('user_id', userId)
-        .order('created_at')
+        .order('created_at', ascending: false)
         .map((rows) => rows
             .map<OrderSummary>(OrderSummary.fromMap)
             .toList(growable: false));
