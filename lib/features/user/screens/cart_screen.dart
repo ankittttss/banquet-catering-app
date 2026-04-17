@@ -124,6 +124,9 @@ class _CartRow extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final customized = item.portion != Portion.regular ||
+        item.notes.isNotEmpty ||
+        item.spice != SpiceLevel.medium;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: AppSizes.md),
       child: Row(
@@ -138,21 +141,36 @@ class _CartRow extends ConsumerWidget {
                 Text(item.item.name, style: AppTextStyles.bodyBold),
                 const SizedBox(height: 2),
                 Text(
-                  Formatters.currency(item.item.price),
+                  Formatters.currency(item.unitPrice),
                   style: AppTextStyles.caption,
                 ),
+                if (customized) ...[
+                  const SizedBox(height: AppSizes.xs),
+                  Wrap(
+                    spacing: AppSizes.xs,
+                    runSpacing: 2,
+                    children: [
+                      if (item.portion != Portion.regular)
+                        _Tag(text: item.portion.label),
+                      _Tag(text: item.spice.label),
+                      if (item.notes.isNotEmpty)
+                        _Tag(text: '\u201C${item.notes}\u201D'),
+                    ],
+                  ),
+                ],
               ],
             ),
           ),
           QtySelector(
             quantity: item.qty,
-            onAdd: () => ref.read(cartProvider.notifier).add(item.item),
+            onAdd: () =>
+                ref.read(cartProvider.notifier).bumpLine(item.signature, 1),
             onRemove: () =>
-                ref.read(cartProvider.notifier).remove(item.item),
+                ref.read(cartProvider.notifier).bumpLine(item.signature, -1),
           ),
           const SizedBox(width: AppSizes.md),
           SizedBox(
-            width: 60,
+            width: 70,
             child: Text(
               Formatters.currency(item.lineTotal),
               textAlign: TextAlign.right,
@@ -160,6 +178,32 @@ class _CartRow extends ConsumerWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _Tag extends StatelessWidget {
+  const _Tag({required this.text});
+  final String text;
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSizes.xs + 2,
+        vertical: 1,
+      ),
+      decoration: BoxDecoration(
+        color: AppColors.accentSoft,
+        borderRadius: BorderRadius.circular(AppSizes.radiusSm),
+      ),
+      child: Text(
+        text,
+        style: AppTextStyles.captionBold.copyWith(
+          fontSize: 10,
+          color: AppColors.accentDark,
+          letterSpacing: 0.4,
+        ),
       ),
     );
   }

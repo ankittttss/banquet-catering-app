@@ -17,6 +17,7 @@ import '../../../shared/providers/cart_providers.dart';
 import '../../../shared/providers/menu_providers.dart';
 import '../../../shared/widgets/app_error_view.dart';
 import '../../../shared/widgets/app_scaffold.dart';
+import '../../../shared/widgets/cart_peek_bar.dart';
 import '../../../shared/widgets/app_skeleton.dart';
 import '../../../shared/widgets/category_chip.dart';
 import '../../../shared/widgets/empty_state.dart';
@@ -130,7 +131,7 @@ class MenuScreen extends ConsumerWidget {
           ),
         ],
       ),
-      bottomBar: cartCount == 0 ? null : _CartBar(count: cartCount),
+      bottomBar: const CartPeekBar(),
     );
   }
 
@@ -295,26 +296,3 @@ class _MenuItemCard extends ConsumerWidget {
 }
 
 
-class _CartBar extends ConsumerWidget {
-  const _CartBar({required this.count});
-  final int count;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final total = ref.watch(cartFoodTotalProvider);
-    return SafeArea(
-      top: false,
-      child: Padding(
-        padding: const EdgeInsets.all(AppSizes.lg),
-        child: PrimaryButton(
-          label: '$count items · ${Formatters.currency(total)} — Review cart',
-          icon: PhosphorIconsBold.shoppingBag,
-          onPressed: () => context.push(AppRoutes.cart),
-        ),
-      )
-          .animate()
-          .slideY(begin: 1, end: 0, duration: 300.ms, curve: Curves.easeOut)
-          .fadeIn(),
-    );
-  }
-}

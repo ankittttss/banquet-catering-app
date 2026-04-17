@@ -18,8 +18,9 @@ import '../../../shared/providers/cart_providers.dart';
 import '../../../shared/providers/favorites_providers.dart';
 import '../../../shared/providers/menu_providers.dart';
 import '../../../shared/widgets/app_scaffold.dart';
+import '../../../shared/widgets/cart_peek_bar.dart';
+import '../../../shared/widgets/menu_item_customize_sheet.dart';
 import '../../../shared/widgets/menu_item_thumb.dart';
-import '../../../shared/widgets/primary_button.dart';
 import '../../../shared/widgets/qty_selector.dart';
 import '../../../shared/widgets/veg_dot.dart';
 
@@ -94,7 +95,7 @@ class RestaurantDetailScreen extends ConsumerWidget {
           const SliverToBoxAdapter(child: SizedBox(height: 120)),
         ],
       ),
-      bottomBar: cartCount > 0 ? _CartBar(count: cartCount, total: cartTotal) : null,
+      bottomBar: const CartPeekBar(),
     );
   }
 }
@@ -416,14 +417,19 @@ class _MenuRow extends ConsumerWidget {
         AppSizes.pagePadding,
         AppSizes.xs,
       ),
-      child: Container(
-        padding: const EdgeInsets.all(AppSizes.md),
-        decoration: BoxDecoration(
-          color: AppColors.surface,
+      child: Material(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppSizes.radiusLg),
+        child: InkWell(
+          onTap: () => showMenuItemCustomizeSheet(context, item: item),
           borderRadius: BorderRadius.circular(AppSizes.radiusLg),
-          border: Border.all(color: AppColors.border),
-        ),
-        child: Row(
+          child: Container(
+            padding: const EdgeInsets.all(AppSizes.md),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(AppSizes.radiusLg),
+              border: Border.all(color: AppColors.border),
+            ),
+            child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             MenuItemThumb(
@@ -481,6 +487,8 @@ class _MenuRow extends ConsumerWidget {
               ),
             ),
           ],
+            ),
+          ),
         ),
       ),
     );
@@ -516,24 +524,3 @@ class _FavoriteHeart extends ConsumerWidget {
 // Cart bar at bottom
 // ---------------------------------------------------------------------------
 
-class _CartBar extends StatelessWidget {
-  const _CartBar({required this.count, required this.total});
-  final int count;
-  final double total;
-
-  @override
-  Widget build(BuildContext context) {
-    return SafeArea(
-      top: false,
-      child: Padding(
-        padding: const EdgeInsets.all(AppSizes.lg),
-        child: PrimaryButton(
-          label:
-              '$count items · ${Formatters.currency(total)} — Review cart',
-          icon: PhosphorIconsBold.shoppingBag,
-          onPressed: () => context.push(AppRoutes.cart),
-        ),
-      ),
-    );
-  }
-}
