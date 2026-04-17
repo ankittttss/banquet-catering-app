@@ -3,14 +3,13 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
-import 'package:uuid/uuid.dart';
 
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_sizes.dart';
 import '../../../core/constants/app_text_styles.dart';
 import '../../../data/models/user_address.dart';
+import '../../../shared/presentation/address_label_presentation.dart';
 import '../../../shared/providers/address_providers.dart';
-import '../../../shared/providers/auth_providers.dart';
 import '../../../shared/providers/repositories_providers.dart';
 import '../../../shared/widgets/app_card.dart';
 import '../../../shared/widgets/app_scaffold.dart';
@@ -104,12 +103,6 @@ class _AddressTile extends ConsumerWidget {
   const _AddressTile({required this.address});
   final UserAddress address;
 
-  IconData _icon() => switch (address.label) {
-        AddressLabel.home => PhosphorIconsDuotone.house,
-        AddressLabel.work => PhosphorIconsDuotone.briefcase,
-        AddressLabel.other => PhosphorIconsDuotone.mapPin,
-      };
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return AppCard(
@@ -126,7 +119,7 @@ class _AddressTile extends ConsumerWidget {
                   color: AppColors.primarySoft,
                   borderRadius: BorderRadius.circular(AppSizes.radiusMd),
                 ),
-                child: Icon(_icon(),
+                child: Icon(address.label.icon,
                     color: AppColors.primary, size: 24),
               ),
               const SizedBox(width: AppSizes.md),
@@ -243,24 +236,12 @@ class _AddressEditorState extends ConsumerState<_AddressEditor> {
     setState(() => _saving = true);
     try {
       final repo = ref.read(addressRepositoryProvider);
-      final userId = ref.read(currentUserIdProvider) ?? 'local';
-      if (widget.existing == null) {
-        await repo.create(UserAddress(
-          id: const Uuid().v4(),
-          userId: userId,
-          label: _label,
-          fullAddress: _addressCtrl.text.trim(),
-          isDefault: _isDefault,
-        ));
-      } else {
-        await repo.update(UserAddress(
-          id: widget.existing!.id,
-          userId: widget.existing!.userId,
-          label: _label,
-          fullAddress: _addressCtrl.text.trim(),
-          isDefault: _isDefault,
-        ));
-      }
+      await repo.save(UserAddressInput(
+        id: widget.existing?.id,
+        label: _label,
+        fullAddress: _addressCtrl.text.trim(),
+        isDefault: _isDefault,
+      ));
       ref.invalidate(addressesProvider);
       if (!mounted) return;
       Navigator.of(context).pop();

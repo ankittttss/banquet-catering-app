@@ -9,6 +9,7 @@ import '../../../core/constants/app_sizes.dart';
 import '../../../core/constants/app_text_styles.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../data/models/order.dart';
+import '../../../shared/presentation/order_status_presentation.dart';
 import '../../../shared/widgets/app_card.dart';
 import '../../../shared/widgets/app_scaffold.dart';
 import '../../../shared/widgets/status_badge.dart';
@@ -72,7 +73,7 @@ class OrderDetailScreen extends ConsumerWidget {
                     ),
                     StatusBadge(
                       label: order.orderStatus.label,
-                      tone: _tone(order.orderStatus),
+                      tone: order.orderStatus.tone,
                     ),
                   ],
                 ),
@@ -114,14 +115,6 @@ class OrderDetailScreen extends ConsumerWidget {
     );
   }
 
-  StatusTone _tone(OrderStatus s) => switch (s) {
-        OrderStatus.placed => StatusTone.pending,
-        OrderStatus.confirmed => StatusTone.info,
-        OrderStatus.preparing => StatusTone.info,
-        OrderStatus.dispatched => StatusTone.warning,
-        OrderStatus.delivered => StatusTone.success,
-        OrderStatus.cancelled => StatusTone.error,
-      };
 }
 
 class _StatusStepper extends StatelessWidget {

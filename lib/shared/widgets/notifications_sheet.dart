@@ -9,6 +9,7 @@ import '../../core/constants/app_sizes.dart';
 import '../../core/constants/app_text_styles.dart';
 import '../../data/models/order.dart';
 import '../../features/user/screens/my_events_screen.dart';
+import '../presentation/order_status_presentation.dart';
 
 void showNotificationsSheet(BuildContext context) {
   showModalBottomSheet<void>(
@@ -35,8 +36,8 @@ class _NotificationsSheet extends ConsumerWidget {
     final items = <_Notif>[
       for (final o in orders.take(5))
         _Notif(
-          icon: _iconFor(o.orderStatus),
-          color: _colorFor(o.orderStatus),
+          icon: o.orderStatus.icon,
+          color: o.orderStatus.foregroundColor,
           title: 'Booking ${_shortId(o.id)} — ${o.orderStatus.label}',
           body: 'Total ${_fmt(o.total)} · tap to view details',
           when: o.createdAt,
@@ -107,24 +108,6 @@ class _NotificationsSheet extends ConsumerWidget {
       ),
     );
   }
-
-  static IconData _iconFor(OrderStatus s) => switch (s) {
-        OrderStatus.placed => PhosphorIconsFill.clock,
-        OrderStatus.confirmed => PhosphorIconsFill.checkCircle,
-        OrderStatus.preparing => PhosphorIconsFill.forkKnife,
-        OrderStatus.dispatched => PhosphorIconsFill.truck,
-        OrderStatus.delivered => PhosphorIconsFill.package,
-        OrderStatus.cancelled => PhosphorIconsFill.xCircle,
-      };
-
-  static Color _colorFor(OrderStatus s) => switch (s) {
-        OrderStatus.placed => AppColors.accentDark,
-        OrderStatus.confirmed => AppColors.info,
-        OrderStatus.preparing => AppColors.info,
-        OrderStatus.dispatched => AppColors.warning,
-        OrderStatus.delivered => AppColors.success,
-        OrderStatus.cancelled => AppColors.error,
-      };
 
   static String _shortId(String id) =>
       id.length > 6 ? '#${id.substring(0, 6).toUpperCase()}' : '#$id';

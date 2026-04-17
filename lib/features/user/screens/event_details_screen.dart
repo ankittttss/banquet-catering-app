@@ -10,7 +10,7 @@ import '../../../core/constants/app_sizes.dart';
 import '../../../core/constants/app_text_styles.dart';
 import '../../../core/router/app_routes.dart';
 import '../../../core/utils/formatters.dart';
-import '../../../data/models/user_address.dart';
+import '../../../shared/presentation/address_label_presentation.dart';
 import '../../../shared/providers/address_providers.dart';
 import '../../../shared/providers/event_providers.dart';
 import '../../../shared/widgets/app_card.dart';
@@ -82,17 +82,7 @@ class _EventDetailsScreenState extends ConsumerState<EventDetailsScreen> {
               for (final a in addresses)
                 ListTile(
                   contentPadding: EdgeInsets.zero,
-                  leading: Icon(
-                    switch (a.label) {
-                      AddressLabel.home =>
-                        PhosphorIconsDuotone.house,
-                      AddressLabel.work =>
-                        PhosphorIconsDuotone.briefcase,
-                      AddressLabel.other =>
-                        PhosphorIconsDuotone.mapPin,
-                    },
-                    color: AppColors.primary,
-                  ),
+                  leading: Icon(a.label.icon, color: AppColors.primary),
                   title: Text(a.label.label,
                       style: AppTextStyles.bodyBold),
                   subtitle: Text(

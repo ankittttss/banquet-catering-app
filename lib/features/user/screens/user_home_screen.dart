@@ -20,6 +20,7 @@ import '../../../shared/providers/auth_providers.dart';
 import '../../../shared/providers/event_providers.dart';
 import '../../../shared/providers/home_providers.dart';
 import '../../../shared/providers/menu_providers.dart';
+import '../../../shared/presentation/order_status_presentation.dart';
 import '../../../shared/widgets/app_card.dart';
 import '../../../shared/widgets/app_scaffold.dart';
 import '../../../shared/widgets/app_skeleton.dart';
@@ -826,7 +827,7 @@ class _UpcomingEventSection extends ConsumerWidget {
                       children: [
                         StatusBadge(
                           label: next.orderStatus.label,
-                          tone: _tone(next.orderStatus),
+                          tone: next.orderStatus.tone,
                         ),
                         const SizedBox(height: AppSizes.xs),
                         const Icon(PhosphorIconsBold.caretRight,
@@ -843,14 +844,6 @@ class _UpcomingEventSection extends ConsumerWidget {
     );
   }
 
-  StatusTone _tone(OrderStatus s) => switch (s) {
-        OrderStatus.placed => StatusTone.pending,
-        OrderStatus.confirmed => StatusTone.info,
-        OrderStatus.preparing => StatusTone.info,
-        OrderStatus.dispatched => StatusTone.warning,
-        OrderStatus.delivered => StatusTone.success,
-        OrderStatus.cancelled => StatusTone.error,
-      };
 }
 
 // ===========================================================================

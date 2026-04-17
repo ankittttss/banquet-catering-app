@@ -1,4 +1,3 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -20,6 +19,7 @@ import '../../../shared/widgets/app_scaffold.dart';
 import '../../../shared/widgets/app_skeleton.dart';
 import '../../../shared/widgets/category_chip.dart';
 import '../../../shared/widgets/empty_state.dart';
+import '../../../shared/widgets/menu_item_thumb.dart';
 import '../../../shared/widgets/primary_button.dart';
 import '../../../shared/widgets/qty_selector.dart';
 import '../../../shared/widgets/veg_dot.dart';
@@ -236,7 +236,12 @@ class _MenuItemCard extends ConsumerWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _Thumb(url: item.imageUrl, isVeg: item.isVeg, name: item.name),
+            MenuItemThumb(
+              name: item.name,
+              imageUrl: item.imageUrl,
+              isVeg: item.isVeg,
+              showVegDot: false, // shown next to the name already
+            ),
             const SizedBox(width: AppSizes.md),
             Expanded(
               child: Column(
@@ -288,100 +293,6 @@ class _MenuItemCard extends ConsumerWidget {
   }
 }
 
-class _Thumb extends StatelessWidget {
-  const _Thumb({required this.url, required this.isVeg, required this.name});
-  final String? url;
-  final bool isVeg;
-  final String name;
-
-  /// Stable gradient per-item derived from the name hash.
-  List<Color> _gradient() {
-    const palettes = <List<Color>>[
-      [Color(0xFFE9C591), Color(0xFFD4A574)], // gold
-      [Color(0xFFF6CBD1), Color(0xFFE2A1AC)], // rose
-      [Color(0xFFC9DFC2), Color(0xFFA8C49E)], // sage
-      [Color(0xFFE6D3B3), Color(0xFFCBB38F)], // beige
-      [Color(0xFFF0B1A0), Color(0xFFD98471)], // terracotta
-      [Color(0xFFC6D8E8), Color(0xFF94B5CE)], // sky
-    ];
-    final hash = name.codeUnits.fold<int>(0, (a, b) => a + b);
-    return palettes[hash % palettes.length];
-  }
-
-  String _initial() {
-    final s = name.trim();
-    if (s.isEmpty) return '?';
-    return s[0].toUpperCase();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final g = _gradient();
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(AppSizes.radiusMd),
-      child: Container(
-        width: 72,
-        height: 72,
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: g,
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-        ),
-        child: (url != null && url!.isNotEmpty)
-            ? CachedNetworkImage(
-                imageUrl: url!,
-                fit: BoxFit.cover,
-                errorWidget: (_, __, ___) => _placeholder(g),
-                placeholder: (_, __) => _placeholder(g),
-              )
-            : _placeholder(g),
-      ),
-    );
-  }
-
-  Widget _placeholder(List<Color> g) {
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: g,
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-          ),
-        ),
-        Center(
-          child: Text(
-            _initial(),
-            style: AppTextStyles.display.copyWith(
-              color: Colors.white.withValues(alpha: 0.96),
-              fontSize: 28,
-              fontWeight: FontWeight.w700,
-              letterSpacing: -0.5,
-            ),
-          ),
-        ),
-        Positioned(
-          bottom: 6,
-          right: 6,
-          child: Container(
-            width: 10,
-            height: 10,
-            decoration: BoxDecoration(
-              color: isVeg ? AppColors.veg : AppColors.nonVeg,
-              shape: BoxShape.circle,
-              border: Border.all(color: Colors.white, width: 1.4),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
 
 class _CartBar extends ConsumerWidget {
   const _CartBar({required this.count});

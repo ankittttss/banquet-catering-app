@@ -8,6 +8,7 @@ import '../../../core/constants/app_sizes.dart';
 import '../../../core/constants/app_text_styles.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../data/models/order.dart';
+import '../../../shared/presentation/order_status_presentation.dart';
 import '../../../shared/providers/repositories_providers.dart';
 import '../../../shared/widgets/app_card.dart';
 import '../../../shared/widgets/app_scaffold.dart';
@@ -93,7 +94,7 @@ class _OrderTile extends ConsumerWidget {
               ),
               StatusBadge(
                 label: order.orderStatus.label,
-                tone: _tone(order.orderStatus),
+                tone: order.orderStatus.tone,
               ),
             ],
           ),
@@ -124,7 +125,7 @@ class _OrderTile extends ConsumerWidget {
                       horizontal: AppSizes.md,
                       vertical: 0,
                     ),
-                    foregroundColor: _tone(s) == StatusTone.success
+                    foregroundColor: s.tone == StatusTone.success
                         ? AppColors.success
                         : AppColors.primary,
                     side: BorderSide(
@@ -143,12 +144,4 @@ class _OrderTile extends ConsumerWidget {
     );
   }
 
-  StatusTone _tone(OrderStatus s) => switch (s) {
-        OrderStatus.placed => StatusTone.pending,
-        OrderStatus.confirmed => StatusTone.info,
-        OrderStatus.preparing => StatusTone.info,
-        OrderStatus.dispatched => StatusTone.warning,
-        OrderStatus.delivered => StatusTone.success,
-        OrderStatus.cancelled => StatusTone.error,
-      };
 }

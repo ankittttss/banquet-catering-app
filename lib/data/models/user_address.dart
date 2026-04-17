@@ -35,11 +35,19 @@ class UserAddress {
         fullAddress: map['full_address'] as String,
         isDefault: (map['is_default'] as bool?) ?? false,
       );
+}
 
-  Map<String, dynamic> toInsertMap() => {
-        'user_id': userId,
-        'label': label.label,
-        'full_address': fullAddress,
-        'is_default': isDefault,
-      };
+/// Input used to create or update an address. Does NOT carry an id on create.
+class UserAddressInput {
+  const UserAddressInput({
+    this.id,
+    required this.label,
+    required this.fullAddress,
+    required this.isDefault,
+  });
+
+  final String? id;
+  final AddressLabel label;
+  final String fullAddress;
+  final bool isDefault;
 }

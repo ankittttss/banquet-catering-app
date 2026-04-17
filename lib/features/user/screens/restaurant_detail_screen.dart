@@ -18,6 +18,7 @@ import '../../../shared/providers/cart_providers.dart';
 import '../../../shared/providers/favorites_providers.dart';
 import '../../../shared/providers/menu_providers.dart';
 import '../../../shared/widgets/app_scaffold.dart';
+import '../../../shared/widgets/menu_item_thumb.dart';
 import '../../../shared/widgets/primary_button.dart';
 import '../../../shared/widgets/qty_selector.dart';
 import '../../../shared/widgets/veg_dot.dart';
@@ -425,7 +426,13 @@ class _MenuRow extends ConsumerWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _Thumb(item: item),
+            MenuItemThumb(
+              name: item.name,
+              imageUrl: item.imageUrl,
+              isVeg: item.isVeg,
+              size: 84,
+              showVegDot: false,
+            ),
             const SizedBox(width: AppSizes.md),
             Expanded(
               child: Column(
@@ -504,62 +511,6 @@ class _FavoriteHeart extends ConsumerWidget {
   }
 }
 
-class _Thumb extends StatelessWidget {
-  const _Thumb({required this.item});
-  final MenuItem item;
-
-  @override
-  Widget build(BuildContext context) {
-    final g = _gradientFor(item.name);
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(AppSizes.radiusMd),
-      child: Container(
-        width: 84,
-        height: 84,
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: g,
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-        ),
-        child: (item.imageUrl != null && item.imageUrl!.isNotEmpty)
-            ? CachedNetworkImage(
-                imageUrl: item.imageUrl!,
-                fit: BoxFit.cover,
-                errorWidget: (_, __, ___) => _placeholder(),
-                placeholder: (_, __) => _placeholder(),
-              )
-            : _placeholder(),
-      ),
-    );
-  }
-
-  Widget _placeholder() {
-    return Center(
-      child: Text(
-        item.name[0].toUpperCase(),
-        style: AppTextStyles.display.copyWith(
-          color: Colors.white,
-          fontSize: 30,
-        ),
-      ),
-    );
-  }
-
-  static List<Color> _gradientFor(String name) {
-    const palettes = <List<Color>>[
-      [Color(0xFFE9C591), Color(0xFFD4A574)],
-      [Color(0xFFF6CBD1), Color(0xFFE2A1AC)],
-      [Color(0xFFC9DFC2), Color(0xFFA8C49E)],
-      [Color(0xFFE6D3B3), Color(0xFFCBB38F)],
-      [Color(0xFFF0B1A0), Color(0xFFD98471)],
-      [Color(0xFFC6D8E8), Color(0xFF94B5CE)],
-    ];
-    final hash = name.codeUnits.fold<int>(0, (a, b) => a + b);
-    return palettes[hash % palettes.length];
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Cart bar at bottom

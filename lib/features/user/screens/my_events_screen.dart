@@ -10,6 +10,7 @@ import '../../../core/constants/app_text_styles.dart';
 import '../../../core/router/app_routes.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../data/models/order.dart';
+import '../../../shared/presentation/order_status_presentation.dart';
 import '../../../shared/providers/auth_providers.dart';
 import '../../../shared/providers/repositories_providers.dart';
 import '../../../shared/widgets/app_card.dart';
@@ -335,15 +336,6 @@ class _OrderCard extends StatelessWidget {
   const _OrderCard({required this.order});
   final OrderSummary order;
 
-  StatusTone _tone() => switch (order.orderStatus) {
-        OrderStatus.placed => StatusTone.pending,
-        OrderStatus.confirmed => StatusTone.info,
-        OrderStatus.preparing => StatusTone.info,
-        OrderStatus.dispatched => StatusTone.warning,
-        OrderStatus.delivered => StatusTone.success,
-        OrderStatus.cancelled => StatusTone.error,
-      };
-
   @override
   Widget build(BuildContext context) {
     return AppCard(
@@ -363,7 +355,7 @@ class _OrderCard extends StatelessWidget {
               const Spacer(),
               StatusBadge(
                 label: order.orderStatus.label,
-                tone: _tone(),
+                tone: order.orderStatus.tone,
               ),
             ],
           ),
