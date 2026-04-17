@@ -16,6 +16,7 @@ import '../../../shared/providers/auth_providers.dart';
 import '../../../shared/providers/repositories_providers.dart';
 import 'my_events_screen.dart';
 import '../../../shared/widgets/app_card.dart';
+import '../../../shared/widgets/app_error_view.dart';
 import '../../../shared/widgets/app_scaffold.dart';
 import '../../../shared/widgets/primary_button.dart';
 import '../../../shared/widgets/status_badge.dart';
@@ -110,7 +111,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       bottomBar: const UserBottomNav(active: UserNavTab.profile),
       body: profileAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('$e')),
+        error: (e, _) => AppErrorView(
+            error: e,
+            onRetry: () => ref.invalidate(currentProfileProvider)),
         data: (profile) {
           if (profile == null) {
             return const Center(child: Text('Not signed in'));

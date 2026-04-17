@@ -10,6 +10,7 @@ import '../../../data/models/charges_config.dart';
 import '../../../shared/providers/charges_providers.dart';
 import '../../../shared/providers/repositories_providers.dart';
 import '../../../shared/widgets/app_card.dart';
+import '../../../shared/widgets/app_error_view.dart';
 import '../../../shared/widgets/app_scaffold.dart';
 import '../../../shared/widgets/primary_button.dart';
 
@@ -102,7 +103,9 @@ class _AdminChargesScreenState
       ),
       body: cfg.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('$e')),
+        error: (e, _) => AppErrorView(
+            error: e,
+            onRetry: () => ref.invalidate(chargesConfigProvider)),
         data: (c) {
           _hydrate(c);
           return ListView(

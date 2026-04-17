@@ -10,6 +10,7 @@ import '../../../core/constants/app_text_styles.dart';
 import '../../../data/models/user_address.dart';
 import '../../../shared/presentation/address_label_presentation.dart';
 import '../../../shared/providers/address_providers.dart';
+import '../../../shared/widgets/app_error_view.dart';
 import '../../../shared/providers/repositories_providers.dart';
 import '../../../shared/widgets/app_card.dart';
 import '../../../shared/widgets/app_scaffold.dart';
@@ -34,7 +35,8 @@ class AddressesScreen extends ConsumerWidget {
       ),
       body: list.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('$e')),
+        error: (e, _) => AppErrorView(
+            error: e, onRetry: () => ref.invalidate(addressesProvider)),
         data: (addresses) {
           return ListView(
             padding: const EdgeInsets.only(bottom: 120),

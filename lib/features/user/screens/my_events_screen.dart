@@ -14,6 +14,7 @@ import '../../../shared/presentation/order_status_presentation.dart';
 import '../../../shared/providers/auth_providers.dart';
 import '../../../shared/providers/repositories_providers.dart';
 import '../../../shared/widgets/app_card.dart';
+import '../../../shared/widgets/app_error_view.dart';
 import '../../../shared/widgets/app_scaffold.dart';
 import '../../../shared/widgets/app_skeleton.dart';
 import '../../../shared/widgets/empty_state.dart';
@@ -53,7 +54,9 @@ class MyEventsScreen extends ConsumerWidget {
       ),
       body: orders.when(
         loading: () => _SkeletonList(),
-        error: (e, _) => Center(child: Text('$e')),
+        error: (e, _) => AppErrorView(
+            error: e,
+            onRetry: () => ref.invalidate(myOrdersStreamProvider)),
         data: (list) {
           if (list.isEmpty) {
             return EmptyState(

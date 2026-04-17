@@ -13,6 +13,7 @@ import '../../../core/utils/formatters.dart';
 import '../../../data/models/event_draft.dart';
 import '../../../data/models/restaurant.dart';
 import '../../../data/models/checkout_totals.dart';
+import '../../../shared/widgets/app_error_view.dart';
 import '../../../shared/providers/auth_providers.dart';
 import '../../../shared/providers/cart_providers.dart';
 import '../../../shared/providers/charges_providers.dart';
@@ -80,7 +81,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       body: charges.when(
         loading: () =>
             const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('$e')),
+        error: (e, _) => AppErrorView(error: e),
         data: (cfg) {
           // Delivery charge = sum of unique restaurants' delivery charges.
           final uniqueRestaurants = <String>{};

@@ -11,6 +11,7 @@ import '../../../core/utils/formatters.dart';
 import '../../../data/models/order.dart';
 import '../../../shared/presentation/order_status_presentation.dart';
 import '../../../shared/widgets/app_card.dart';
+import '../../../shared/widgets/app_error_view.dart';
 import '../../../shared/widgets/app_scaffold.dart';
 import '../../../shared/widgets/status_badge.dart';
 import 'my_events_screen.dart';
@@ -34,7 +35,7 @@ class OrderDetailScreen extends ConsumerWidget {
       ),
       body: orders.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('$e')),
+        error: (e, _) => AppErrorView(error: e),
         data: (list) {
           final order = list.where((o) => o.id == orderId).firstOrNull;
           if (order == null) {

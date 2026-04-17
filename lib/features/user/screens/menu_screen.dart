@@ -15,6 +15,7 @@ import '../../../data/models/menu_item.dart';
 import '../../../data/models/restaurant.dart';
 import '../../../shared/providers/cart_providers.dart';
 import '../../../shared/providers/menu_providers.dart';
+import '../../../shared/widgets/app_error_view.dart';
 import '../../../shared/widgets/app_scaffold.dart';
 import '../../../shared/widgets/app_skeleton.dart';
 import '../../../shared/widgets/category_chip.dart';
@@ -51,7 +52,7 @@ class MenuScreen extends ConsumerWidget {
             height: 56,
             child: cats.when(
               loading: () => const SizedBox(),
-              error: (e, _) => Center(child: Text('$e')),
+              error: (e, _) => AppErrorView(error: e),
               data: (list) => ListView.separated(
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.symmetric(
@@ -94,7 +95,7 @@ class MenuScreen extends ConsumerWidget {
           Expanded(
             child: items.when(
               loading: () => _loadingList(),
-              error: (e, _) => Center(child: Text('$e')),
+              error: (e, _) => AppErrorView(error: e),
               data: (itemList) {
                 if (itemList.isEmpty) {
                   return const EmptyState(

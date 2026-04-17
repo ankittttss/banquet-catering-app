@@ -10,6 +10,7 @@ import '../../../core/utils/formatters.dart';
 import '../../../data/models/order.dart';
 import '../../../shared/presentation/order_status_presentation.dart';
 import '../../../shared/providers/repositories_providers.dart';
+import '../../../shared/widgets/app_error_view.dart';
 import '../../../shared/widgets/app_card.dart';
 import '../../../shared/widgets/app_scaffold.dart';
 import '../../../shared/widgets/empty_state.dart';
@@ -43,7 +44,8 @@ class AdminOrdersScreen extends ConsumerWidget {
       ),
       body: orders.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('$e')),
+        error: (e, _) => AppErrorView(
+            error: e, onRetry: () => ref.invalidate(adminOrdersProvider)),
         data: (list) {
           if (list.isEmpty) {
             return const EmptyState(

@@ -11,6 +11,7 @@ import '../../../data/models/menu_item.dart';
 import '../../../data/models/restaurant.dart';
 import '../../../shared/providers/menu_providers.dart';
 import '../../../shared/widgets/app_card.dart';
+import '../../../shared/widgets/app_error_view.dart';
 import '../../../shared/widgets/app_scaffold.dart';
 import '../../../shared/widgets/empty_state.dart';
 import '../../../shared/widgets/veg_dot.dart';
@@ -34,7 +35,7 @@ class AdminMenuScreen extends ConsumerWidget {
       ),
       body: items.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('$e')),
+        error: (e, _) => AppErrorView(error: e),
         data: (list) {
           if (list.isEmpty) {
             return const EmptyState(
