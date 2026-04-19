@@ -24,8 +24,9 @@ final currentUserIdProvider = Provider<String?>((ref) {
 });
 
 /// Loads the profile row for the current user. null when signed out.
-/// If the auth user exists but the `profiles` row is missing (e.g. the
-/// handle_new_user trigger didn't fire), we auto-create a default row.
+/// When the row is missing we INSERT a bare row (role defaults to 'user' in
+/// the DB) — never upsert, because an upsert here can silently overwrite an
+/// admin/delivery role if RLS briefly hid the existing row.
 final currentProfileProvider =
     FutureProvider<UserProfile?>((ref) async {
   final userId = ref.watch(currentUserIdProvider);
@@ -37,12 +38,18 @@ final currentProfileProvider =
   if (!AppConfig.hasSupabase) return null;
   final user = sb.auth.currentUser;
   if (user == null) return null;
-  return repo.upsert(UserProfile(
-    id: userId,
-    role: UserRole.user,
-    email: user.email,
-    phone: user.phone,
-  ));
+
+  try {
+    await sb.supabase.from('profiles').insert({
+      'id': userId,
+      if (user.email != null) 'email': user.email,
+      if (user.phone != null) 'phone': user.phone,
+    });
+  } on PostgrestException {
+    // Row already exists (race with handle_new_user trigger). Fine — we
+    // fall through and re-fetch so we respect whatever role the DB has.
+  }
+  return repo.fetchById(userId);
 });
 
 /// Convenience — resolves role to user/admin (defaults to user).

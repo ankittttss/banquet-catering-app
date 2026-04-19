@@ -29,4 +29,13 @@ abstract interface class DeliveryRepository {
 
   /// Admin-side: broadcast a new delivery offer for a placed order.
   Future<String> broadcastOffer(DeliveryAssignment draft);
+
+  /// Admin override: find the existing `offered` delivery row for this order
+  /// (created by the auto-dispatch trigger) and assign it to [driverId]. If
+  /// no offer exists yet, broadcasts a fresh one using [draft] and assigns it.
+  Future<void> assignDriverToOrder({
+    required String orderId,
+    required String driverId,
+    required DeliveryAssignment draft,
+  });
 }

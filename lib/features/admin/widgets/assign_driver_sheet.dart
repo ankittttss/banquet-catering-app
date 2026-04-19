@@ -21,7 +21,12 @@ class AssignDriverSheet extends ConsumerStatefulWidget {
     return showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.transparent,
+      useSafeArea: true,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius:
+            BorderRadius.vertical(top: Radius.circular(AppSizes.radiusXl)),
+      ),
       builder: (_) => AssignDriverSheet._(order: order),
     );
   }
@@ -43,34 +48,27 @@ class _State extends ConsumerState<AssignDriverSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return DraggableScrollableSheet(
-      initialChildSize: 0.7,
-      minChildSize: 0.5,
-      maxChildSize: 0.9,
-      expand: false,
-      builder: (_, scrollCtl) => Container(
-        decoration: const BoxDecoration(
-          color: AppColors.surface,
-          borderRadius:
-              BorderRadius.vertical(top: Radius.circular(AppSizes.radiusXl)),
-        ),
-        child: Column(
-          children: [
-            const SizedBox(height: AppSizes.md),
-            Container(
-              width: 36,
-              height: 4,
-              decoration: BoxDecoration(
-                color: AppColors.border,
-                borderRadius:
-                    BorderRadius.circular(AppSizes.radiusPill),
-              ),
+    final screenH = MediaQuery.of(context).size.height;
+    final listHeight = (screenH * 0.55).clamp(200.0, 520.0);
+    return SingleChildScrollView(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const SizedBox(height: AppSizes.md),
+          Container(
+            width: 36,
+            height: 4,
+            decoration: BoxDecoration(
+              color: AppColors.border,
+              borderRadius:
+                  BorderRadius.circular(AppSizes.radiusPill),
             ),
-            const SizedBox(height: AppSizes.lg),
-            Padding(
-              padding: const EdgeInsets.symmetric(
-                  horizontal: AppSizes.pagePadding),
-              child: Row(
+          ),
+          const SizedBox(height: AppSizes.lg),
+          Padding(
+            padding: const EdgeInsets.symmetric(
+                horizontal: AppSizes.pagePadding),
+            child: Row(
                 children: [
                   Expanded(
                     child: Column(
@@ -100,15 +98,47 @@ class _State extends ConsumerState<AssignDriverSheet> {
               ),
             ),
             const SizedBox(height: AppSizes.md),
-            Expanded(
+            SizedBox(
+              height: listHeight,
               child: FutureBuilder<List<DriverProfile>>(
                 future: _driversFuture,
                 builder: (context, snap) {
-                  if (!snap.hasData) {
+                  if (snap.connectionState != ConnectionState.done) {
                     return const Center(
                         child: CircularProgressIndicator());
                   }
-                  final drivers = snap.data!;
+                  if (snap.hasError) {
+                    return Padding(
+                      padding:
+                          const EdgeInsets.all(AppSizes.pagePadding),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(PhosphorIconsDuotone.warning,
+                              size: 48, color: AppColors.error),
+                          const SizedBox(height: AppSizes.md),
+                          Text('Couldn\'t load drivers',
+                              style: AppTextStyles.heading2),
+                          const SizedBox(height: AppSizes.xs),
+                          Text(
+                            '${snap.error}',
+                            style: AppTextStyles.caption,
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: AppSizes.md),
+                          OutlinedButton(
+                            onPressed: () => setState(() {
+                              _driversFuture = ref
+                                  .read(deliveryRepositoryProvider)
+                                  .fetchAvailableDrivers();
+                            }),
+                            child: const Text('Retry'),
+                          ),
+                        ],
+                      ),
+                    );
+                  }
+                  final drivers = snap.data ?? const <DriverProfile>[];
                   if (drivers.isEmpty) {
                     return Padding(
                       padding:
@@ -133,7 +163,6 @@ class _State extends ConsumerState<AssignDriverSheet> {
                     );
                   }
                   return ListView.separated(
-                    controller: scrollCtl,
                     padding: const EdgeInsets.symmetric(
                       horizontal: AppSizes.pagePaddingSm,
                       vertical: AppSizes.xs,
@@ -152,7 +181,6 @@ class _State extends ConsumerState<AssignDriverSheet> {
             ),
           ],
         ),
-      ),
     );
   }
 
@@ -184,19 +212,29 @@ class _State extends ConsumerState<AssignDriverSheet> {
 
   Future<void> _assign(DriverProfile d) async {
     setState(() => _busy = true);
-    final repo = ref.read(deliveryRepositoryProvider);
-    final draft = _draftFromOrder();
-    final id = await repo.broadcastOffer(draft);
-    await repo.acceptOffer(id, d.id);
-    // Reflect on the order side: mark dispatched.
-    await ref
-        .read(orderRepositoryProvider)
-        .updateStatus(widget.order.id, OrderStatus.dispatched);
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Assigned to ${d.name}')),
-    );
-    Navigator.of(context).pop();
+    try {
+      final repo = ref.read(deliveryRepositoryProvider);
+      await repo.assignDriverToOrder(
+        orderId: widget.order.id,
+        driverId: d.id,
+        draft: _draftFromOrder(driverId: d.id),
+      );
+      // Reflect on the order side: mark dispatched.
+      await ref
+          .read(orderRepositoryProvider)
+          .updateStatus(widget.order.id, OrderStatus.dispatched);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Assigned to ${d.name}')),
+      );
+      Navigator.of(context).pop();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _busy = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Assign failed: $e')),
+      );
+    }
   }
 
   Future<void> _broadcast() async {
