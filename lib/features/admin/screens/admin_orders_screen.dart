@@ -15,6 +15,7 @@ import '../../../shared/widgets/app_card.dart';
 import '../../../shared/widgets/app_scaffold.dart';
 import '../../../shared/widgets/empty_state.dart';
 import '../../../shared/widgets/status_badge.dart';
+import '../widgets/assign_driver_sheet.dart';
 
 final adminOrdersProvider =
     FutureProvider.autoDispose<List<OrderSummary>>((ref) {
@@ -141,9 +142,33 @@ class _OrderTile extends ConsumerWidget {
                 ),
             ],
           ),
+          if (_canAssign(order.orderStatus)) ...[
+            const SizedBox(height: AppSizes.sm),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: () => AssignDriverSheet.show(context, order),
+                icon: const Icon(PhosphorIconsBold.motorcycle, size: 16),
+                label: Text(
+                  order.driverName == null
+                      ? 'Assign driver'
+                      : 'Reassign driver (${order.driverName})',
+                ),
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  minimumSize: const Size(0, 36),
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
   }
+
+  bool _canAssign(OrderStatus s) =>
+      s == OrderStatus.confirmed ||
+      s == OrderStatus.preparing ||
+      s == OrderStatus.dispatched;
 
 }

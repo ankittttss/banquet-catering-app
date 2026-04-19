@@ -20,6 +20,9 @@ class UserAddress {
     required this.label,
     required this.fullAddress,
     this.isDefault = false,
+    this.latitude,
+    this.longitude,
+    this.shortLabel,
   });
 
   final String id;
@@ -27,6 +30,12 @@ class UserAddress {
   final AddressLabel label;
   final String fullAddress;
   final bool isDefault;
+  final double? latitude;
+  final double? longitude;
+  /// Compact version of the full address, e.g. "Banjara Hills, Hyderabad".
+  final String? shortLabel;
+
+  bool get hasCoords => latitude != null && longitude != null;
 
   factory UserAddress.fromMap(Map<String, dynamic> map) => UserAddress(
         id: map['id'] as String,
@@ -34,6 +43,9 @@ class UserAddress {
         label: AddressLabel.fromString(map['label'] as String?),
         fullAddress: map['full_address'] as String,
         isDefault: (map['is_default'] as bool?) ?? false,
+        latitude: (map['latitude'] as num?)?.toDouble(),
+        longitude: (map['longitude'] as num?)?.toDouble(),
+        shortLabel: map['short_label'] as String?,
       );
 }
 
@@ -44,10 +56,16 @@ class UserAddressInput {
     required this.label,
     required this.fullAddress,
     required this.isDefault,
+    this.latitude,
+    this.longitude,
+    this.shortLabel,
   });
 
   final String? id;
   final AddressLabel label;
   final String fullAddress;
   final bool isDefault;
+  final double? latitude;
+  final double? longitude;
+  final String? shortLabel;
 }

@@ -13,6 +13,7 @@ import '../../../shared/providers/address_providers.dart';
 import '../../../shared/providers/repositories_providers.dart';
 import '../../../shared/widgets/app_scaffold.dart';
 import '../../../shared/widgets/empty_state.dart';
+import '../widgets/address_search_sheet.dart';
 
 class AddressesScreen extends ConsumerWidget {
   const AddressesScreen({super.key});
@@ -306,6 +307,13 @@ class _EditorState extends ConsumerState<_Editor> {
   bool _isDefault = false;
   bool _saving = false;
 
+  // Coordinates from the Photon picker — kept separately so we don't lose
+  // them if the user tweaks the address text afterwards (e.g. adding house
+  // number, landmark).
+  double? _lat;
+  double? _lng;
+  String? _shortLabel;
+
   @override
   void initState() {
     super.initState();
@@ -313,12 +321,26 @@ class _EditorState extends ConsumerState<_Editor> {
     _addrCtrl =
         TextEditingController(text: widget.existing?.fullAddress ?? '');
     _isDefault = widget.existing?.isDefault ?? false;
+    _lat = widget.existing?.latitude;
+    _lng = widget.existing?.longitude;
+    _shortLabel = widget.existing?.shortLabel;
   }
 
   @override
   void dispose() {
     _addrCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _openSearch() async {
+    final result = await AddressSearchSheet.show(context);
+    if (result == null || !mounted) return;
+    setState(() {
+      _addrCtrl.text = result.displayAddress;
+      _lat = result.latitude;
+      _lng = result.longitude;
+      _shortLabel = result.shortLabel;
+    });
   }
 
   Future<void> _save() async {
@@ -332,6 +354,9 @@ class _EditorState extends ConsumerState<_Editor> {
               label: _label,
               fullAddress: txt,
               isDefault: _isDefault,
+              latitude: _lat,
+              longitude: _lng,
+              shortLabel: _shortLabel,
             ),
           );
       if (!mounted) return;
@@ -389,6 +414,49 @@ class _EditorState extends ConsumerState<_Editor> {
             ],
           ),
           const SizedBox(height: AppSizes.md),
+          OutlinedButton.icon(
+            onPressed: _openSearch,
+            style: OutlinedButton.styleFrom(
+              alignment: Alignment.centerLeft,
+              foregroundColor: AppColors.primary,
+              side: BorderSide(
+                  color: AppColors.primary.withValues(alpha: 0.4)),
+              padding: const EdgeInsets.symmetric(
+                  horizontal: AppSizes.md, vertical: AppSizes.md),
+              shape: RoundedRectangleBorder(
+                borderRadius:
+                    BorderRadius.circular(AppSizes.radiusSm),
+              ),
+            ),
+            icon: const Icon(Icons.search_rounded, size: 18),
+            label: Text(
+              _lat == null
+                  ? 'Search an address'
+                  : 'Change searched address',
+              style: AppTextStyles.captionBold
+                  .copyWith(color: AppColors.primary),
+            ),
+          ),
+          if (_lat != null && _shortLabel != null) ...[
+            const SizedBox(height: AppSizes.xs),
+            Row(
+              children: [
+                const Icon(Icons.place_rounded,
+                    size: 14, color: AppColors.success),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    'Pinned: $_shortLabel',
+                    style: AppTextStyles.caption
+                        .copyWith(color: AppColors.success),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+          ],
+          const SizedBox(height: AppSizes.sm),
           TextField(
             controller: _addrCtrl,
             minLines: 2,

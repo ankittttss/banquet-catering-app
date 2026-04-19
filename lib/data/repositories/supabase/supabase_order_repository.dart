@@ -20,11 +20,14 @@ class SupabaseOrderRepository implements OrderRepository {
         .single();
     final eventId = eventRow['id'] as String;
 
+    final restaurantId =
+        cart.isNotEmpty ? cart.first.item.restaurantId : null;
     final orderRow = await supabase
         .from('orders')
         .insert({
           'event_id': eventId,
           'user_id': userId,
+          if (restaurantId != null) 'restaurant_id': restaurantId,
           'food_cost': totals.foodCost,
           'banquet_charge': totals.banquetCharge,
           'delivery_charge': totals.deliveryCharge,

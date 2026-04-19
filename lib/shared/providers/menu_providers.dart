@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/models/menu_category.dart';
 import '../../data/models/menu_item.dart';
 import '../../data/models/restaurant.dart';
+import 'address_providers.dart';
 import 'filters_providers.dart';
 import 'repositories_providers.dart';
 
@@ -10,12 +11,34 @@ final menuCategoriesProvider = FutureProvider<List<MenuCategory>>((ref) {
   return ref.read(menuRepositoryProvider).fetchCategories();
 });
 
-final restaurantsProvider = FutureProvider<List<Restaurant>>((ref) {
-  return ref.read(menuRepositoryProvider).fetchRestaurants();
+/// Home restaurant list. When the active address has coordinates, runs the
+/// `restaurants_near` RPC so the list reorders by distance; otherwise shows
+/// the full catalog. An empty nearby result is returned as-is (empty state)
+/// so the user can tell their locality genuinely has no matches rather than
+/// always seeing the full list.
+final restaurantsProvider = FutureProvider<List<Restaurant>>((ref) async {
+  final repo = ref.read(menuRepositoryProvider);
+  final addr = ref.watch(activeAddressProvider);
+  if (addr != null && addr.hasCoords) {
+    return repo.fetchNearby(
+      latitude: addr.latitude!,
+      longitude: addr.longitude!,
+    );
+  }
+  return repo.fetchRestaurants();
 });
 
 final menuItemsProvider = FutureProvider<List<MenuItem>>((ref) {
   return ref.read(menuRepositoryProvider).fetchMenuItems();
+});
+
+/// Menu items for a single restaurant — avoids the 1000-row PostgREST cap
+/// hit by the all-items [menuItemsProvider].
+final restaurantMenuItemsProvider =
+    FutureProvider.family<List<MenuItem>, String>((ref, restaurantId) {
+  return ref
+      .read(menuRepositoryProvider)
+      .fetchMenuItemsForRestaurant(restaurantId);
 });
 
 /// Currently-selected category id on the menu screen. null = "all".

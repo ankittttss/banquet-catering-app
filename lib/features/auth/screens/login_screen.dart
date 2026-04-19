@@ -192,9 +192,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       final profile = await ref.read(currentProfileProvider.future);
       if (!mounted) return;
       final role = profile?.role ?? UserRole.user;
-      context.go(role == UserRole.admin
-          ? AppRoutes.adminHome
-          : AppRoutes.userHome);
+      context.go(switch (role) {
+        UserRole.admin => AppRoutes.adminHome,
+        UserRole.delivery => AppRoutes.deliveryHome,
+        UserRole.user => AppRoutes.userHome,
+      });
     } on AuthException catch (e) {
       if (!mounted) return;
       final msg = e.message.toLowerCase();
@@ -561,47 +563,17 @@ class _Header extends StatelessWidget {
       ),
       child: Column(
         children: [
-          // Logo mark — gradient rounded-square with dawat.png inside.
-          Container(
-            width: 72,
-            height: 72,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(20),
-              gradient: const LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [_P.redDark, _P.red, _P.gold],
-                stops: [0.0, 0.5, 1.0],
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: _P.red.withValues(alpha: 0.25),
-                  blurRadius: 32,
-                  offset: const Offset(0, 8),
-                ),
-              ],
-            ),
-            alignment: Alignment.center,
-            child: Container(
-              margin: const EdgeInsets.all(2),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.15),
-                  width: 1,
-                ),
-              ),
-              padding: const EdgeInsets.all(10),
-              child: Image.asset(
-                'assets/images/dawat.png',
-                fit: BoxFit.contain,
-                color: Colors.white,
-                colorBlendMode: BlendMode.srcIn,
-                errorBuilder: (_, __, ___) => const Center(
-                  child: Text(
-                    '🍽',
-                    style: TextStyle(fontSize: 32),
-                  ),
+          // Logo mark — native dawat.png.
+          SizedBox(
+            width: 80,
+            height: 80,
+            child: Image.asset(
+              'assets/images/dawat.png',
+              fit: BoxFit.contain,
+              errorBuilder: (_, __, ___) => const Center(
+                child: Text(
+                  '🍽',
+                  style: TextStyle(fontSize: 36),
                 ),
               ),
             ),

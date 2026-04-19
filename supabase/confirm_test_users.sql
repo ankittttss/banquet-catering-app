@@ -3,9 +3,10 @@
 -- Run this in Supabase SQL Editor once. Safe to re-run.
 -- ============================================================================
 
+-- confirmed_at is a generated column in current Supabase — only
+-- email_confirmed_at needs to be set; confirmed_at mirrors it automatically.
 update auth.users
-   set email_confirmed_at = coalesce(email_confirmed_at, now()),
-       confirmed_at       = coalesce(confirmed_at, now())
+   set email_confirmed_at = coalesce(email_confirmed_at, now())
  where email in (
    'ankitsaini7829@gmail.com',
    'ankitsaini955831@gmail.com'

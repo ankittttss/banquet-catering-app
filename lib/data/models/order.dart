@@ -63,6 +63,7 @@ class OrderSummary {
     required this.orderStatus,
     required this.paymentStatus,
     required this.createdAt,
+    this.restaurantId,
     this.eventDate,
     this.location,
     this.guestCount,
@@ -86,6 +87,9 @@ class OrderSummary {
   final OrderStatus orderStatus;
   final PaymentStatus paymentStatus;
   final DateTime createdAt;
+
+  /// FK to restaurants.id — used to load menu/offers/reviews for the order.
+  final String? restaurantId;
 
   // Joined from events table.
   final DateTime? eventDate;
@@ -121,6 +125,7 @@ class OrderSummary {
     return OrderSummary(
       id: map['id'] as String,
       eventId: map['event_id'] as String,
+      restaurantId: map['restaurant_id'] as String?,
       total: (map['total'] as num).toDouble(),
       orderStatus: OrderStatus.fromString(map['order_status'] as String?),
       paymentStatus:

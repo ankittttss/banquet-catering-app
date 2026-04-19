@@ -68,9 +68,11 @@ class _OtpScreenState extends ConsumerState<OtpScreen> {
           ? (await ref.read(currentProfileProvider.future))?.role ??
               UserRole.user
           : UserRole.user;
-      context.go(role == UserRole.admin
-          ? AppRoutes.adminHome
-          : AppRoutes.userHome);
+      context.go(switch (role) {
+        UserRole.admin => AppRoutes.adminHome,
+        UserRole.delivery => AppRoutes.deliveryHome,
+        UserRole.user => AppRoutes.userHome,
+      });
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

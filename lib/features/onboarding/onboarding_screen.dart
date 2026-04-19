@@ -189,6 +189,7 @@ class _SlideData {
     required this.orbit1Duration,
     required this.orbit2Duration,
     required this.centerDuration,
+    this.centerAsset,
   });
 
   final _SlideTheme theme;
@@ -205,6 +206,9 @@ class _SlideData {
   final List<String> orbit2;
   /// The central spinning emoji.
   final String center;
+  /// Optional asset path rendered in the center instead of [center]. When
+  /// set, the asset is tinted with [_SlideTheme.primary].
+  final String? centerAsset;
   /// 7 sparkle positions (Alignment-style coords in [-1,1]).
   final List<Alignment> sparkles;
   final Duration orbit1Duration;
@@ -232,6 +236,7 @@ final _slides = <_SlideData>[
     orbit1: const ['🎉', '🎁', '✨', '🎊'],
     orbit2: const ['🥂', '🎂'],
     center: '🎉',
+    centerAsset: 'assets/images/dawat.png',
     sparkles: const [
       Alignment(-0.72, -0.6),
       Alignment(0.6, -0.8),
@@ -362,6 +367,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           data: _slides[i],
           index: i,
           total: _slides.length,
+          isActive: i == _page,
           onSkip: _skip,
           onNext: _next,
         ),
@@ -377,6 +383,7 @@ class _SlideView extends StatelessWidget {
     required this.data,
     required this.index,
     required this.total,
+    required this.isActive,
     required this.onSkip,
     required this.onNext,
   });
@@ -384,6 +391,7 @@ class _SlideView extends StatelessWidget {
   final _SlideData data;
   final int index;
   final int total;
+  final bool isActive;
   final VoidCallback onSkip;
   final VoidCallback onNext;
 
@@ -424,37 +432,45 @@ class _SlideView extends StatelessWidget {
           ),
         ),
 
-        // Sparkles.
-        for (int i = 0; i < data.sparkles.length; i++)
-          Positioned.fill(
-            child: IgnorePointer(
-              child: Align(
-                alignment: data.sparkles[i],
-                child: _Sparkle(
-                  color: t.sparkleColor,
-                  delay: Duration(milliseconds: 200 * i),
+        // Sparkles — rendered only for the visible slide to keep animation
+        // work off the GPU on web for off-screen pages.
+        if (isActive)
+          for (int i = 0; i < data.sparkles.length; i++)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: Align(
+                  alignment: data.sparkles[i],
+                  child: _Sparkle(
+                    color: t.sparkleColor,
+                    delay: Duration(milliseconds: 200 * i),
+                  ),
                 ),
               ),
             ),
-          ),
 
         SafeArea(
           child: Column(
             children: [
-              // Top row: Skip.
+              // Top row: brand chip on the left, Skip on the right.
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-                child: Align(
-                  alignment: Alignment.centerRight,
-                  child: _SkipButton(theme: t, onTap: onSkip),
+                child: Row(
+                  children: [
+                    _BrandChip(theme: t),
+                    const Spacer(),
+                    _SkipButton(theme: t, onTap: onSkip),
+                  ],
                 ),
               ),
 
-              // Scene: plate + orbits.
+              // Scene: plate + orbits. RepaintBoundary keeps the spinning
+              // plate from forcing page-level repaints on web.
               SizedBox(
                 height: 360,
                 child: Center(
-                  child: _Plate(data: data),
+                  child: RepaintBoundary(
+                    child: _Plate(data: data, isActive: isActive),
+                  ),
                 ),
               ),
 
@@ -471,7 +487,7 @@ class _SlideView extends StatelessWidget {
                       const SizedBox(height: 12),
                       _Headline(data: data),
                       const SizedBox(height: 20),
-                      _LangTicker(data: data),
+                      _LangTicker(data: data, isActive: isActive),
                       const SizedBox(height: 24),
                       _NavRow(
                         total: total,
@@ -485,6 +501,40 @@ class _SlideView extends StatelessWidget {
                 ),
               ),
             ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ───────────────────────── Brand chip ─────────────────────────
+
+class _BrandChip extends StatelessWidget {
+  const _BrandChip({required this.theme});
+  final _SlideTheme theme;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(
+          width: 28,
+          height: 28,
+          child: Image.asset(
+            'assets/images/dawat.png',
+            fit: BoxFit.contain,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Text(
+          'Dawat',
+          style: GoogleFonts.instrumentSerif(
+            fontSize: 18,
+            fontWeight: FontWeight.w400,
+            color: theme.tagLine,
+            letterSpacing: -0.2,
           ),
         ),
       ],
@@ -555,8 +605,9 @@ class _Sparkle extends StatelessWidget {
 // ───────────────────────── Plate ─────────────────────────
 
 class _Plate extends StatefulWidget {
-  const _Plate({required this.data});
+  const _Plate({required this.data, required this.isActive});
   final _SlideData data;
+  final bool isActive;
 
   @override
   State<_Plate> createState() => _PlateState();
@@ -574,15 +625,34 @@ class _PlateState extends State<_Plate>
     _o1 = AnimationController(
       vsync: this,
       duration: widget.data.orbit1Duration,
-    )..repeat();
+    );
     _o2 = AnimationController(
       vsync: this,
       duration: widget.data.orbit2Duration,
-    )..repeat();
+    );
     _center = AnimationController(
       vsync: this,
       duration: widget.data.centerDuration,
-    )..repeat();
+    );
+    _applyActive();
+  }
+
+  @override
+  void didUpdateWidget(covariant _Plate old) {
+    super.didUpdateWidget(old);
+    if (widget.isActive != old.isActive) _applyActive();
+  }
+
+  void _applyActive() {
+    if (widget.isActive) {
+      if (!_o1.isAnimating) _o1.repeat();
+      if (!_o2.isAnimating) _o2.repeat();
+      if (!_center.isAnimating) _center.repeat();
+    } else {
+      _o1.stop();
+      _o2.stop();
+      _center.stop();
+    }
   }
 
   @override
@@ -672,16 +742,25 @@ class _PlateState extends State<_Plate>
               ),
             ),
             alignment: Alignment.center,
-            child: RotationTransition(
-              turns: ReverseAnimation(_center),
-              child: RotationTransition(
-                turns: _center,
-                child: Text(
-                  widget.data.center,
-                  style: const TextStyle(fontSize: 60),
-                ),
-              ),
-            ),
+            child: widget.data.centerAsset == null
+                ? RotationTransition(
+                    turns: ReverseAnimation(_center),
+                    child: RotationTransition(
+                      turns: _center,
+                      child: Text(
+                        widget.data.center,
+                        style: const TextStyle(fontSize: 60),
+                      ),
+                    ),
+                  )
+                : SizedBox(
+                    width: 92,
+                    height: 92,
+                    child: Image.asset(
+                      widget.data.centerAsset!,
+                      fit: BoxFit.contain,
+                    ),
+                  ),
           ),
         ],
       ),
@@ -789,8 +868,9 @@ class _Headline extends StatelessWidget {
 // ───────────────────────── Language ticker ─────────────────────────
 
 class _LangTicker extends StatefulWidget {
-  const _LangTicker({required this.data});
+  const _LangTicker({required this.data, required this.isActive});
   final _SlideData data;
+  final bool isActive;
 
   @override
   State<_LangTicker> createState() => _LangTickerState();
@@ -803,6 +883,21 @@ class _LangTickerState extends State<_LangTicker> {
   @override
   void initState() {
     super.initState();
+    if (widget.isActive) _start();
+  }
+
+  @override
+  void didUpdateWidget(covariant _LangTicker old) {
+    super.didUpdateWidget(old);
+    if (widget.isActive && _timer == null) {
+      _start();
+    } else if (!widget.isActive) {
+      _timer?.cancel();
+      _timer = null;
+    }
+  }
+
+  void _start() {
     _timer = Timer.periodic(const Duration(milliseconds: 2600), (_) {
       if (!mounted) return;
       setState(() =>

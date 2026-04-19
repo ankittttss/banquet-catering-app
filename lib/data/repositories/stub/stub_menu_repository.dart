@@ -13,7 +13,19 @@ class StubMenuRepository implements MenuRepository {
   Future<List<Restaurant>> fetchRestaurants() async => _restaurants;
 
   @override
+  Future<List<Restaurant>> fetchNearby({
+    required double latitude,
+    required double longitude,
+    double radiusKm = 10,
+  }) async =>
+      _restaurants; // Stub: ignore geo, return full catalog.
+
+  @override
   Future<List<MenuItem>> fetchMenuItems() async => _items;
+
+  @override
+  Future<List<MenuItem>> fetchMenuItemsForRestaurant(String restaurantId) async =>
+      _items.where((i) => i.restaurantId == restaurantId).toList();
 
   static const _categories = [
     MenuCategory(id: 'c1', name: 'Welcome Drinks', sortOrder: 1),

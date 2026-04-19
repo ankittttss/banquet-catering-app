@@ -17,6 +17,10 @@ class Restaurant {
     this.tag,
     this.isPureVeg = false,
     this.popularityScore = 0,
+    this.latitude,
+    this.longitude,
+    this.address,
+    this.distanceKm,
   });
 
   final String id;
@@ -53,6 +57,15 @@ class Restaurant {
   final bool isPureVeg;
   final int popularityScore;
 
+  /// Restaurant coordinates — populated once lat/lng has been set on the row.
+  final double? latitude;
+  final double? longitude;
+  final String? address;
+
+  /// Distance from a query origin (only populated when fetched via the
+  /// `restaurants_near` RPC).
+  final double? distanceKm;
+
   String get deliveryEta {
     if (deliveryMinMinutes == null || deliveryMaxMinutes == null) return '';
     return '$deliveryMinMinutes–$deliveryMaxMinutes min';
@@ -79,5 +92,9 @@ class Restaurant {
         tag: map['tag'] as String?,
         isPureVeg: (map['is_pure_veg'] as bool?) ?? false,
         popularityScore: (map['popularity_score'] as num?)?.toInt() ?? 0,
+        latitude: (map['latitude'] as num?)?.toDouble(),
+        longitude: (map['longitude'] as num?)?.toDouble(),
+        address: map['address'] as String?,
+        distanceKm: (map['distance_km'] as num?)?.toDouble(),
       );
 }

@@ -101,14 +101,14 @@ class _SignedInView extends ConsumerWidget {
           label: 'Help & support',
           iconBg: AppColors.catPurpleLt,
           iconColor: AppColors.catPurple,
-          onTap: () {},
+          onTap: () => context.push(AppRoutes.helpSupport),
         ),
         _ProfileTile(
           icon: Icons.info_rounded,
           label: 'About',
           iconBg: AppColors.surfaceAlt,
           iconColor: AppColors.textSecondary,
-          onTap: () {},
+          onTap: () => context.push(AppRoutes.about),
         ),
         _ProfileTile(
           icon: Icons.logout_rounded,

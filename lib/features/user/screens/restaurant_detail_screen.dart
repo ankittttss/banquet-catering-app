@@ -19,6 +19,7 @@ import '../../../shared/providers/menu_providers.dart';
 import '../../../shared/providers/offers_providers.dart';
 import '../../../shared/widgets/app_scaffold.dart';
 import '../../../shared/widgets/safe_net_image.dart';
+import '../widgets/reviews_section.dart';
 
 class RestaurantDetailScreen extends ConsumerWidget {
   const RestaurantDetailScreen({super.key, required this.restaurantId});
@@ -29,8 +30,10 @@ class RestaurantDetailScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final restaurants =
         ref.watch(restaurantsProvider).valueOrNull ?? const <Restaurant>[];
-    final allItems =
-        ref.watch(menuItemsProvider).valueOrNull ?? const <MenuItem>[];
+    // Fetch menu items for THIS restaurant only — the catalog-wide provider
+    // hits a 1000-row cap and misses most restaurants' menus.
+    final items = ref.watch(restaurantMenuItemsProvider(restaurantId)).valueOrNull ??
+        const <MenuItem>[];
     final categories = ref.watch(menuCategoriesProvider).valueOrNull ??
         const <MenuCategory>[];
     final cartCount = ref.watch(cartCountProvider);
@@ -41,9 +44,6 @@ class RestaurantDetailScreen extends ConsumerWidget {
       orElse: () =>
           const Restaurant(id: '', name: 'Restaurant', deliveryCharge: 0),
     );
-
-    final items =
-        allItems.where((i) => i.restaurantId == restaurantId).toList();
     final catMap = {for (final c in categories) c.id: c};
     final grouped = <String, List<MenuItem>>{};
     for (final it in items) {
@@ -86,6 +86,9 @@ class RestaurantDetailScreen extends ConsumerWidget {
                         _MenuItemRow(item: grouped[catId]![i]),
                   ),
                 ],
+              SliverToBoxAdapter(
+                child: ReviewsSection(restaurantId: restaurantId),
+              ),
               SliverToBoxAdapter(
                   child: SizedBox(height: cartCount > 0 ? 96 : AppSizes.xxl)),
             ],

@@ -21,6 +21,7 @@ import '../../../shared/widgets/app_scaffold.dart';
 import '../../../shared/widgets/empty_state.dart';
 import '../../../shared/widgets/safe_net_image.dart';
 import '../../../shared/widgets/user_bottom_nav.dart';
+import '../widgets/address_picker_sheet.dart';
 
 class UserHomeScreen extends ConsumerWidget {
   const UserHomeScreen({super.key});
@@ -74,9 +75,9 @@ class _LocationHeader extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final def = ref.watch(defaultAddressProvider);
+    final def = ref.watch(activeAddressProvider);
     final label = def?.label.label ?? 'Deliver to';
-    final line = def?.fullAddress ?? 'Set your address';
+    final line = def?.shortLabel ?? def?.fullAddress ?? 'Set your address';
 
     return SliverAppBar(
       pinned: false,
@@ -103,7 +104,7 @@ class _LocationHeader extends ConsumerWidget {
           const SizedBox(width: AppSizes.md),
           Expanded(
             child: InkWell(
-              onTap: () => context.push(AppRoutes.addresses),
+              onTap: () => AddressPickerSheet.show(context),
               borderRadius: BorderRadius.circular(AppSizes.radiusSm),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,

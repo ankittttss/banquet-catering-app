@@ -21,6 +21,8 @@ class AppRoutes {
   static const orderSuccess = '/user/order-success';
   static const myEvents = '/user/events';
   static const orderDetail = '/user/events/:id'; // template
+  static const about = '/user/about';
+  static const helpSupport = '/user/help';
 
   static String restaurantDetailFor(String id) => '/user/restaurants/$id';
 
@@ -29,6 +31,21 @@ class AppRoutes {
   static const adminOrders = '/admin/orders';
   static const adminMenu = '/admin/menu';
   static const adminCharges = '/admin/charges';
+  static const adminPartners = '/admin/partners';
+
+  // Delivery partner
+  static const deliveryHome = '/delivery';
+  static const deliveryActive = '/delivery/active/:id'; // template
+  static const deliveryPickup = '/delivery/pickup/:id'; // template
+  static const deliveryDeliver = '/delivery/deliver/:id'; // template
+  static const deliveryCompleted = '/delivery/completed/:id'; // template
+  static const deliveryEarnings = '/delivery/earnings';
+  static const deliveryHistory = '/delivery/history';
+  static const deliveryProfile = '/delivery/profile';
 
   static String orderDetailFor(String id) => '/user/events/$id';
+  static String deliveryActiveFor(String id) => '/delivery/active/$id';
+  static String deliveryPickupFor(String id) => '/delivery/pickup/$id';
+  static String deliveryDeliverFor(String id) => '/delivery/deliver/$id';
+  static String deliveryCompletedFor(String id) => '/delivery/completed/$id';
 }

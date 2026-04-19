@@ -38,9 +38,11 @@ dependencies:
   # Persistence
   shared_preferences: ^2.2.3
 
-  # Location
+  # Location + maps
   geolocator: ^12.0.0
   geocoding: ^3.0.0
+  flutter_map: ^7.0.2
+  latlong2: ^0.9.1
 
   # Admin — image pick + compress
   image_picker: ^1.1.2

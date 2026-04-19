@@ -18,12 +18,20 @@ class SupabaseAddressRepository implements AddressRepository {
 
   @override
   Future<UserAddress> save(UserAddressInput input) async {
-    final raw = await supabase.rpc('upsert_address', params: {
+    // Build params conditionally so we stay compatible with the older
+    // 4-parameter signature of `upsert_address` for environments where
+    // phase6_geolocation.sql hasn't been run yet.
+    final params = <String, dynamic>{
       'p_id': input.id,
       'p_label': input.label.label,
       'p_address': input.fullAddress,
       'p_is_default': input.isDefault,
-    });
+    };
+    if (input.latitude != null) params['p_latitude'] = input.latitude;
+    if (input.longitude != null) params['p_longitude'] = input.longitude;
+    if (input.shortLabel != null) params['p_short_label'] = input.shortLabel;
+
+    final raw = await supabase.rpc('upsert_address', params: params);
     final map = raw is Map<String, dynamic>
         ? raw
         : (raw as List).first as Map<String, dynamic>;

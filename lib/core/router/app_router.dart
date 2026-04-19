@@ -7,14 +7,25 @@ import '../../features/admin/screens/admin_charges_screen.dart';
 import '../../features/admin/screens/admin_home_screen.dart';
 import '../../features/admin/screens/admin_menu_screen.dart';
 import '../../features/admin/screens/admin_orders_screen.dart';
+import '../../features/admin/screens/admin_partners_screen.dart';
 import '../../features/auth/screens/login_screen.dart';
 import '../../features/auth/screens/otp_screen.dart';
+import '../../features/delivery/screens/active_delivery_screen.dart';
+import '../../features/delivery/screens/delivery_completed_screen.dart';
+import '../../features/delivery/screens/delivery_earnings_screen.dart';
+import '../../features/delivery/screens/delivery_history_screen.dart';
+import '../../features/delivery/screens/delivery_home_screen.dart';
+import '../../features/delivery/screens/delivery_otp_screen.dart';
+import '../../features/delivery/screens/delivery_profile_screen.dart';
+import '../../features/delivery/screens/pickup_checklist_screen.dart';
 import '../../features/onboarding/onboarding_screen.dart';
 import '../../features/splash/splash_screen.dart';
 import '../../features/user/screens/cart_screen.dart';
 import '../../features/user/screens/checkout_screen.dart';
 import '../../features/user/screens/event_details_screen.dart';
 import '../../features/user/screens/menu_screen.dart';
+import '../../features/user/screens/about_screen.dart';
+import '../../features/user/screens/help_support_screen.dart';
 import '../../features/user/screens/my_events_screen.dart';
 import '../../features/user/screens/order_detail_screen.dart';
 import '../../features/user/screens/order_success_screen.dart';
@@ -34,14 +45,26 @@ final appRouterProvider = Provider<GoRouter>((ref) {
   // React to auth state so the router re-evaluates redirects.
   final authChanges = ref.watch(authStateChangesProvider);
 
+  // Snapshot the current role in a plain variable so the synchronous
+  // redirect callback never calls ref.read on a provider whose dependency
+  // is in the middle of changing (which triggers the "Cannot use ref …"
+  // assertion in riverpod).
+  UserRole currentRole = UserRole.user;
+  ref.listen(
+    currentProfileProvider,
+    (_, next) {
+      currentRole = next.valueOrNull?.role ?? UserRole.user;
+    },
+    fireImmediately: true,
+  );
+
   return GoRouter(
     initialLocation: AppRoutes.splash,
     refreshListenable: _RouterRefresh(authChanges),
     redirect: (context, state) {
       final loggedIn =
           AppConfig.hasSupabase && sb.auth.currentUser != null;
-      final profile = ref.read(currentProfileProvider).valueOrNull;
-      final role = profile?.role ?? UserRole.user;
+      final role = currentRole;
 
       final loc = state.matchedLocation;
       final isAuthRoute =
@@ -60,15 +83,22 @@ final appRouterProvider = Provider<GoRouter>((ref) {
 
       // Signed in and landing on an auth route → bounce to home.
       if (loggedIn && isAuthRoute) {
-        return role == UserRole.admin
-            ? AppRoutes.adminHome
-            : AppRoutes.userHome;
+        return _homeFor(role);
       }
+
+      // Dev mode (no Supabase): let devs roam freely across roles for UI work.
+      if (!AppConfig.hasSupabase) return null;
 
       // Block users from admin routes.
       final isAdminRoute = loc.startsWith('/admin');
       if (isAdminRoute && role != UserRole.admin) {
-        return AppRoutes.userHome;
+        return _homeFor(role);
+      }
+
+      // Block non-delivery users from delivery routes.
+      final isDeliveryRoute = loc.startsWith('/delivery');
+      if (isDeliveryRoute && role != UserRole.delivery) {
+        return _homeFor(role);
       }
 
       return null;
@@ -160,6 +190,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         ),
       ),
       GoRoute(
+        path: AppRoutes.about,
+        pageBuilder: (_, s) => _page(s, const AboutScreen()),
+      ),
+      GoRoute(
+        path: AppRoutes.helpSupport,
+        pageBuilder: (_, s) => _page(s, const HelpSupportScreen()),
+      ),
+      GoRoute(
         path: AppRoutes.adminHome,
         pageBuilder: (_, s) => _page(s, const AdminHomeScreen()),
       ),
@@ -175,12 +213,66 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: AppRoutes.adminCharges,
         pageBuilder: (_, s) => _page(s, const AdminChargesScreen()),
       ),
+      GoRoute(
+        path: AppRoutes.adminPartners,
+        pageBuilder: (_, s) => _page(s, const AdminPartnersScreen()),
+      ),
+      GoRoute(
+        path: AppRoutes.deliveryHome,
+        pageBuilder: (_, s) => _page(s, const DeliveryHomeScreen()),
+      ),
+      GoRoute(
+        path: AppRoutes.deliveryActive,
+        pageBuilder: (_, s) => _page(
+          s,
+          ActiveDeliveryScreen(assignmentId: s.pathParameters['id']!),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.deliveryPickup,
+        pageBuilder: (_, s) => _page(
+          s,
+          PickupChecklistScreen(assignmentId: s.pathParameters['id']!),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.deliveryDeliver,
+        pageBuilder: (_, s) => _page(
+          s,
+          DeliveryOtpScreen(assignmentId: s.pathParameters['id']!),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.deliveryCompleted,
+        pageBuilder: (_, s) => _page(
+          s,
+          DeliveryCompletedScreen(assignmentId: s.pathParameters['id']!),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.deliveryEarnings,
+        pageBuilder: (_, s) => _page(s, const DeliveryEarningsScreen()),
+      ),
+      GoRoute(
+        path: AppRoutes.deliveryHistory,
+        pageBuilder: (_, s) => _page(s, const DeliveryHistoryScreen()),
+      ),
+      GoRoute(
+        path: AppRoutes.deliveryProfile,
+        pageBuilder: (_, s) => _page(s, const DeliveryProfileScreen()),
+      ),
     ],
     errorBuilder: (_, state) => Scaffold(
       body: Center(child: Text('Route not found: ${state.matchedLocation}')),
     ),
   );
 });
+
+String _homeFor(UserRole role) => switch (role) {
+      UserRole.admin => AppRoutes.adminHome,
+      UserRole.delivery => AppRoutes.deliveryHome,
+      UserRole.user => AppRoutes.userHome,
+    };
 
 CustomTransitionPage<void> _page(GoRouterState state, Widget child) {
   return CustomTransitionPage(

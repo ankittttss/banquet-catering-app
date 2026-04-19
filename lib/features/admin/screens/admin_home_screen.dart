@@ -62,6 +62,13 @@ class AdminHomeScreen extends ConsumerWidget {
             icon: PhosphorIconsDuotone.currencyInr,
             onTap: () => context.push(AppRoutes.adminCharges),
           ),
+          const SizedBox(height: AppSizes.md),
+          _AdminTile(
+            label: 'Delivery partners',
+            desc: 'Invite drivers and track joined partners',
+            icon: PhosphorIconsDuotone.motorcycle,
+            onTap: () => context.push(AppRoutes.adminPartners),
+          ),
         ]
             .animate(interval: 60.ms)
             .fadeIn(duration: 300.ms)

@@ -13,7 +13,10 @@ import '../../../core/constants/app_text_styles.dart';
 import '../../../core/router/app_routes.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../data/models/order.dart';
+import '../../../shared/providers/menu_providers.dart';
 import '../../../shared/providers/order_providers.dart';
+import '../../../shared/providers/review_providers.dart';
+import '../widgets/rate_order_sheet.dart';
 
 // ───────────────────────── Palette (Dawat tracking) ─────────────────────────
 
@@ -640,6 +643,9 @@ class _BottomSheet extends StatelessWidget {
             _StatusHeader(order: order),
             _ProgressBar(order: order),
             _Timeline(order: order),
+            if (order.orderStatus == OrderStatus.delivered &&
+                order.restaurantId != null)
+              _RateOrderCard(order: order),
             const _SheetDivider(),
             if (order.driverName != null) ...[
               _DriverSection(order: order),
@@ -1723,6 +1729,114 @@ class _ErrorView extends StatelessWidget {
             const SizedBox(height: AppSizes.xs),
             Text(message,
                 style: AppTextStyles.bodyMuted, textAlign: TextAlign.center),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ───────────────────────── Rate-your-order card ─────────────────────────
+
+class _RateOrderCard extends ConsumerWidget {
+  const _RateOrderCard({required this.order});
+  final OrderSummary order;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final restaurantId = order.restaurantId!;
+    final reviewAsync = ref.watch(myReviewForOrderProvider(order.id));
+    final restaurants = ref.watch(restaurantsProvider).valueOrNull;
+    final matches = restaurants?.where((r) => r.id == restaurantId);
+    final name = (matches != null && matches.isNotEmpty)
+        ? matches.first.name
+        : 'this restaurant';
+
+    final existing = reviewAsync.valueOrNull;
+    final alreadyRated = existing != null;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppSizes.pagePadding,
+        AppSizes.md,
+        AppSizes.pagePadding,
+        AppSizes.sm,
+      ),
+      child: Container(
+        padding: const EdgeInsets.all(AppSizes.md + 2),
+        decoration: BoxDecoration(
+          color: AppColors.catGoldLt,
+          borderRadius: BorderRadius.circular(AppSizes.radiusMd),
+          border: Border.all(
+              color: AppColors.accent.withValues(alpha: 0.25)),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(AppSizes.radiusSm),
+              ),
+              alignment: Alignment.center,
+              child: const Icon(Icons.star_rounded,
+                  color: AppColors.accent, size: 24),
+            ),
+            const SizedBox(width: AppSizes.md),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    alreadyRated
+                        ? 'You rated this order'
+                        : 'How was your order?',
+                    style: AppTextStyles.heading2,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    alreadyRated
+                        ? '${existing.rating}★ — tap to edit'
+                        : 'Share a rating for $name',
+                    style: AppTextStyles.caption
+                        .copyWith(color: AppColors.textSecondary),
+                  ),
+                  const SizedBox(height: AppSizes.sm),
+                  FilledButton(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppColors.accent,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: AppSizes.md,
+                        vertical: AppSizes.sm,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius:
+                            BorderRadius.circular(AppSizes.radiusSm),
+                      ),
+                      minimumSize: const Size(0, 36),
+                    ),
+                    onPressed: () {
+                      HapticFeedback.selectionClick();
+                      showRateOrderSheet(
+                        context,
+                        restaurantId: restaurantId,
+                        restaurantName: name,
+                        orderId: order.id,
+                        existing: existing,
+                      );
+                    },
+                    child: Text(
+                      alreadyRated ? 'Edit rating' : 'Rate order',
+                      style: AppTextStyles.buttonLabel
+                          .copyWith(color: Colors.white),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ],
         ),
       ),

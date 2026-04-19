@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/config/app_config.dart';
 import '../../core/constants/app_colors.dart';
@@ -56,9 +55,11 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
     final profile = await ref.read(currentProfileProvider.future);
     if (!mounted) return;
     final role = profile?.role ?? UserRole.user;
-    context.go(role == UserRole.admin
-        ? AppRoutes.adminHome
-        : AppRoutes.userHome);
+    context.go(switch (role) {
+      UserRole.admin => AppRoutes.adminHome,
+      UserRole.delivery => AppRoutes.deliveryHome,
+      UserRole.user => AppRoutes.userHome,
+    });
   }
 
   @override
@@ -69,14 +70,9 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
+            SizedBox(
               width: 140,
               height: 140,
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.14),
-                shape: BoxShape.circle,
-              ),
               child: Image.asset(
                 'assets/images/dawat.png',
                 fit: BoxFit.contain,
