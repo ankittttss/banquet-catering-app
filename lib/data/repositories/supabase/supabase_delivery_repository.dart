@@ -148,6 +148,31 @@ class SupabaseDeliveryRepository implements DeliveryRepository {
   }
 
   @override
+  Future<void> assignDriverToOrder({
+    required String orderId,
+    required String driverId,
+    required DeliveryAssignment draft,
+  }) async {
+    // Prefer the auto-dispatched offer row (status='offered', no driver yet)
+    // so we don't create duplicate deliveries for the same order.
+    final existing = await supabase
+        .from('deliveries')
+        .select('id, status')
+        .eq('order_id', orderId)
+        .order('offered_at', ascending: false)
+        .limit(1)
+        .maybeSingle();
+
+    String assignmentId;
+    if (existing != null) {
+      assignmentId = existing['id'] as String;
+    } else {
+      assignmentId = await broadcastOffer(draft);
+    }
+    await acceptOffer(assignmentId, driverId);
+  }
+
+  @override
   Future<String> broadcastOffer(DeliveryAssignment draft) async {
     final row = await supabase.from('deliveries').insert({
       'order_id': draft.orderId,

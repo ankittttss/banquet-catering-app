@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../data/models/user_profile.dart';
 import '../../data/models/user_role.dart';
 import '../../features/admin/screens/admin_charges_screen.dart';
 import '../../features/admin/screens/admin_home_screen.dart';
@@ -45,15 +46,15 @@ final appRouterProvider = Provider<GoRouter>((ref) {
   // React to auth state so the router re-evaluates redirects.
   final authChanges = ref.watch(authStateChangesProvider);
 
-  // Snapshot the current role in a plain variable so the synchronous
-  // redirect callback never calls ref.read on a provider whose dependency
-  // is in the middle of changing (which triggers the "Cannot use ref …"
-  // assertion in riverpod).
-  UserRole currentRole = UserRole.user;
+  // Snapshot the profile as-is (not just the role) so the redirect callback
+  // can tell "still loading" from "resolved as user". Without this, an admin
+  // would get bounced to /user while their profile is mid-load.
+  var profileAsync =
+      const AsyncValue<UserProfile?>.loading();
   ref.listen(
     currentProfileProvider,
     (_, next) {
-      currentRole = next.valueOrNull?.role ?? UserRole.user;
+      profileAsync = next;
     },
     fireImmediately: true,
   );
@@ -64,7 +65,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     redirect: (context, state) {
       final loggedIn =
           AppConfig.hasSupabase && sb.auth.currentUser != null;
-      final role = currentRole;
 
       final loc = state.matchedLocation;
       final isAuthRoute =
@@ -81,13 +81,20 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         return AppRoutes.login;
       }
 
+      // Dev mode (no Supabase): let devs roam freely across roles for UI work.
+      if (!AppConfig.hasSupabase) return null;
+
+      // Profile not resolved yet — don't make a routing decision based on a
+      // stale default role. Splash is already showing; keep the current
+      // location until the listener updates.
+      if (loggedIn && profileAsync.isLoading) return null;
+
+      final role = profileAsync.valueOrNull?.role ?? UserRole.user;
+
       // Signed in and landing on an auth route → bounce to home.
       if (loggedIn && isAuthRoute) {
         return _homeFor(role);
       }
-
-      // Dev mode (no Supabase): let devs roam freely across roles for UI work.
-      if (!AppConfig.hasSupabase) return null;
 
       // Block users from admin routes.
       final isAdminRoute = loc.startsWith('/admin');

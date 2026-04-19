@@ -221,4 +221,19 @@ class StubDeliveryRepository implements DeliveryRepository {
     _pushOffers();
     return draft.id;
   }
+
+  @override
+  Future<void> assignDriverToOrder({
+    required String orderId,
+    required String driverId,
+    required DeliveryAssignment draft,
+  }) async {
+    final existing = _assignments.values
+        .where((a) => a.orderId == orderId)
+        .toList()
+      ..sort((a, b) => b.offeredAt.compareTo(a.offeredAt));
+    final id =
+        existing.isNotEmpty ? existing.first.id : await broadcastOffer(draft);
+    await acceptOffer(id, driverId);
+  }
 }
