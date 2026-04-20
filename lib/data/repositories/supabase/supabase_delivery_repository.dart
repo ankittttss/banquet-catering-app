@@ -16,17 +16,27 @@ class SupabaseDeliveryRepository implements DeliveryRepository {
   }
 
   @override
-  Stream<DriverProfile> streamDriver(String driverId) {
-    return supabase
-        .from('profiles')
-        .stream(primaryKey: ['id'])
-        .eq('id', driverId)
-        .map((rows) {
-      if (rows.isEmpty) {
-        throw StateError('Driver profile not found: $driverId');
+  Stream<DriverProfile> streamDriver(String driverId) async* {
+    // Initial REST fetch — always succeeds under simple owner-RLS.
+    try {
+      final row = await supabase
+          .from('profiles')
+          .select()
+          .eq('id', driverId)
+          .maybeSingle();
+      if (row != null) yield _driverFromProfileRow(row);
+    } catch (_) {
+      // If the initial read fails we just fall through to realtime.
+    }
+    try {
+      final stream = supabase.from('profiles').stream(primaryKey: ['id']);
+      await for (final rows in stream) {
+        final mine = rows.where((r) => r['id'] == driverId).toList();
+        if (mine.isNotEmpty) yield _driverFromProfileRow(mine.first);
       }
-      return _driverFromProfileRow(rows.first);
-    });
+    } catch (_) {
+      // Realtime unavailable — stick with initial fetch.
+    }
   }
 
   @override
@@ -37,31 +47,65 @@ class SupabaseDeliveryRepository implements DeliveryRepository {
   }
 
   @override
-  Stream<List<DeliveryAssignment>> streamOffers() {
-    return supabase
-        .from('deliveries')
-        .stream(primaryKey: ['id'])
-        .eq('status', 'offered')
-        .order('offered_at')
-        .map((rows) =>
-            rows.map(_assignmentFromRow).toList(growable: false));
+  Stream<List<DeliveryAssignment>> streamOffers() async* {
+    try {
+      final rows = await supabase
+          .from('deliveries')
+          .select()
+          .eq('status', 'offered')
+          .filter('driver_id', 'is', null)
+          .order('offered_at');
+      yield rows.map(_assignmentFromRow).toList(growable: false);
+    } catch (_) {
+      yield const <DeliveryAssignment>[];
+    }
+    try {
+      final stream = supabase
+          .from('deliveries')
+          .stream(primaryKey: ['id'])
+          .order('offered_at');
+      await for (final rows in stream) {
+        yield rows
+            .where((r) =>
+                r['status'] == 'offered' && r['driver_id'] == null)
+            .map(_assignmentFromRow)
+            .toList(growable: false);
+      }
+    } catch (_) {
+      // Realtime unavailable — initial offers already surfaced.
+    }
   }
 
   @override
-  Stream<DeliveryAssignment?> streamActive(String driverId) {
-    return supabase
-        .from('deliveries')
-        .stream(primaryKey: ['id'])
-        .eq('driver_id', driverId)
-        .order('offered_at', ascending: false)
-        .map((rows) {
-      final active = rows.where((r) {
-        final s = r['status'] as String?;
-        return s == 'accepted' || s == 'picked_up';
-      }).toList();
-      if (active.isEmpty) return null;
-      return _assignmentFromRow(active.first);
-    });
+  Stream<DeliveryAssignment?> streamActive(String driverId) async* {
+    try {
+      final rows = await supabase
+          .from('deliveries')
+          .select()
+          .eq('driver_id', driverId)
+          .inFilter('status', ['accepted', 'picked_up'])
+          .order('offered_at', ascending: false)
+          .limit(1);
+      yield rows.isEmpty ? null : _assignmentFromRow(rows.first);
+    } catch (_) {
+      yield null;
+    }
+    try {
+      final stream = supabase
+          .from('deliveries')
+          .stream(primaryKey: ['id'])
+          .order('offered_at', ascending: false);
+      await for (final rows in stream) {
+        final active = rows.where((r) {
+          if (r['driver_id'] != driverId) return false;
+          final s = r['status'] as String?;
+          return s == 'accepted' || s == 'picked_up';
+        }).toList();
+        yield active.isEmpty ? null : _assignmentFromRow(active.first);
+      }
+    } catch (_) {
+      // Realtime unavailable.
+    }
   }
 
   @override

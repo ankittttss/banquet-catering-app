@@ -9,6 +9,7 @@ class AppRoutes {
   // User
   static const userHome = '/user';
   static const profile = '/user/profile';
+  static const editProfile = '/user/profile/edit';
   static const addresses = '/user/addresses';
   static const eventDetails = '/user/event';
   static const menu = '/user/menu';

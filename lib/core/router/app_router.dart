@@ -26,6 +26,7 @@ import '../../features/user/screens/checkout_screen.dart';
 import '../../features/user/screens/event_details_screen.dart';
 import '../../features/user/screens/menu_screen.dart';
 import '../../features/user/screens/about_screen.dart';
+import '../../features/user/screens/edit_profile_screen.dart';
 import '../../features/user/screens/help_support_screen.dart';
 import '../../features/user/screens/my_events_screen.dart';
 import '../../features/user/screens/order_detail_screen.dart';
@@ -137,6 +138,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: AppRoutes.profile,
         pageBuilder: (_, s) => _page(s, const ProfileScreen()),
+      ),
+      GoRoute(
+        path: AppRoutes.editProfile,
+        pageBuilder: (_, s) => _page(s, const EditProfileScreen()),
       ),
       GoRoute(
         path: AppRoutes.addresses,
