@@ -59,18 +59,39 @@ class SupabaseOrderRepository implements OrderRepository {
   }
 
   @override
-  Stream<List<OrderSummary>> streamMyOrders(String userId) {
-    // Realtime stream of the user's orders (without the events join — streams
-    // don't support joins). We expose placed/confirmed/... timestamps and
-    // driver metadata directly on orders, which is enough for the tracker.
-    return supabase
-        .from('orders')
-        .stream(primaryKey: ['id'])
-        .eq('user_id', userId)
-        .order('created_at', ascending: false)
-        .map((rows) => rows
+  Stream<List<OrderSummary>> streamMyOrders(String userId) async* {
+    // 1. Always yield an initial REST fetch so the UI has data even if
+    //    Realtime subscription fails / times out.
+    try {
+      final rows = await supabase
+          .from('orders')
+          .select('*, events(event_date, location, guest_count)')
+          .eq('user_id', userId)
+          .order('created_at', ascending: false);
+      yield rows
+          .map<OrderSummary>(OrderSummary.fromMap)
+          .toList(growable: false);
+    } catch (_) {
+      yield const <OrderSummary>[];
+    }
+
+    // 2. Try to overlay a realtime stream. If it errors out (publication,
+    //    replica identity, or subscribe timeout), swallow — the UI keeps
+    //    showing the initial fetch above. Pull-to-refresh still works.
+    try {
+      final stream = supabase
+          .from('orders')
+          .stream(primaryKey: ['id'])
+          .order('created_at', ascending: false);
+      await for (final rows in stream) {
+        yield rows
+            .where((r) => r['user_id'] == userId)
             .map<OrderSummary>(OrderSummary.fromMap)
-            .toList(growable: false));
+            .toList(growable: false);
+      }
+    } catch (_) {
+      // Realtime unavailable — initial data already surfaced. No-op.
+    }
   }
 
   @override

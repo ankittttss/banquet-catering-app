@@ -61,6 +61,13 @@ class _SignedInView extends ConsumerWidget {
             .slideY(begin: 0.04, end: 0),
         const SizedBox(height: AppSizes.md),
         _ProfileTile(
+          icon: Icons.edit_rounded,
+          label: 'Edit profile',
+          iconBg: AppColors.catBlueLt,
+          iconColor: AppColors.catBlue,
+          onTap: () => context.push(AppRoutes.editProfile),
+        ),
+        _ProfileTile(
           icon: Icons.receipt_long_rounded,
           label: 'My orders',
           iconBg: AppColors.primarySoft,
