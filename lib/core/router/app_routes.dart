@@ -6,7 +6,7 @@ class AppRoutes {
   static const login = '/login';
   static const otp = '/otp';
 
-  // User
+  // Customer
   static const userHome = '/user';
   static const profile = '/user/profile';
   static const editProfile = '/user/profile/edit';
@@ -34,7 +34,24 @@ class AppRoutes {
   static const adminCharges = '/admin/charges';
   static const adminPartners = '/admin/partners';
 
-  // Delivery partner
+  // Banquet operator
+  static const banquetHome = '/banquet';
+  static const banquetInbox = '/banquet/inbox';
+  static const banquetVenues = '/banquet/venues';
+  static const banquetInventory = '/banquet/inventory';
+
+  // Restaurant operator
+  static const restaurantHome = '/restaurant';
+
+  // Manager
+  static const managerHome = '/manager';
+
+  // Service boy
+  static const serviceBoyHome = '/service-boy';
+
+  // Legacy delivery routes — kept reachable only so existing deep links
+  // don't crash; Phase 12 retired in-app dispatch so these screens are
+  // gated to admins for now.
   static const deliveryHome = '/delivery';
   static const deliveryActive = '/delivery/active/:id'; // template
   static const deliveryPickup = '/delivery/pickup/:id'; // template

@@ -177,7 +177,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           await ref.read(profileRepositoryProvider).upsert(
                 UserProfile(
                   id: user.id,
-                  role: UserRole.user,
+                  role: UserRole.customer,
                   email: email,
                   name: _nameCtrl.text.trim(),
                 ),
@@ -191,11 +191,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       ref.invalidate(currentProfileProvider);
       final profile = await ref.read(currentProfileProvider.future);
       if (!mounted) return;
-      final role = profile?.role ?? UserRole.user;
+      final role = profile?.role ?? UserRole.customer;
       context.go(switch (role) {
         UserRole.admin => AppRoutes.adminHome,
-        UserRole.delivery => AppRoutes.deliveryHome,
-        UserRole.user => AppRoutes.userHome,
+        UserRole.banquet => AppRoutes.banquetHome,
+        UserRole.restaurant => AppRoutes.restaurantHome,
+        UserRole.manager => AppRoutes.managerHome,
+        UserRole.serviceBoy => AppRoutes.serviceBoyHome,
+        UserRole.customer => AppRoutes.userHome,
       });
     } on AuthException catch (e) {
       if (!mounted) return;

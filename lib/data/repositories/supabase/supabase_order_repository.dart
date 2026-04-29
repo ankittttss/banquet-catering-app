@@ -20,23 +20,43 @@ class SupabaseOrderRepository implements OrderRepository {
         .single();
     final eventId = eventRow['id'] as String;
 
-    final restaurantId =
-        cart.isNotEmpty ? cart.first.item.restaurantId : null;
+    // Group cart lines by restaurant — becomes one vendor lot per kitchen.
+    final byRestaurant = <String, List<CartItem>>{};
+    final orderedRestaurants = <String>[];
+    for (final line in cart) {
+      final rid = line.item.restaurantId;
+      if (!byRestaurant.containsKey(rid)) {
+        orderedRestaurants.add(rid);
+        byRestaurant[rid] = <CartItem>[];
+      }
+      byRestaurant[rid]!.add(line);
+    }
+
+    // orders.restaurant_id is kept as a "primary kitchen" hint for legacy
+    // review lookups. For multi-vendor orders we just take the first.
+    final primaryRestaurantId =
+        orderedRestaurants.isNotEmpty ? orderedRestaurants.first : null;
+
     final orderRow = await supabase
         .from('orders')
         .insert({
           'event_id': eventId,
           'user_id': userId,
-          if (restaurantId != null) 'restaurant_id': restaurantId,
+          if (primaryRestaurantId != null)
+            'restaurant_id': primaryRestaurantId,
           'food_cost': totals.foodCost,
           'banquet_charge': totals.banquetCharge,
           'delivery_charge': totals.deliveryCharge,
           'buffet_setup': totals.buffetSetup,
           'service_boy_cost': totals.serviceBoyCost,
+          'service_boy_count': totals.serviceBoyCount,
           'water_bottle_cost': totals.waterBottleCost,
           'platform_fee': totals.platformFee,
           'subtotal': totals.subtotal,
-          'gst': totals.gst,
+          // Persist GST + service tax in the single gst column so
+          // total = subtotal + gst stays internally consistent without
+          // requiring a service_tax column migration.
+          'gst': totals.gst + totals.serviceTax,
           'total': totals.total,
           'payment_status': PaymentStatus.pending.dbValue,
           'order_status': OrderStatus.placed.dbValue,
@@ -45,14 +65,43 @@ class SupabaseOrderRepository implements OrderRepository {
         .single();
     final orderId = orderRow['id'] as String;
 
-    final items = cart
-        .map((c) => {
-              'order_id': orderId,
-              'menu_item_id': c.item.id,
-              'qty': c.qty,
-              'price_at_order': c.item.price,
-            })
-        .toList();
+    // Create one vendor lot per restaurant, compute its subtotal from the
+    // group's billed (per-guest × guest count) line totals.
+    final guestCount = event.guestCount;
+    final lotIdByRestaurant = <String, String>{};
+    for (final rid in orderedRestaurants) {
+      final lines = byRestaurant[rid]!;
+      final lotSubtotal =
+          lines.fold<double>(0, (s, c) => s + c.billedLineTotal(guestCount));
+      final lotRow = await supabase
+          .from('order_vendor_lots')
+          .insert({
+            'order_id': orderId,
+            'restaurant_id': rid,
+            'subtotal': lotSubtotal,
+            'status': 'pending',
+          })
+          .select()
+          .single();
+      lotIdByRestaurant[rid] = lotRow['id'] as String;
+    }
+
+    // Line items carry:
+    //   qty            = portions per guest (legacy absolute for old carts)
+    //   qty_per_guest  = explicit per-guest multiplier (always = qty in v1)
+    //   vendor_lot_id  = kitchen slice this line belongs to
+    final items = cart.map((c) {
+      final rid = c.item.restaurantId;
+      return {
+        'order_id': orderId,
+        'menu_item_id': c.item.id,
+        'qty': c.qty,
+        'qty_per_guest': c.qty,
+        'price_at_order': c.unitPrice,
+        if (lotIdByRestaurant.containsKey(rid))
+          'vendor_lot_id': lotIdByRestaurant[rid],
+      };
+    }).toList();
     await supabase.from('order_items').insert(items);
 
     return orderId;

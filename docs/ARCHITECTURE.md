@@ -36,8 +36,35 @@ without `role='admin'`, no delivery URL without `role='delivery'`.
 | Role | Home route | Can do |
 |---|---|---|
 | **Customer** | `/user` | Browse restaurants, build cart, place order, track, review |
-| **Admin** | `/admin` | Inspect orders, update status, assign drivers, invite partners, tune charges/menu |
-| **Delivery Partner** | `/delivery` | Go online/offline, accept offers, pickup, deliver via OTP, see earnings |
+| **Banquet** | `/banquet` | Receive event bookings for their venues, accept/decline, assign managers, manage equipment inventory |
+| **Restaurant** | `/restaurant` | See vendor lots routed to their kitchens, advance prep status (pending → ready_for_pickup) |
+| **Manager** | `/manager` | Run assigned events, pull service boys from reports, staff the event |
+| **Service Boy** | `/service-boy` | See their event assignments, check in / check out |
+| **Admin** | `/admin` | Oversee every role, tune charges/menu, book Porter, set roles |
+
+Delivery is outsourced to **Porter** (external courier). The legacy
+`/delivery` routes are admin-gated while we phase them out.
+
+### 2.1 Partner registration (how a banquet / restaurant joins)
+
+All operator roles land via the invite-consumption pattern introduced for
+delivery partners (Phase 5) and widened in Phase 22. There is **no public
+self-signup** for operator roles — admin pre-approves by inserting a row
+in `partner_invites`, the prospect signs up, and the `handle_new_user`
+trigger auto-promotes them.
+
+| Operator | Invite payload | What the trigger does on signup |
+|---|---|---|
+| Banquet | `role_to_assign='banquet'` + `venue_name`, `venue_address`, `venue_capacity` | Promotes profile; creates a `banquet_venues` row owned by them. |
+| Restaurant | `role_to_assign='restaurant'` + `restaurant_id` (kitchen they'll manage) | Promotes profile; inserts `restaurant_staff(restaurant_id, profile_id)`. |
+| Manager | `role_to_assign='manager'` | Promotes profile. |
+| Service boy | `role_to_assign='service_boy'` + `created_by` (their future manager) | Promotes profile; sets `reports_to_manager_id = created_by`. |
+| Delivery | `role_to_assign='delivery'` + vehicle info | Promotes profile with vehicle metadata. |
+
+Customers sign up the normal way (email/password or OTP) and land as
+`role='customer'` by default — no invite required. The admin can upgrade
+a customer to any operator role at any time via `profiles.role` update.
+Cheat-sheet inserts live at the bottom of `phase22_partner_registration.sql`.
 
 Role transitions are enforced on both sides: the Flutter router blocks
 unauthorized navigation, and the Postgres RLS policies block unauthorized
@@ -141,6 +168,12 @@ any backend (perfect for demos, designers, or offline dev).
 | `partner_invites` | Admin-created invites so delivery partners can self-signup and auto-promote to `role='delivery'`. |
 | `notifications` | In-app notifications, streamed to the user. |
 | `charges` | Platform fee, buffet setup, service boy rate, GST % — all admin-tunable. |
+| `event_tiers` | Budget / Standard / Premium bands. Drives the restaurant budget filter via `restaurants_for_event` RPC. |
+| `order_vendor_lots` | One row per restaurant per order. Kitchens accept/prep their own slice independently while the customer sees one booking. |
+| `banquet_venues` | Venues owned by a banquet operator. Events are routed here via `events.banquet_venue_id`. |
+| `banquet_inventory` | Per-venue catalog of equipment the operator can sell on top of food cost (water bottles, setup, staff extras). |
+| `restaurant_staff` | Many-to-many between a restaurant login and the kitchens they manage. |
+| `event_assignments` | Manager + service boys on a given event. Unique-index enforces one manager per event; service boys check in/out on their own rows. |
 
 ### 5.2 Triggers — backend does the plumbing
 
@@ -277,7 +310,7 @@ Swiggy use at their lower tiers:
 
 ---
 
-## 9. What's shipped (Phases 1–10)
+## 9. What's shipped
 
 | Phase | Scope |
 |---|---|
@@ -291,6 +324,14 @@ Swiggy use at their lower tiers:
 | 8 | Stock images (Unsplash) for restaurants + menu items, realtime notifications |
 | 9 | Ratings & reviews — table, trigger-computed aggregate, customer UI, restaurant UI |
 | 10 | Mock drivers seeded + auto-dispatch trigger on order placement |
+| 11 | Profile extras + resilient realtime streams, my-orders redesign |
+| 12 | **Retire in-app delivery** — drop auto-dispatch trigger (Porter replaces it) |
+| 13 | **5-role expansion** — `customer / banquet / restaurant / service_boy / manager / admin`; `banquet_venues`, `restaurant_staff`, `profiles.reports_to_manager_id`; role-gated router |
+| 14 | **Event tiers + budget filter** — `event_tiers` seeded Budget/Standard/Premium; `restaurants_for_event` RPC filters kitchens by per-guest price band + radius |
+| 15 | **Multi-vendor cart + per-guest qty** — `order_vendor_lots` (per-kitchen slice of an order, own status machine); `order_items.qty_per_guest`; checkout totals scale by `events.guest_count` |
+| 16 | **Banquet inbox** — `events.banquet_venue_id` + `banquet_event_status`; inbox screen with accept/decline; `banquet_inventory` catalog |
+| 17 | **Event staffing** — `event_assignments` (manager + service boys per event); manager pulls from `reports_to_manager_id`; service boy check-in/out |
+| 18 | **Porter handoff** — `deliveries` repurposed with `porter_booking_id`, `porter_tracking_url`, `vendor_lot_id`; one booking per lot |
 
 ---
 

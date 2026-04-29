@@ -2,30 +2,42 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/config/app_config.dart';
 import '../../data/repositories/address_repository.dart';
+import '../../data/repositories/banquet_repository.dart';
 import '../../data/repositories/charges_repository.dart';
 import '../../data/repositories/delivery_repository.dart';
+import '../../data/repositories/event_tier_repository.dart';
 import '../../data/repositories/menu_repository.dart';
 import '../../data/repositories/order_repository.dart';
 import '../../data/repositories/notification_repository.dart';
 import '../../data/repositories/profile_repository.dart';
+import '../../data/repositories/restaurant_ops_repository.dart';
 import '../../data/repositories/review_repository.dart';
+import '../../data/repositories/staffing_repository.dart';
 import '../../data/repositories/stub/stub_address_repository.dart';
+import '../../data/repositories/stub/stub_banquet_repository.dart';
 import '../../data/repositories/stub/stub_charges_repository.dart';
 import '../../data/repositories/stub/stub_delivery_repository.dart';
+import '../../data/repositories/stub/stub_event_tier_repository.dart';
 import '../../data/repositories/stub/stub_menu_repository.dart';
 import '../../data/repositories/stub/stub_notification_repository.dart';
 import '../../data/repositories/stub/stub_order_repository.dart';
 import '../../data/repositories/stub/stub_profile_repository.dart';
+import '../../data/repositories/stub/stub_restaurant_ops_repository.dart';
 import '../../data/repositories/stub/stub_review_repository.dart';
+import '../../data/repositories/stub/stub_staffing_repository.dart';
 import '../../data/repositories/stub/stub_taxonomy_repository.dart';
 import '../../data/repositories/supabase/supabase_address_repository.dart';
+import '../../data/repositories/supabase/supabase_banquet_repository.dart';
 import '../../data/repositories/supabase/supabase_charges_repository.dart';
 import '../../data/repositories/supabase/supabase_delivery_repository.dart';
+import '../../data/repositories/supabase/supabase_event_tier_repository.dart';
 import '../../data/repositories/supabase/supabase_menu_repository.dart';
 import '../../data/repositories/supabase/supabase_notification_repository.dart';
 import '../../data/repositories/supabase/supabase_order_repository.dart';
 import '../../data/repositories/supabase/supabase_profile_repository.dart';
+import '../../data/repositories/supabase/supabase_restaurant_ops_repository.dart';
 import '../../data/repositories/supabase/supabase_review_repository.dart';
+import '../../data/repositories/supabase/supabase_staffing_repository.dart';
 import '../../data/repositories/supabase/supabase_taxonomy_repository.dart';
 import '../../data/repositories/taxonomy_repository.dart';
 
@@ -96,5 +108,33 @@ final reviewRepositoryProvider = Provider<ReviewRepository>(
   (ref) => _pick<ReviewRepository>(
     SupabaseReviewRepository(),
     StubReviewRepository(),
+  ),
+);
+
+final eventTierRepositoryProvider = Provider<EventTierRepository>(
+  (ref) => _pick<EventTierRepository>(
+    SupabaseEventTierRepository(),
+    StubEventTierRepository(),
+  ),
+);
+
+final banquetRepositoryProvider = Provider<BanquetRepository>(
+  (ref) => _pick<BanquetRepository>(
+    SupabaseBanquetRepository(),
+    StubBanquetRepository(),
+  ),
+);
+
+final staffingRepositoryProvider = Provider<StaffingRepository>(
+  (ref) => _pick<StaffingRepository>(
+    SupabaseStaffingRepository(),
+    StubStaffingRepository(),
+  ),
+);
+
+final restaurantOpsRepositoryProvider = Provider<RestaurantOpsRepository>(
+  (ref) => _pick<RestaurantOpsRepository>(
+    SupabaseRestaurantOpsRepository(),
+    StubRestaurantOpsRepository(),
   ),
 );

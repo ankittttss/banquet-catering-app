@@ -7,7 +7,7 @@ class StubProfileRepository implements ProfileRepository {
 
   @override
   Future<UserProfile?> fetchById(String userId) async {
-    return _profile ?? UserProfile(id: userId, role: UserRole.user);
+    return _profile ?? UserProfile(id: userId, role: UserRole.customer);
   }
 
   @override

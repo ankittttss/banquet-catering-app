@@ -91,11 +91,11 @@ class _RateOrderSheetState extends ConsumerState<_RateOrderSheet> {
                 ? null
                 : _comment.text.trim(),
           );
+      if (!mounted) return;
       ref.invalidate(restaurantReviewsProvider(widget.restaurantId));
       if (widget.orderId != null) {
         ref.invalidate(myReviewForOrderProvider(widget.orderId!));
       }
-      if (!mounted) return;
       Navigator.of(context).pop(review);
     } catch (e) {
       if (!mounted) return;

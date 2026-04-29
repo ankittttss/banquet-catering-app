@@ -528,12 +528,11 @@ class _ThumbWithAdd extends ConsumerWidget {
                     HapticFeedback.selectionClick();
                     ref.read(cartProvider.notifier).add(item);
                   })
-                : _QtyStepper(
-                    qty: qty,
-                    onMinus: () =>
-                        ref.read(cartProvider.notifier).remove(item),
-                    onPlus: () =>
-                        ref.read(cartProvider.notifier).add(item),
+                : _AddedBadge(
+                    onRemove: () {
+                      HapticFeedback.selectionClick();
+                      ref.read(cartProvider.notifier).remove(item);
+                    },
                   ),
           ),
         ],
@@ -585,15 +584,12 @@ class _AddButton extends StatelessWidget {
   }
 }
 
-class _QtyStepper extends StatelessWidget {
-  const _QtyStepper({
-    required this.qty,
-    required this.onMinus,
-    required this.onPlus,
-  });
-  final int qty;
-  final VoidCallback onMinus;
-  final VoidCallback onPlus;
+/// Replaces the numeric qty stepper. Banquet-catering semantic: the dish is
+/// either on the menu for this event (one portion per guest, scaled by
+/// headcount at checkout) or it isn't. Single-tap toggles.
+class _AddedBadge extends StatelessWidget {
+  const _AddedBadge({required this.onRemove});
+  final VoidCallback onRemove;
 
   @override
   Widget build(BuildContext context) {
@@ -602,43 +598,28 @@ class _QtyStepper extends StatelessWidget {
       borderRadius: BorderRadius.circular(AppSizes.radiusSm),
       elevation: 2,
       shadowColor: Colors.black.withValues(alpha: 0.1),
-      child: SizedBox(
-        height: 30,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            _StepBtn(icon: Icons.remove_rounded, onTap: onMinus),
-            Text(
-              '$qty',
-              style: AppTextStyles.bodyBold.copyWith(
-                color: Colors.white,
-                fontSize: 13,
+      child: InkWell(
+        onTap: onRemove,
+        borderRadius: BorderRadius.circular(AppSizes.radiusSm),
+        child: SizedBox(
+          height: 30,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.check_rounded,
+                  size: 14, color: Colors.white),
+              const SizedBox(width: 4),
+              Text(
+                'ADDED',
+                style: AppTextStyles.captionBold.copyWith(
+                  color: Colors.white,
+                  fontSize: 12,
+                  letterSpacing: 1,
+                ),
               ),
-            ),
-            _StepBtn(icon: Icons.add_rounded, onTap: onPlus),
-          ],
+            ],
+          ),
         ),
-      ),
-    );
-  }
-}
-
-class _StepBtn extends StatelessWidget {
-  const _StepBtn({required this.icon, required this.onTap});
-  final IconData icon;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: () {
-        HapticFeedback.selectionClick();
-        onTap();
-      },
-      child: SizedBox(
-        width: 30,
-        height: 30,
-        child: Icon(icon, color: Colors.white, size: 16),
       ),
     );
   }

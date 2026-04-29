@@ -126,12 +126,14 @@ class _SignedInView extends ConsumerWidget {
           showChevron: false,
           onTap: () async {
             HapticFeedback.mediumImpact();
+            // Invalidate BEFORE the await — signOut() tears the widget
+            // down through the auth listener, after which `ref` is dead.
+            ref.invalidate(currentProfileProvider);
             try {
               await sb.auth.signOut();
             } catch (_) {
               // ignore — best effort
             }
-            ref.invalidate(currentProfileProvider);
             if (!context.mounted) return;
             context.go(AppRoutes.login);
           },

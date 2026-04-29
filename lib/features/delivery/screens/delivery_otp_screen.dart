@@ -237,9 +237,9 @@ class _State extends ConsumerState<DeliveryOtpScreen> {
             widget.assignmentId,
             otp: _otp,
           );
+      if (!mounted) return;
       // Refresh history so the completed screen and history tab see it.
       ref.invalidate(deliveryHistoryProvider);
-      if (!mounted) return;
       context.go(AppRoutes.deliveryCompletedFor(widget.assignmentId));
     } catch (e) {
       if (!mounted) return;

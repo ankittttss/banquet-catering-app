@@ -4,6 +4,7 @@ import '../../data/models/menu_category.dart';
 import '../../data/models/menu_item.dart';
 import '../../data/models/restaurant.dart';
 import 'address_providers.dart';
+import 'event_providers.dart';
 import 'filters_providers.dart';
 import 'repositories_providers.dart';
 
@@ -11,14 +12,28 @@ final menuCategoriesProvider = FutureProvider<List<MenuCategory>>((ref) {
   return ref.read(menuRepositoryProvider).fetchCategories();
 });
 
-/// Home restaurant list. When the active address has coordinates, runs the
-/// `restaurants_near` RPC so the list reorders by distance; otherwise shows
-/// the full catalog. An empty nearby result is returned as-is (empty state)
-/// so the user can tell their locality genuinely has no matches rather than
-/// always seeing the full list.
+/// Home restaurant list.
+///
+/// Precedence (most → least specific):
+///   1. Event draft has a chosen tier → `restaurants_for_event` RPC, which
+///      filters by the tier's per-guest budget band *and* (when coords are
+///      available) a 25km radius around the event location.
+///   2. Active address has coordinates → `restaurants_near` RPC, distance sort.
+///   3. Otherwise → full catalog, popularity sort.
 final restaurantsProvider = FutureProvider<List<Restaurant>>((ref) async {
   final repo = ref.read(menuRepositoryProvider);
   final addr = ref.watch(activeAddressProvider);
+  final draft = ref.watch(eventDraftProvider);
+
+  if (draft.tierId != null) {
+    final tierRepo = ref.read(eventTierRepositoryProvider);
+    return tierRepo.restaurantsForTier(
+      tierId: draft.tierId!,
+      latitude: addr?.latitude,
+      longitude: addr?.longitude,
+    );
+  }
+
   if (addr != null && addr.hasCoords) {
     return repo.fetchNearby(
       latitude: addr.latitude!,
