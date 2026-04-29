@@ -10,61 +10,52 @@ import '../../../core/constants/app_text_styles.dart';
 import '../../../core/router/app_routes.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/utils/material_icon_map.dart';
+import '../../../data/models/banquet_venue.dart';
 import '../../../data/models/event_category.dart';
+import '../../../data/models/event_tier.dart';
 import '../../../shared/providers/address_providers.dart';
+import '../../../shared/providers/banquet_providers.dart';
 import '../../../shared/providers/event_providers.dart';
+import '../../../shared/providers/event_tier_providers.dart';
 import '../../../shared/providers/home_providers.dart';
 import '../../../shared/widgets/app_scaffold.dart';
 
-// Local package presets — shown in the planner. Could move to backend later.
-class _Package {
-  const _Package({
-    required this.id,
-    required this.name,
-    required this.description,
-    required this.pricePerPlate,
+/// Visual accents per tier code — keeps the old package colour/icon palette
+/// without having to push those fields into the DB.
+class _TierVisual {
+  const _TierVisual({
     required this.iconName,
     required this.bgHex,
     required this.iconHex,
   });
-  final String id;
-  final String name;
-  final String description;
-  final double pricePerPlate;
   final String iconName;
   final String bgHex;
   final String iconHex;
 }
 
-const _packages = <_Package>[
-  _Package(
-    id: 'premium',
-    name: 'Premium Feast',
-    description: '4 starters + 3 mains + 2 desserts + drinks',
-    pricePerPlate: 450,
-    iconName: 'auto_awesome',
-    bgHex: '#FFF8E7',
-    iconHex: '#E5A100',
-  ),
-  _Package(
-    id: 'classic',
-    name: 'Classic Meal',
-    description: '2 starters + 2 mains + 1 dessert',
-    pricePerPlate: 300,
-    iconName: 'set_meal',
-    bgHex: '#EBF4FF',
-    iconHex: '#2B6CB0',
-  ),
-  _Package(
-    id: 'budget',
-    name: 'Budget Bite',
-    description: '1 starter + 1 main + 1 dessert',
-    pricePerPlate: 180,
+const _tierVisuals = <String, _TierVisual>{
+  'budget': _TierVisual(
     iconName: 'rice_bowl',
     bgHex: '#EAFAF1',
     iconHex: '#1BA672',
   ),
-];
+  'standard': _TierVisual(
+    iconName: 'set_meal',
+    bgHex: '#EBF4FF',
+    iconHex: '#2B6CB0',
+  ),
+  'premium': _TierVisual(
+    iconName: 'auto_awesome',
+    bgHex: '#FFF8E7',
+    iconHex: '#E5A100',
+  ),
+};
+
+const _defaultTierVisual = _TierVisual(
+  iconName: 'auto_awesome',
+  bgHex: '#FFF8E7',
+  iconHex: '#E5A100',
+);
 
 class EventDetailsScreen extends ConsumerStatefulWidget {
   const EventDetailsScreen({super.key});
@@ -76,7 +67,6 @@ class EventDetailsScreen extends ConsumerStatefulWidget {
 
 class _EventDetailsScreenState extends ConsumerState<EventDetailsScreen> {
   String? _categorySlug;
-  String _packageId = 'premium';
 
   @override
   void initState() {
@@ -226,21 +216,13 @@ class _EventDetailsScreenState extends ConsumerState<EventDetailsScreen> {
           ),
           _Section(
             title: 'Choose a package',
-            child: Column(
-              children: [
-                for (final p in _packages)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: AppSizes.sm),
-                    child: _PackageCard(
-                      pkg: p,
-                      selected: _packageId == p.id,
-                      onTap: () {
-                        HapticFeedback.selectionClick();
-                        setState(() => _packageId = p.id);
-                      },
-                    ),
-                  ),
-              ],
+            child: _TierPicker(selectedTierId: draft.tierId),
+          ),
+          _Section(
+            title: 'Banquet venue (optional)',
+            child: _VenuePicker(
+              selectedVenueId: draft.banquetVenueId,
+              selectedVenueName: draft.banquetVenueName,
             ),
           ),
           const SizedBox(height: AppSizes.md),
@@ -248,7 +230,7 @@ class _EventDetailsScreenState extends ConsumerState<EventDetailsScreen> {
             padding:
                 const EdgeInsets.symmetric(horizontal: AppSizes.pagePadding),
             child: FilledButton(
-              onPressed: draft.date == null
+              onPressed: (draft.date == null || draft.tierId == null)
                   ? null
                   : () => context.go(AppRoutes.userHome),
               style: FilledButton.styleFrom(
@@ -510,22 +492,71 @@ class _PickerRow extends StatelessWidget {
   }
 }
 
-// ───────────────────────── Package card ─────────────────────────
+// ───────────────────────── Tier picker ─────────────────────────
 
-class _PackageCard extends StatelessWidget {
-  const _PackageCard({
-    required this.pkg,
+class _TierPicker extends ConsumerWidget {
+  const _TierPicker({required this.selectedTierId});
+  final String? selectedTierId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tiersAsync = ref.watch(eventTiersProvider);
+    final tiers = tiersAsync.valueOrNull ?? const <EventTier>[];
+
+    if (tiers.isEmpty) {
+      return const SizedBox(
+        height: 80,
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    // Default-select the first tier if the draft doesn't carry one yet, so
+    // the "Browse restaurants" button unlocks as soon as date is set.
+    if (selectedTierId == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final first = tiers.first;
+        ref
+            .read(eventDraftProvider.notifier)
+            .setTier(tierId: first.id, tierCode: first.code);
+      });
+    }
+
+    return Column(
+      children: [
+        for (final t in tiers)
+          Padding(
+            padding: const EdgeInsets.only(bottom: AppSizes.sm),
+            child: _TierCard(
+              tier: t,
+              selected: t.id == selectedTierId,
+              onTap: () {
+                HapticFeedback.selectionClick();
+                ref
+                    .read(eventDraftProvider.notifier)
+                    .setTier(tierId: t.id, tierCode: t.code);
+              },
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _TierCard extends StatelessWidget {
+  const _TierCard({
+    required this.tier,
     required this.selected,
     required this.onTap,
   });
-  final _Package pkg;
+  final EventTier tier;
   final bool selected;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final bg = AppColors.fromHex(pkg.bgHex);
-    final fg = AppColors.fromHex(pkg.iconHex, fallback: AppColors.accent);
+    final visual = _tierVisuals[tier.code] ?? _defaultTierVisual;
+    final bg = AppColors.fromHex(visual.bgHex);
+    final fg = AppColors.fromHex(visual.iconHex, fallback: AppColors.accent);
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(AppSizes.radiusSm),
@@ -549,7 +580,7 @@ class _PackageCard extends StatelessWidget {
                 borderRadius: BorderRadius.circular(AppSizes.radiusSm),
               ),
               alignment: Alignment.center,
-              child: Icon(materialIconByName(pkg.iconName),
+              child: Icon(materialIconByName(visual.iconName),
                   color: fg, size: 24),
             ),
             const SizedBox(width: AppSizes.md),
@@ -557,20 +588,212 @@ class _PackageCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(pkg.name, style: AppTextStyles.bodyBold),
-                  const SizedBox(height: 2),
-                  Text(
-                    pkg.description,
-                    style: AppTextStyles.caption.copyWith(fontSize: 11),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
+                  Text(tier.label, style: AppTextStyles.bodyBold),
+                  if (tier.description != null) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      tier.description!,
+                      style: AppTextStyles.caption.copyWith(fontSize: 11),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
                   const SizedBox(height: 4),
                   Text(
-                    '₹${pkg.pricePerPlate.toStringAsFixed(0)}/plate',
+                    '₹${tier.perGuestMin.toStringAsFixed(0)}–${tier.perGuestMax.toStringAsFixed(0)}/guest',
                     style: AppTextStyles.bodyBold
                         .copyWith(color: AppColors.primary, fontSize: 14),
                   ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ───────────────────────── Venue picker ─────────────────────────
+
+class _VenuePicker extends ConsumerWidget {
+  const _VenuePicker({
+    required this.selectedVenueId,
+    required this.selectedVenueName,
+  });
+  final String? selectedVenueId;
+  final String? selectedVenueName;
+
+  Future<void> _openSheet(BuildContext context) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => const _VenueSheet(),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final hasSelection =
+        selectedVenueId != null && selectedVenueId!.isNotEmpty;
+    return InkWell(
+      onTap: () => _openSheet(context),
+      borderRadius: BorderRadius.circular(AppSizes.radiusSm),
+      child: Container(
+        height: 56,
+        padding: const EdgeInsets.symmetric(horizontal: AppSizes.md),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceAlt,
+          border: Border.all(color: AppColors.border),
+          borderRadius: BorderRadius.circular(AppSizes.radiusSm),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.apartment_rounded,
+                color: AppColors.textMuted, size: 20),
+            const SizedBox(width: AppSizes.sm),
+            Expanded(
+              child: Text(
+                hasSelection
+                    ? selectedVenueName ?? 'Venue selected'
+                    : 'Pick a venue (route to a banquet operator)',
+                style: AppTextStyles.body,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const Icon(Icons.chevron_right_rounded,
+                color: AppColors.textMuted),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _VenueSheet extends ConsumerWidget {
+  const _VenueSheet();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final venues = ref.watch(allBanquetVenuesProvider);
+    return DraggableScrollableSheet(
+      initialChildSize: 0.7,
+      maxChildSize: 0.95,
+      minChildSize: 0.4,
+      expand: false,
+      builder: (_, scrollCtrl) => Container(
+        decoration: const BoxDecoration(
+          color: AppColors.surface,
+          borderRadius:
+              BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        padding: const EdgeInsets.all(AppSizes.pagePadding),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Pick a banquet venue', style: AppTextStyles.display),
+            const SizedBox(height: AppSizes.xs),
+            Text(
+              "Your booking is routed to this venue's operator for confirmation.",
+              style: AppTextStyles.bodyMuted,
+            ),
+            const SizedBox(height: AppSizes.lg),
+            Expanded(
+              child: venues.when(
+                loading: () =>
+                    const Center(child: CircularProgressIndicator()),
+                error: (e, _) => Text('Could not load venues: $e',
+                    style: AppTextStyles.caption),
+                data: (rows) {
+                  if (rows.isEmpty) {
+                    return Center(
+                      child: Text(
+                        'No venues available yet.',
+                        style: AppTextStyles.bodyMuted,
+                      ),
+                    );
+                  }
+                  return ListView.separated(
+                    controller: scrollCtrl,
+                    itemCount: rows.length,
+                    separatorBuilder: (_, __) =>
+                        const SizedBox(height: AppSizes.sm),
+                    itemBuilder: (_, i) {
+                      final v = rows[i];
+                      return _VenueRow(
+                        venue: v,
+                        onTap: () {
+                          ref
+                              .read(eventDraftProvider.notifier)
+                              .setBanquetVenue(
+                                venueId: v.id,
+                                venueName: v.name,
+                              );
+                          Navigator.of(context).pop();
+                        },
+                      );
+                    },
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _VenueRow extends StatelessWidget {
+  const _VenueRow({required this.venue, required this.onTap});
+  final BanquetVenue venue;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(AppSizes.radiusSm),
+      child: Container(
+        padding: const EdgeInsets.all(AppSizes.md),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceAlt,
+          border: Border.all(color: AppColors.border),
+          borderRadius: BorderRadius.circular(AppSizes.radiusSm),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: AppColors.primarySoft,
+                borderRadius: BorderRadius.circular(AppSizes.radiusSm),
+              ),
+              alignment: Alignment.center,
+              child: const Icon(Icons.apartment_rounded,
+                  color: AppColors.primary),
+            ),
+            const SizedBox(width: AppSizes.md),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(venue.name, style: AppTextStyles.bodyBold),
+                  if (venue.address != null) ...[
+                    const SizedBox(height: 2),
+                    Text(venue.address!,
+                        style: AppTextStyles.caption,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis),
+                  ],
+                  if (venue.capacity != null) ...[
+                    const SizedBox(height: 2),
+                    Text('Up to ${venue.capacity} guests',
+                        style: AppTextStyles.captionBold
+                            .copyWith(color: AppColors.primary)),
+                  ],
                 ],
               ),
             ),

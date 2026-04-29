@@ -143,7 +143,13 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => AppErrorView(error: e),
         data: (cfg) {
-          final totals = _totalsFor(cart, cfg, restaurants);
+          final totals = _totalsFor(
+            cart,
+            cfg,
+            restaurants,
+            event.guestCount,
+            event.effectiveServiceBoyCount,
+          );
           return Stack(
             children: [
               ListView(
@@ -190,7 +196,17 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                   ),
                   _Section(
                     title: 'Bill summary',
-                    child: _BillSummary(totals: totals, cart: cart),
+                    child: _BillSummary(
+                      totals: totals,
+                      cart: cart,
+                      charges: cfg,
+                      onMinusBoy: () => ref
+                          .read(eventDraftProvider.notifier)
+                          .bumpServiceBoyCount(-1),
+                      onPlusBoy: () => ref
+                          .read(eventDraftProvider.notifier)
+                          .bumpServiceBoyCount(1),
+                    ),
                   ),
                 ],
               ),
@@ -216,6 +232,8 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     List<CartItem> cart,
     ChargesConfig charges,
     List<Restaurant> restaurants,
+    int guestCount,
+    int serviceBoyCount,
   ) {
     final uniq = cart.map((c) => c.item.restaurantId).toSet();
     final delivery = <String, double>{};
@@ -232,6 +250,8 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       cart: cart,
       charges: charges,
       deliveryByRestaurant: delivery,
+      guestCount: guestCount,
+      serviceBoyCount: serviceBoyCount,
     );
   }
 }
@@ -522,16 +542,24 @@ class _PaymentOption extends StatelessWidget {
 // ───────────────────────── Bill summary ─────────────────────────
 
 class _BillSummary extends StatelessWidget {
-  const _BillSummary({required this.totals, required this.cart});
+  const _BillSummary({
+    required this.totals,
+    required this.cart,
+    required this.charges,
+    required this.onMinusBoy,
+    required this.onPlusBoy,
+  });
   final CheckoutTotals totals;
   final List<CartItem> cart;
+  final ChargesConfig charges;
+  final VoidCallback onMinusBoy;
+  final VoidCallback onPlusBoy;
+
+  String _pct(double v) =>
+      v.toStringAsFixed(v.truncateToDouble() == v ? 0 : 1);
 
   @override
   Widget build(BuildContext context) {
-    final extras = totals.banquetCharge +
-        totals.buffetSetup +
-        totals.serviceBoyCost +
-        totals.waterBottleCost;
     return Container(
       padding: const EdgeInsets.all(AppSizes.md),
       decoration: BoxDecoration(
@@ -551,10 +579,31 @@ class _BillSummary extends StatelessWidget {
                 ? AppColors.success
                 : AppColors.textPrimary,
           ),
+          if (totals.banquetCharge > 0)
+            _BillRow(
+                'Banquet charge', Formatters.currency(totals.banquetCharge)),
+          if (totals.buffetSetup > 0)
+            _BillRow(
+                'Buffet setup', Formatters.currency(totals.buffetSetup)),
+          if (totals.waterBottleCost > 0)
+            _BillRow(
+                'Water bottles', Formatters.currency(totals.waterBottleCost)),
+          _CheckoutServiceBoyRow(
+            count: totals.serviceBoyCount,
+            unitCost: totals.serviceBoyUnitCost,
+            lineTotal: totals.serviceBoyCost,
+            onMinus: onMinusBoy,
+            onPlus: onPlusBoy,
+          ),
           _BillRow('Platform fee', Formatters.currency(totals.platformFee)),
-          if (extras > 0)
-            _BillRow('Event setup & service', Formatters.currency(extras)),
-          _BillRow('GST & charges', Formatters.currency(totals.gst)),
+          _BillRow(
+            'GST (${_pct(charges.gstPercent)}%)',
+            Formatters.currency(totals.gst),
+          ),
+          _BillRow(
+            'Service tax (${_pct(charges.serviceTaxPercent)}%)',
+            Formatters.currency(totals.serviceTax),
+          ),
           const Padding(
             padding: EdgeInsets.symmetric(vertical: AppSizes.sm),
             child: Divider(color: AppColors.border, height: 1),
@@ -563,6 +612,112 @@ class _BillSummary extends StatelessWidget {
         ],
       ),
     ).animate().fadeIn(duration: 220.ms);
+  }
+}
+
+class _CheckoutServiceBoyRow extends StatelessWidget {
+  const _CheckoutServiceBoyRow({
+    required this.count,
+    required this.unitCost,
+    required this.lineTotal,
+    required this.onMinus,
+    required this.onPlus,
+  });
+  final int count;
+  final double unitCost;
+  final double lineTotal;
+  final VoidCallback onMinus;
+  final VoidCallback onPlus;
+
+  @override
+  Widget build(BuildContext context) {
+    final labelStyle = AppTextStyles.body.copyWith(fontSize: 13);
+    final valueStyle = AppTextStyles.body.copyWith(
+      color: AppColors.textPrimary,
+      fontSize: 13,
+      fontWeight: FontWeight.w500,
+    );
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Service boys ($count × ${Formatters.currency(unitCost)})',
+                  style: labelStyle,
+                ),
+              ),
+              Container(
+                decoration: BoxDecoration(
+                  border: Border.all(color: AppColors.border),
+                  borderRadius: BorderRadius.circular(AppSizes.radiusSm),
+                ),
+                child: Row(
+                  children: [
+                    InkWell(
+                      onTap: () {
+                        HapticFeedback.selectionClick();
+                        onMinus();
+                      },
+                      child: const SizedBox(
+                        width: 28,
+                        height: 26,
+                        child: Icon(Icons.remove_rounded,
+                            color: AppColors.success, size: 16),
+                      ),
+                    ),
+                    Container(
+                      width: 28,
+                      height: 26,
+                      color: AppColors.surface,
+                      alignment: Alignment.center,
+                      child: Text(
+                        '$count',
+                        style: AppTextStyles.bodyBold.copyWith(
+                          color: AppColors.success,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                    InkWell(
+                      onTap: () {
+                        HapticFeedback.selectionClick();
+                        onPlus();
+                      },
+                      child: const SizedBox(
+                        width: 28,
+                        height: 26,
+                        child: Icon(Icons.add_rounded,
+                            color: AppColors.success, size: 16),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: AppSizes.md),
+              SizedBox(
+                width: 72,
+                child: Text(
+                  Formatters.currency(lineTotal),
+                  style: valueStyle,
+                  textAlign: TextAlign.end,
+                ),
+              ),
+            ],
+          ),
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Text(
+              'Tap +/- to adjust how many staff are sent',
+              style: AppTextStyles.caption.copyWith(fontSize: 11),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

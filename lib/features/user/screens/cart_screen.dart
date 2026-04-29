@@ -106,6 +106,7 @@ class _CartBody extends ConsumerWidget {
                 cart: cart,
                 charges: cfg,
                 restaurants: restaurants,
+                event: event,
               ),
             ),
           ],
@@ -114,7 +115,13 @@ class _CartBody extends ConsumerWidget {
           loading: () => const SizedBox.shrink(),
           error: (_, __) => const SizedBox.shrink(),
           data: (cfg) {
-            final totals = _totalsFor(cart, cfg, restaurants);
+            final totals = _totalsFor(
+              cart,
+              cfg,
+              restaurants,
+              event.guestCount,
+              event.effectiveServiceBoyCount,
+            );
             return Positioned(
               left: 0,
               right: 0,
@@ -131,6 +138,8 @@ class _CartBody extends ConsumerWidget {
     List<CartItem> cart,
     ChargesConfig cfg,
     List<Restaurant> restaurants,
+    int guestCount,
+    int serviceBoyCount,
   ) {
     final uniq = cart.map((c) => c.item.restaurantId).toSet();
     final delivery = <String, double>{};
@@ -147,6 +156,8 @@ class _CartBody extends ConsumerWidget {
       cart: cart,
       charges: cfg,
       deliveryByRestaurant: delivery,
+      guestCount: guestCount,
+      serviceBoyCount: serviceBoyCount,
     );
   }
 }
@@ -220,6 +231,8 @@ class _CartLineRow extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final guestCount = ref.watch(eventDraftProvider).guestCount;
+    final billed = line.qty * guestCount;
     return Container(
       decoration: const BoxDecoration(
         border: Border(bottom: BorderSide(color: AppColors.divider)),
@@ -231,11 +244,25 @@ class _CartLineRow extends ConsumerWidget {
         AppSizes.md,
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _VegDot(isVeg: line.item.isVeg),
+          Padding(
+            padding: const EdgeInsets.only(top: 3),
+            child: _VegDot(isVeg: line.item.isVeg),
+          ),
           const SizedBox(width: AppSizes.sm),
           Expanded(
-            child: Text(line.item.name, style: AppTextStyles.bodyBold),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(line.item.name, style: AppTextStyles.bodyBold),
+                const SizedBox(height: 2),
+                Text(
+                  '${line.qty} per guest  ·  $billed portions for $guestCount guests',
+                  style: AppTextStyles.caption,
+                ),
+              ],
+            ),
           ),
           _QtyControl(
             qty: line.qty,
@@ -248,9 +275,9 @@ class _CartLineRow extends ConsumerWidget {
           ),
           const SizedBox(width: AppSizes.md),
           SizedBox(
-            width: 60,
+            width: 72,
             child: Text(
-              Formatters.currency(line.lineTotal),
+              Formatters.currency(line.billedLineTotal(guestCount)),
               style: AppTextStyles.bodyBold,
               textAlign: TextAlign.end,
             ),
@@ -450,18 +477,20 @@ class _EventRow extends StatelessWidget {
 
 // ───────────────────────── Bill details ─────────────────────────
 
-class _BillDetails extends StatelessWidget {
+class _BillDetails extends ConsumerWidget {
   const _BillDetails({
     required this.cart,
     required this.charges,
     required this.restaurants,
+    required this.event,
   });
   final List<CartItem> cart;
   final ChargesConfig charges;
   final List<Restaurant> restaurants;
+  final EventDraft event;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final uniq = cart.map((c) => c.item.restaurantId).toSet();
     final delivery = <String, double>{};
     for (final id in uniq) {
@@ -477,11 +506,9 @@ class _BillDetails extends StatelessWidget {
       cart: cart,
       charges: charges,
       deliveryByRestaurant: delivery,
+      guestCount: event.guestCount,
+      serviceBoyCount: event.effectiveServiceBoyCount,
     );
-    final extras = totals.banquetCharge +
-        totals.buffetSetup +
-        totals.serviceBoyCost +
-        totals.waterBottleCost;
 
     return Container(
       color: AppColors.surface,
@@ -501,14 +528,33 @@ class _BillDetails extends StatelessWidget {
                 ? AppColors.success
                 : AppColors.textPrimary,
           ),
-          _BillRow('Platform fee', Formatters.currency(totals.platformFee)),
-          if (extras > 0)
+          if (totals.banquetCharge > 0)
             _BillRow(
-              'Event setup & service',
-              Formatters.currency(extras),
-              helper: 'Banquet + buffet + staff + water',
-            ),
-          _BillRow('GST & charges', Formatters.currency(totals.gst)),
+                'Banquet charge', Formatters.currency(totals.banquetCharge)),
+          if (totals.buffetSetup > 0)
+            _BillRow(
+                'Buffet setup', Formatters.currency(totals.buffetSetup)),
+          if (totals.waterBottleCost > 0)
+            _BillRow(
+                'Water bottles', Formatters.currency(totals.waterBottleCost)),
+          _ServiceBoyRow(
+            count: totals.serviceBoyCount,
+            unitCost: totals.serviceBoyUnitCost,
+            lineTotal: totals.serviceBoyCost,
+            onMinus: () =>
+                ref.read(eventDraftProvider.notifier).bumpServiceBoyCount(-1),
+            onPlus: () =>
+                ref.read(eventDraftProvider.notifier).bumpServiceBoyCount(1),
+          ),
+          _BillRow('Platform fee', Formatters.currency(totals.platformFee)),
+          _BillRow(
+            'GST (${charges.gstPercent.toStringAsFixed(charges.gstPercent.truncateToDouble() == charges.gstPercent ? 0 : 1)}%)',
+            Formatters.currency(totals.gst),
+          ),
+          _BillRow(
+            'Service tax (${charges.serviceTaxPercent.toStringAsFixed(charges.serviceTaxPercent.truncateToDouble() == charges.serviceTaxPercent ? 0 : 1)}%)',
+            Formatters.currency(totals.serviceTax),
+          ),
           const Padding(
             padding: EdgeInsets.symmetric(vertical: AppSizes.sm),
             child: DashedDivider(),
@@ -521,6 +567,133 @@ class _BillDetails extends StatelessWidget {
         ],
       ),
     ).animate().fadeIn(duration: 220.ms);
+  }
+}
+
+class _ServiceBoyRow extends StatelessWidget {
+  const _ServiceBoyRow({
+    required this.count,
+    required this.unitCost,
+    required this.lineTotal,
+    required this.onMinus,
+    required this.onPlus,
+  });
+  final int count;
+  final double unitCost;
+  final double lineTotal;
+  final VoidCallback onMinus;
+  final VoidCallback onPlus;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Service boys ($count × ${Formatters.currency(unitCost)})',
+                  style: AppTextStyles.body.copyWith(fontSize: 13),
+                ),
+              ),
+              _SmallStepper(value: count, onMinus: onMinus, onPlus: onPlus),
+              const SizedBox(width: AppSizes.md),
+              SizedBox(
+                width: 72,
+                child: Text(
+                  Formatters.currency(lineTotal),
+                  style: AppTextStyles.body.copyWith(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                  ),
+                  textAlign: TextAlign.end,
+                ),
+              ),
+            ],
+          ),
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Text(
+              'Tap +/- to adjust how many staff to send',
+              style: AppTextStyles.caption.copyWith(fontSize: 11),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SmallStepper extends StatelessWidget {
+  const _SmallStepper({
+    required this.value,
+    required this.onMinus,
+    required this.onPlus,
+  });
+  final int value;
+  final VoidCallback onMinus;
+  final VoidCallback onPlus;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        border: Border.all(color: AppColors.border),
+        borderRadius: BorderRadius.circular(AppSizes.radiusSm),
+      ),
+      child: Row(
+        children: [
+          _StepperCell(
+            icon: Icons.remove_rounded,
+            onTap: () {
+              HapticFeedback.selectionClick();
+              onMinus();
+            },
+          ),
+          Container(
+            width: 28,
+            height: 26,
+            color: AppColors.surfaceAlt,
+            alignment: Alignment.center,
+            child: Text(
+              '$value',
+              style: AppTextStyles.bodyBold.copyWith(
+                color: AppColors.success,
+                fontSize: 12,
+              ),
+            ),
+          ),
+          _StepperCell(
+            icon: Icons.add_rounded,
+            onTap: () {
+              HapticFeedback.selectionClick();
+              onPlus();
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StepperCell extends StatelessWidget {
+  const _StepperCell({required this.icon, required this.onTap});
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      child: SizedBox(
+        width: 28,
+        height: 26,
+        child: Icon(icon, color: AppColors.success, size: 16),
+      ),
+    );
   }
 }
 

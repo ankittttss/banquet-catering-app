@@ -54,11 +54,14 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
     // Wait for profile to resolve, then route by role.
     final profile = await ref.read(currentProfileProvider.future);
     if (!mounted) return;
-    final role = profile?.role ?? UserRole.user;
+    final role = profile?.role ?? UserRole.customer;
     context.go(switch (role) {
       UserRole.admin => AppRoutes.adminHome,
-      UserRole.delivery => AppRoutes.deliveryHome,
-      UserRole.user => AppRoutes.userHome,
+      UserRole.banquet => AppRoutes.banquetHome,
+      UserRole.restaurant => AppRoutes.restaurantHome,
+      UserRole.manager => AppRoutes.managerHome,
+      UserRole.serviceBoy => AppRoutes.serviceBoyHome,
+      UserRole.customer => AppRoutes.userHome,
     });
   }
 

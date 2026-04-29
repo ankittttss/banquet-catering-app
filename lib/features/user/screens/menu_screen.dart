@@ -23,7 +23,7 @@ import '../../../shared/widgets/category_chip.dart';
 import '../../../shared/widgets/empty_state.dart';
 import '../../../shared/widgets/menu_item_thumb.dart';
 import '../../../shared/widgets/primary_button.dart';
-import '../../../shared/widgets/qty_selector.dart';
+import '../../../shared/widgets/pick_toggle.dart';
 import '../../../shared/widgets/veg_dot.dart';
 
 class MenuScreen extends ConsumerWidget {
@@ -276,8 +276,8 @@ class _MenuItemCard extends ConsumerWidget {
                         Formatters.currency(item.price),
                         style: AppTextStyles.price,
                       ),
-                      QtySelector(
-                        quantity: qty,
+                      PickToggle(
+                        selected: qty > 0,
                         onAdd: () =>
                             ref.read(cartProvider.notifier).add(item),
                         onRemove: () =>

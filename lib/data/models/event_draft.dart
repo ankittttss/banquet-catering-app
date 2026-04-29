@@ -7,6 +7,11 @@ class EventDraft {
     this.startTime,
     this.endTime,
     this.guestCount = 50,
+    this.tierId,
+    this.tierCode,
+    this.banquetVenueId,
+    this.banquetVenueName,
+    this.serviceBoyCount,
   });
 
   final DateTime? date;
@@ -16,13 +21,37 @@ class EventDraft {
   final DateTime? endTime;
   final int guestCount;
 
+  /// Chosen event tier (Budget / Standard / Premium). Drives the restaurant
+  /// picker's budget filter. Nullable while the user is still planning.
+  final String? tierId;
+  final String? tierCode;
+
+  /// Banquet venue the event will be hosted at. Nullable during planning
+  /// and for legacy flows; required to route the booking into a banquet's
+  /// inbox.
+  final String? banquetVenueId;
+  final String? banquetVenueName;
+
+  /// Customer-chosen number of service boys. When null, falls back to
+  /// suggestedServiceBoys (1 per 20 guests, min 1).
+  final int? serviceBoyCount;
+
+  /// Suggested staffing level — 1 service boy per ~20 guests, min 1.
+  int get suggestedServiceBoys =>
+      ((guestCount + 19) ~/ 20).clamp(1, 999);
+
+  /// Effective service boy count used for billing.
+  int get effectiveServiceBoyCount =>
+      serviceBoyCount ?? suggestedServiceBoys;
+
   bool get isComplete =>
       date != null &&
       (location != null && location!.trim().isNotEmpty) &&
       session != null &&
       startTime != null &&
       endTime != null &&
-      guestCount > 0;
+      guestCount > 0 &&
+      tierId != null;
 
   EventDraft copyWith({
     DateTime? date,
@@ -31,6 +60,11 @@ class EventDraft {
     DateTime? startTime,
     DateTime? endTime,
     int? guestCount,
+    String? tierId,
+    String? tierCode,
+    String? banquetVenueId,
+    String? banquetVenueName,
+    int? serviceBoyCount,
   }) =>
       EventDraft(
         date: date ?? this.date,
@@ -39,6 +73,11 @@ class EventDraft {
         startTime: startTime ?? this.startTime,
         endTime: endTime ?? this.endTime,
         guestCount: guestCount ?? this.guestCount,
+        tierId: tierId ?? this.tierId,
+        tierCode: tierCode ?? this.tierCode,
+        banquetVenueId: banquetVenueId ?? this.banquetVenueId,
+        banquetVenueName: banquetVenueName ?? this.banquetVenueName,
+        serviceBoyCount: serviceBoyCount ?? this.serviceBoyCount,
       );
 
   Map<String, dynamic> toInsertMap(String userId) => {
@@ -51,5 +90,7 @@ class EventDraft {
         'end_time':
             '${endTime!.hour.toString().padLeft(2, '0')}:${endTime!.minute.toString().padLeft(2, '0')}',
         'guest_count': guestCount,
+        if (tierId != null) 'tier_id': tierId,
+        if (banquetVenueId != null) 'banquet_venue_id': banquetVenueId,
       };
 }

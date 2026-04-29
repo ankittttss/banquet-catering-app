@@ -23,6 +23,7 @@ class SupabaseChargesRepository implements ChargesRepository {
       'water_bottle_cost': config.waterBottleCost,
       'platform_fee': config.platformFee,
       'gst_percent': config.gstPercent,
+      'service_tax_percent': config.serviceTaxPercent,
     }).eq('id', 1);
   }
 }

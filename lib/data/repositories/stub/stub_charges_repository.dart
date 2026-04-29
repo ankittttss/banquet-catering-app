@@ -5,10 +5,11 @@ class StubChargesRepository implements ChargesRepository {
   ChargesConfig _state = const ChargesConfig(
     banquetCharge: 8000,
     buffetSetup: 2500,
-    serviceBoyCost: 3500,
+    serviceBoyCost: 800,
     waterBottleCost: 1000,
     platformFee: 149,
     gstPercent: 5,
+    serviceTaxPercent: 5,
   );
 
   @override

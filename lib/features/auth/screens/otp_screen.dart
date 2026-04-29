@@ -56,7 +56,7 @@ class _OtpScreenState extends ConsumerState<OtpScreen> {
           await ref.read(profileRepositoryProvider).upsert(
                 UserProfile(
                   id: user.id,
-                  role: UserRole.user,
+                  role: UserRole.customer,
                   phone: widget.phone,
                 ),
               );
@@ -66,12 +66,15 @@ class _OtpScreenState extends ConsumerState<OtpScreen> {
       if (!mounted) return;
       final role = AppConfig.hasSupabase
           ? (await ref.read(currentProfileProvider.future))?.role ??
-              UserRole.user
-          : UserRole.user;
+              UserRole.customer
+          : UserRole.customer;
       context.go(switch (role) {
         UserRole.admin => AppRoutes.adminHome,
-        UserRole.delivery => AppRoutes.deliveryHome,
-        UserRole.user => AppRoutes.userHome,
+        UserRole.banquet => AppRoutes.banquetHome,
+        UserRole.restaurant => AppRoutes.restaurantHome,
+        UserRole.manager => AppRoutes.managerHome,
+        UserRole.serviceBoy => AppRoutes.serviceBoyHome,
+        UserRole.customer => AppRoutes.userHome,
       });
     } catch (e) {
       if (!mounted) return;

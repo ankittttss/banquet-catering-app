@@ -30,6 +30,7 @@ class _AdminChargesScreenState
   late TextEditingController _water;
   late TextEditingController _platform;
   late TextEditingController _gst;
+  late TextEditingController _serviceTax;
 
   bool _saving = false;
   bool _initialized = false;
@@ -43,6 +44,7 @@ class _AdminChargesScreenState
     _water = TextEditingController();
     _platform = TextEditingController();
     _gst = TextEditingController();
+    _serviceTax = TextEditingController();
   }
 
   void _hydrate(ChargesConfig c) {
@@ -53,6 +55,7 @@ class _AdminChargesScreenState
     _water.text = c.waterBottleCost.toStringAsFixed(0);
     _platform.text = c.platformFee.toStringAsFixed(0);
     _gst.text = c.gstPercent.toStringAsFixed(1);
+    _serviceTax.text = c.serviceTaxPercent.toStringAsFixed(1);
     _initialized = true;
   }
 
@@ -64,6 +67,7 @@ class _AdminChargesScreenState
     _water.dispose();
     _platform.dispose();
     _gst.dispose();
+    _serviceTax.dispose();
     super.dispose();
   }
 
@@ -77,6 +81,7 @@ class _AdminChargesScreenState
         waterBottleCost: double.tryParse(_water.text) ?? 0,
         platformFee: double.tryParse(_platform.text) ?? 0,
         gstPercent: double.tryParse(_gst.text) ?? 5,
+        serviceTaxPercent: double.tryParse(_serviceTax.text) ?? 5,
       );
       await ref.read(chargesRepositoryProvider).update(cfg);
       ref.invalidate(chargesConfigProvider);
@@ -122,13 +127,19 @@ class _AdminChargesScreenState
                     _ChargeRow(label: 'Banquet charge', controller: _banquet),
                     _ChargeRow(label: 'Buffet setup', controller: _buffet),
                     _ChargeRow(
-                        label: 'Service boys', controller: _service),
+                        label: 'Service boy (per head)',
+                        controller: _service),
                     _ChargeRow(label: 'Water bottles', controller: _water),
                     _ChargeRow(
                         label: 'Platform fee', controller: _platform),
                     _ChargeRow(
                       label: 'GST %',
                       controller: _gst,
+                      suffix: '%',
+                    ),
+                    _ChargeRow(
+                      label: 'Service tax %',
+                      controller: _serviceTax,
                       suffix: '%',
                     ),
                   ],

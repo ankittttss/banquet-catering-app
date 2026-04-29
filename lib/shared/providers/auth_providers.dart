@@ -52,8 +52,9 @@ final currentProfileProvider =
   return repo.fetchById(userId);
 });
 
-/// Convenience — resolves role to user/admin (defaults to user).
+/// Convenience — resolves role from the current profile, defaulting to
+/// customer when the profile isn't loaded yet.
 final currentRoleProvider = Provider<UserRole>((ref) {
   final profile = ref.watch(currentProfileProvider).valueOrNull;
-  return profile?.role ?? UserRole.user;
+  return profile?.role ?? UserRole.customer;
 });

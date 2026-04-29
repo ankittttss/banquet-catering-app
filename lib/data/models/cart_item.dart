@@ -21,6 +21,12 @@ enum SpiceLevel {
 
 /// One line in the cart. Two lines of the same dish with different portion/
 /// spice are kept separate via [signature].
+///
+/// Banquet-catering semantic:
+///   - `qty` is "portions per guest" (default 1 = one plate per guest)
+///   - final billed quantity at checkout = `qty * event.guestCount`
+///   - `unitPrice` stays per-plate; `lineTotal` (unscaled) represents a
+///     single guest's share — checkout scales it by guest count.
 class CartItem {
   const CartItem({
     required this.item,
@@ -31,15 +37,26 @@ class CartItem {
   });
 
   final MenuItem item;
+
+  /// Portions per guest. Displayed as "N per guest" in the cart UI.
   final int qty;
   final Portion portion;
   final SpiceLevel spice;
   final String notes;
 
-  /// Effective per-unit price after portion multiplier.
+  /// Effective per-portion price after portion multiplier.
   double get unitPrice => item.price * portion.multiplier;
 
-  double get lineTotal => unitPrice * qty;
+  /// Cost for one guest (qty portions × unit price). Multiply by the event's
+  /// `guestCount` to get the billed line total. Kept unscaled so cart-level
+  /// providers can tell whether a guest-count change affects totals.
+  double get perGuestLineCost => unitPrice * qty;
+
+  /// Legacy alias — treated as per-guest cost. Callers that want the final
+  /// billable amount should use [billedLineTotal] with a guest count.
+  double get lineTotal => perGuestLineCost;
+
+  double billedLineTotal(int guestCount) => perGuestLineCost * guestCount;
 
   /// Composite key: same menu item with different customizations is a
   /// separate cart line.
