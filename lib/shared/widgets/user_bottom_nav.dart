@@ -198,6 +198,30 @@ class _NavItem extends StatelessWidget {
 class _InlineCartPeek extends ConsumerWidget {
   const _InlineCartPeek();
 
+  Future<void> _confirmDiscard(BuildContext context, WidgetRef ref) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Discard cart?'),
+        content: const Text('This will remove all items from your cart.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.primary),
+            child: const Text('Discard'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      ref.read(cartProvider.notifier).clear();
+    }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final count = ref.watch(cartCountProvider);
@@ -251,15 +275,46 @@ class _InlineCartPeek extends ConsumerWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
-              Text(
-                'View cart',
-                style: AppTextStyles.captionBold.copyWith(color: Colors.white),
+              // Primary CTA — solid white pill so "View cart" reads as the
+              // unmistakable main action.
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  'View cart',
+                  style: AppTextStyles.captionBold
+                      .copyWith(color: AppColors.primary),
+                ),
               ),
-              const SizedBox(width: 4),
-              const Icon(
-                PhosphorIconsBold.arrowRight,
-                color: Colors.white,
-                size: 14,
+              const SizedBox(width: AppSizes.sm),
+              // Secondary discard control — visually detached via a darker
+              // bubble + smaller icon so it can't be mistaken for the
+              // primary CTA. Inner InkWell consumes the tap before it
+              // reaches the outer "open cart" gesture.
+              Tooltip(
+                message: 'Discard cart',
+                child: InkWell(
+                  onTap: () => _confirmDiscard(context, ref),
+                  borderRadius: BorderRadius.circular(999),
+                  child: Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.22),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      PhosphorIconsBold.x,
+                      color: Colors.white.withValues(alpha: 0.85),
+                      size: 12,
+                    ),
+                  ),
+                ),
               ),
             ],
           ),
