@@ -12,7 +12,19 @@ class EventDraftController extends Notifier<EventDraft> {
   void setSession(String v) => state = state.copyWith(session: v);
   void setStartTime(DateTime v) => state = state.copyWith(startTime: v);
   void setEndTime(DateTime v) => state = state.copyWith(endTime: v);
-  void setGuestCount(int v) => state = state.copyWith(guestCount: v);
+  void setGuestCount(int v) {
+    // Update guest count, then auto-raise the explicit serviceBoyCount if
+    // the user had previously chosen one that's now below the new minimum.
+    // A null override (i.e. still tracking the suggestion) needs no work —
+    // effectiveServiceBoyCount falls back to suggestedServiceBoys.
+    final next = state.copyWith(guestCount: v);
+    final min = next.suggestedServiceBoys;
+    if (state.serviceBoyCount != null && state.serviceBoyCount! < min) {
+      state = next.copyWith(serviceBoyCount: min);
+    } else {
+      state = next;
+    }
+  }
   void setTier({required String tierId, required String tierCode}) =>
       state = state.copyWith(tierId: tierId, tierCode: tierCode);
   void setBanquetVenue({required String venueId, required String venueName}) =>
@@ -21,9 +33,14 @@ class EventDraftController extends Notifier<EventDraft> {
         banquetVenueName: venueName,
       );
   void setServiceBoyCount(int v) =>
-      state = state.copyWith(serviceBoyCount: v.clamp(0, 999));
+      state = state.copyWith(
+        serviceBoyCount: v.clamp(state.suggestedServiceBoys, 999),
+      );
   void bumpServiceBoyCount(int delta) {
-    final next = (state.effectiveServiceBoyCount + delta).clamp(0, 999);
+    // Floor at the recommended minimum — the minus button cannot drop the
+    // count below suggestedServiceBoys (1 per ~20 guests, min 1).
+    final min = state.suggestedServiceBoys;
+    final next = (state.effectiveServiceBoyCount + delta).clamp(min, 999);
     state = state.copyWith(serviceBoyCount: next);
   }
   void reset() => state = const EventDraft();

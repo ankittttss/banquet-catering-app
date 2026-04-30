@@ -33,12 +33,13 @@ class EventDraft {
   final String? banquetVenueName;
 
   /// Customer-chosen number of service boys. When null, falls back to
-  /// suggestedServiceBoys (1 per 20 guests, min 1).
+  /// suggestedServiceBoys (1 per 10 guests, min 1).
   final int? serviceBoyCount;
 
-  /// Suggested staffing level — 1 service boy per ~20 guests, min 1.
+  /// Suggested staffing level — 1 service boy per 10 guests (rounded up),
+  /// floor of 1. e.g. 25 guests → 3, 100 guests → 10, 150 guests → 15.
   int get suggestedServiceBoys =>
-      ((guestCount + 19) ~/ 20).clamp(1, 999);
+      ((guestCount + 9) ~/ 10).clamp(1, 999);
 
   /// Effective service boy count used for billing.
   int get effectiveServiceBoyCount =>
