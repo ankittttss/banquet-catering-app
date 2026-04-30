@@ -23,10 +23,21 @@ import '../../../shared/widgets/safe_net_image.dart';
 import '../../../shared/widgets/user_bottom_nav.dart';
 import '../widgets/address_picker_sheet.dart';
 
-class UserHomeScreen extends ConsumerWidget {
+class UserHomeScreen extends ConsumerStatefulWidget {
   const UserHomeScreen({super.key});
 
-  Future<void> _refresh(WidgetRef ref) async {
+  @override
+  ConsumerState<UserHomeScreen> createState() => _UserHomeScreenState();
+}
+
+class _UserHomeScreenState extends ConsumerState<UserHomeScreen> {
+  final GlobalKey _restaurantsHeaderKey = GlobalKey();
+  // The last `t` nonce we already scrolled for. Comparing per-click nonces
+  // (rather than a bool) makes the scroll fire on every fresh visit, even
+  // when go_router reuses the same UserHomeScreen state instance.
+  String? _lastHandledNonce;
+
+  Future<void> _refresh() async {
     ref.invalidate(restaurantsProvider);
     ref.invalidate(eventCategoriesProvider);
     ref.invalidate(collectionsProvider);
@@ -34,32 +45,53 @@ class UserHomeScreen extends ConsumerWidget {
     await ref.read(restaurantsProvider.future);
   }
 
+  void _maybeScrollToRestaurants() {
+    final params = GoRouterState.of(context).uri.queryParameters;
+    if (params['scrollTo'] != 'restaurants') return;
+    final nonce = params['t'];
+    if (nonce == null || nonce == _lastHandledNonce) return;
+    final ctx = _restaurantsHeaderKey.currentContext;
+    if (ctx == null) return;
+    _lastHandledNonce = nonce;
+    Scrollable.ensureVisible(
+      ctx,
+      duration: const Duration(milliseconds: 600),
+      curve: Curves.easeOutCubic,
+      alignment: 0.0,
+    );
+  }
+
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
+    WidgetsBinding.instance
+        .addPostFrameCallback((_) => _maybeScrollToRestaurants());
     return AppScaffold(
       padded: false,
       body: RefreshIndicator(
         color: AppColors.primary,
-        onRefresh: () => _refresh(ref),
+        onRefresh: _refresh,
         child: CustomScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
-          slivers: const [
-            _LocationHeader(),
-            SliverToBoxAdapter(child: _SearchBar()),
-            SliverToBoxAdapter(child: _HeroBanner()),
-            _SectionHeader(title: "What's the occasion?"),
-            SliverToBoxAdapter(child: _EventCategoriesGrid()),
-            SliverToBoxAdapter(child: SizedBox(height: AppSizes.md)),
-            _SectionHeader(
+          slivers: [
+            const _LocationHeader(),
+            const SliverToBoxAdapter(child: _SearchBar()),
+            const SliverToBoxAdapter(child: _HeroBanner()),
+            const _SectionHeader(title: "What's the occasion?"),
+            const SliverToBoxAdapter(child: _EventCategoriesGrid()),
+            const SliverToBoxAdapter(child: SizedBox(height: AppSizes.md)),
+            const _SectionHeader(
               title: 'Curated for events',
               trailing: 'See all',
             ),
-            SliverToBoxAdapter(child: _CollectionsScroll()),
-            SliverToBoxAdapter(child: SizedBox(height: AppSizes.md)),
-            SliverToBoxAdapter(child: _FilterChipsRow()),
-            _SectionHeader(title: 'Restaurants nearby'),
-            _RestaurantList(),
-            SliverToBoxAdapter(child: SizedBox(height: AppSizes.xxxl)),
+            const SliverToBoxAdapter(child: _CollectionsScroll()),
+            const SliverToBoxAdapter(child: SizedBox(height: AppSizes.md)),
+            const SliverToBoxAdapter(child: _FilterChipsRow()),
+            _SectionHeader(
+              key: _restaurantsHeaderKey,
+              title: 'Restaurants nearby',
+            ),
+            const _RestaurantList(),
+            const SliverToBoxAdapter(child: SizedBox(height: AppSizes.xxxl)),
           ],
         ),
       ),
@@ -368,7 +400,7 @@ class _HeroBanner extends StatelessWidget {
 // ───────────────────────── Section header ─────────────────────────
 
 class _SectionHeader extends StatelessWidget {
-  const _SectionHeader({required this.title, this.trailing});
+  const _SectionHeader({super.key, required this.title, this.trailing});
   final String title;
   final String? trailing;
 
