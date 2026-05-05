@@ -399,6 +399,10 @@ class _SlideView extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = data.theme;
     final isLast = index == total - 1;
+    // Shrink the plate scene on shorter viewports (e.g. inside MobileFrame
+    // when the browser window is smaller than 940px tall).
+    final viewportH = MediaQuery.of(context).size.height;
+    final plateBoxH = viewportH < 780 ? 260.0 : 360.0;
 
     return Stack(
       children: [
@@ -464,9 +468,11 @@ class _SlideView extends StatelessWidget {
               ),
 
               // Scene: plate + orbits. RepaintBoundary keeps the spinning
-              // plate from forcing page-level repaints on web.
+              // plate from forcing page-level repaints on web. Height
+              // shrinks on shorter viewports to avoid overflow inside
+              // MobileFrame on smaller laptop windows.
               SizedBox(
-                height: 360,
+                height: plateBoxH,
                 child: Center(
                   child: RepaintBoundary(
                     child: _Plate(data: data, isActive: isActive),

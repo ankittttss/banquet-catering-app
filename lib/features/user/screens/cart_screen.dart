@@ -541,6 +541,8 @@ class _BillDetails extends ConsumerWidget {
             count: totals.serviceBoyCount,
             unitCost: totals.serviceBoyUnitCost,
             lineTotal: totals.serviceBoyCost,
+            minimum: event.suggestedServiceBoys,
+            guests: event.guestCount,
             onMinus: () =>
                 ref.read(eventDraftProvider.notifier).bumpServiceBoyCount(-1),
             onPlus: () =>
@@ -575,12 +577,16 @@ class _ServiceBoyRow extends StatelessWidget {
     required this.count,
     required this.unitCost,
     required this.lineTotal,
+    required this.minimum,
+    required this.guests,
     required this.onMinus,
     required this.onPlus,
   });
   final int count;
   final double unitCost;
   final double lineTotal;
+  final int minimum;
+  final int guests;
   final VoidCallback onMinus;
   final VoidCallback onPlus;
 
@@ -599,7 +605,12 @@ class _ServiceBoyRow extends StatelessWidget {
                   style: AppTextStyles.body.copyWith(fontSize: 13),
                 ),
               ),
-              _SmallStepper(value: count, onMinus: onMinus, onPlus: onPlus),
+              _SmallStepper(
+                value: count,
+                minusEnabled: count > minimum,
+                onMinus: onMinus,
+                onPlus: onPlus,
+              ),
               const SizedBox(width: AppSizes.md),
               SizedBox(
                 width: 72,
@@ -617,7 +628,7 @@ class _ServiceBoyRow extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.only(top: 2),
             child: Text(
-              'Tap +/- to adjust how many staff to send',
+              'Recommended minimum: $minimum service boys based on $guests guests',
               style: AppTextStyles.caption.copyWith(fontSize: 11),
             ),
           ),
@@ -632,10 +643,12 @@ class _SmallStepper extends StatelessWidget {
     required this.value,
     required this.onMinus,
     required this.onPlus,
+    this.minusEnabled = true,
   });
   final int value;
   final VoidCallback onMinus;
   final VoidCallback onPlus;
+  final bool minusEnabled;
 
   @override
   Widget build(BuildContext context) {
@@ -648,6 +661,7 @@ class _SmallStepper extends StatelessWidget {
         children: [
           _StepperCell(
             icon: Icons.remove_rounded,
+            enabled: minusEnabled,
             onTap: () {
               HapticFeedback.selectionClick();
               onMinus();
@@ -680,18 +694,27 @@ class _SmallStepper extends StatelessWidget {
 }
 
 class _StepperCell extends StatelessWidget {
-  const _StepperCell({required this.icon, required this.onTap});
+  const _StepperCell({
+    required this.icon,
+    required this.onTap,
+    this.enabled = true,
+  });
   final IconData icon;
   final VoidCallback onTap;
+  final bool enabled;
 
   @override
   Widget build(BuildContext context) {
     return InkWell(
-      onTap: onTap,
+      onTap: enabled ? onTap : null,
       child: SizedBox(
         width: 28,
         height: 26,
-        child: Icon(icon, color: AppColors.success, size: 16),
+        child: Icon(
+          icon,
+          color: enabled ? AppColors.success : AppColors.textMuted,
+          size: 16,
+        ),
       ),
     );
   }

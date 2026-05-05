@@ -232,7 +232,15 @@ class _EventDetailsScreenState extends ConsumerState<EventDetailsScreen> {
             child: FilledButton(
               onPressed: (draft.date == null || draft.tierId == null)
                   ? null
-                  : () => context.go(AppRoutes.userHome),
+                  : () {
+                      // Fresh nonce on every click so the home screen re-runs
+                      // its scroll-to-restaurants effect even when the same
+                      // UserHomeScreen instance is reused by go_router.
+                      final t = DateTime.now().millisecondsSinceEpoch;
+                      context.go(
+                        '${AppRoutes.userHome}?scrollTo=restaurants&t=$t',
+                      );
+                    },
               style: FilledButton.styleFrom(
                 backgroundColor: AppColors.primary,
                 minimumSize: const Size.fromHeight(52),

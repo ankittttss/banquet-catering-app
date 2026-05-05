@@ -200,6 +200,8 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                       totals: totals,
                       cart: cart,
                       charges: cfg,
+                      minimumServiceBoys: event.suggestedServiceBoys,
+                      guests: event.guestCount,
                       onMinusBoy: () => ref
                           .read(eventDraftProvider.notifier)
                           .bumpServiceBoyCount(-1),
@@ -546,12 +548,16 @@ class _BillSummary extends StatelessWidget {
     required this.totals,
     required this.cart,
     required this.charges,
+    required this.minimumServiceBoys,
+    required this.guests,
     required this.onMinusBoy,
     required this.onPlusBoy,
   });
   final CheckoutTotals totals;
   final List<CartItem> cart;
   final ChargesConfig charges;
+  final int minimumServiceBoys;
+  final int guests;
   final VoidCallback onMinusBoy;
   final VoidCallback onPlusBoy;
 
@@ -592,6 +598,8 @@ class _BillSummary extends StatelessWidget {
             count: totals.serviceBoyCount,
             unitCost: totals.serviceBoyUnitCost,
             lineTotal: totals.serviceBoyCost,
+            minimum: minimumServiceBoys,
+            guests: guests,
             onMinus: onMinusBoy,
             onPlus: onPlusBoy,
           ),
@@ -620,12 +628,16 @@ class _CheckoutServiceBoyRow extends StatelessWidget {
     required this.count,
     required this.unitCost,
     required this.lineTotal,
+    required this.minimum,
+    required this.guests,
     required this.onMinus,
     required this.onPlus,
   });
   final int count;
   final double unitCost;
   final double lineTotal;
+  final int minimum;
+  final int guests;
   final VoidCallback onMinus;
   final VoidCallback onPlus;
 
@@ -658,15 +670,22 @@ class _CheckoutServiceBoyRow extends StatelessWidget {
                 child: Row(
                   children: [
                     InkWell(
-                      onTap: () {
-                        HapticFeedback.selectionClick();
-                        onMinus();
-                      },
-                      child: const SizedBox(
+                      onTap: count > minimum
+                          ? () {
+                              HapticFeedback.selectionClick();
+                              onMinus();
+                            }
+                          : null,
+                      child: SizedBox(
                         width: 28,
                         height: 26,
-                        child: Icon(Icons.remove_rounded,
-                            color: AppColors.success, size: 16),
+                        child: Icon(
+                          Icons.remove_rounded,
+                          color: count > minimum
+                              ? AppColors.success
+                              : AppColors.textMuted,
+                          size: 16,
+                        ),
                       ),
                     ),
                     Container(
@@ -711,7 +730,7 @@ class _CheckoutServiceBoyRow extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.only(top: 2),
             child: Text(
-              'Tap +/- to adjust how many staff are sent',
+              'Recommended minimum: $minimum service boys based on $guests guests',
               style: AppTextStyles.caption.copyWith(fontSize: 11),
             ),
           ),
