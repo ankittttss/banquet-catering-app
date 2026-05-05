@@ -182,7 +182,7 @@ Future<void> main(List<String> args) async {
   };
 
   // 1. Fetch categories (id + name).
-  print('→ Fetching categories …');
+  stdout.writeln('→ Fetching categories …');
   final catRes = await http.get(
     Uri.parse('$supabaseUrl/rest/v1/menu_categories?select=id,name'),
     headers: hdrs,
@@ -200,10 +200,10 @@ Future<void> main(List<String> args) async {
         'Run schema.sql first.');
     exit(3);
   }
-  print('  found ${categories.length} categories.');
+  stdout.writeln('  found ${categories.length} categories.');
 
   // 2. Fetch restaurants (paginated — PostgREST defaults to 1000-row pages).
-  print('→ Fetching restaurants …');
+  stdout.writeln('→ Fetching restaurants …');
   final restaurants = <Map<String, dynamic>>[];
   const pageSize = 1000;
   for (var offset = 0;; offset += pageSize) {
@@ -218,16 +218,17 @@ Future<void> main(List<String> args) async {
     );
     if (rRes.statusCode != 200 && rRes.statusCode != 206) {
       stderr.writeln(
-          'Restaurants fetch failed: HTTP ${rRes.statusCode} ${rRes.body}');
+        'Restaurants fetch failed: HTTP ${rRes.statusCode} ${rRes.body}',
+      );
       exit(2);
     }
     final page = (jsonDecode(rRes.body) as List).cast<Map<String, dynamic>>();
     restaurants.addAll(page);
     if (page.length < pageSize) break;
   }
-  print('  fetched ${restaurants.length} active restaurants.');
+  stdout.writeln('  fetched ${restaurants.length} active restaurants.');
 
-  print('→ Fetching existing menu_items restaurant ids …');
+  stdout.writeln('→ Fetching existing menu_items restaurant ids …');
   final haveMenu = <String>{};
   for (var offset = 0;; offset += pageSize) {
     final miRes = await http.get(
@@ -250,11 +251,11 @@ Future<void> main(List<String> args) async {
   if (limit != null && targets.length > limit) {
     targets = targets.take(limit).toList();
   }
-  print('→ ${targets.length} restaurants will get menus '
+  stdout.writeln('→ ${targets.length} restaurants will get menus '
       '(${haveMenu.length} already have some; ${pending.length} pending total).');
 
   if (targets.isEmpty) {
-    print('Nothing to do.');
+    stdout.writeln('Nothing to do.');
     return;
   }
 
@@ -298,12 +299,13 @@ Future<void> main(List<String> args) async {
     }
   }
 
-  print('→ Generated ${rows.length} menu_items rows '
+  stdout.writeln('→ Generated ${rows.length} menu_items rows '
       '(avg ${(rows.length / targets.length).toStringAsFixed(1)} per restaurant).');
 
   if (dryRun) {
-    print(const JsonEncoder.withIndent('  ')
-        .convert(rows.take(6).toList()));
+    stdout.writeln(
+      const JsonEncoder.withIndent('  ').convert(rows.take(6).toList()),
+    );
     return;
   }
 
@@ -321,9 +323,9 @@ Future<void> main(List<String> args) async {
       stderr.writeln('Chunk failed: HTTP ${res.statusCode} ${res.body}');
       exit(4);
     }
-    print('  inserted ${chunk.length} (${i + chunk.length}/${rows.length})');
+    stdout.writeln('  inserted ${chunk.length} (${i + chunk.length}/${rows.length})');
   }
-  print('✓ Done.');
+  stdout.writeln('✓ Done.');
 }
 
 Map<String, String> _parseArgs(List<String> args) {
