@@ -597,15 +597,6 @@ class _TierCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(tier.label, style: AppTextStyles.bodyBold),
-                  if (tier.description != null) ...[
-                    const SizedBox(height: 2),
-                    Text(
-                      tier.description!,
-                      style: AppTextStyles.caption.copyWith(fontSize: 11),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
                   const SizedBox(height: 4),
                   Text(
                     '₹${tier.perGuestMin.toStringAsFixed(0)}–${tier.perGuestMax.toStringAsFixed(0)}/guest',
