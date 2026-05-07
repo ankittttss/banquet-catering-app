@@ -174,7 +174,7 @@ class _EventDetailsScreenState extends ConsumerState<EventDetailsScreen> {
         ),
       ),
       body: ListView(
-        padding: const EdgeInsets.only(bottom: 120),
+        padding: const EdgeInsets.only(bottom: AppSizes.lg),
         children: [
           _Section(
             title: 'Event type',
