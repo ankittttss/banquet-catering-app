@@ -1241,14 +1241,16 @@ class _TermsLine extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(top: 12),
-      child: Text(
-        'By continuing you agree to our Terms & Privacy Policy',
-        textAlign: TextAlign.center,
-        style: GoogleFonts.outfit(
-          fontSize: 11,
-          color: _P.textPlaceholder,
-          fontWeight: FontWeight.w400,
-          height: 1.5,
+      child: Center(
+        child: Text(
+          'By continuing you agree to our Terms & Privacy Policy',
+          textAlign: TextAlign.center,
+          style: GoogleFonts.outfit(
+            fontSize: 11,
+            color: _P.textPlaceholder,
+            fontWeight: FontWeight.w400,
+            height: 1.5,
+          ),
         ),
       ),
     );
