@@ -24,6 +24,7 @@ import '../../../shared/providers/menu_providers.dart';
 import '../../../shared/providers/repositories_providers.dart';
 import '../../../shared/widgets/app_error_view.dart';
 import '../../../shared/widgets/app_scaffold.dart';
+import '../../../shared/widgets/service_tax_tile.dart';
 
 enum _PaymentMethod { upi, card, cod }
 
@@ -143,12 +144,14 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => AppErrorView(error: e),
         data: (cfg) {
+          final includeServiceTax = ref.watch(includeServiceTaxProvider);
           final totals = _totalsFor(
             cart,
             cfg,
             restaurants,
             event.guestCount,
             event.effectiveServiceBoyCount,
+            includeServiceTax,
           );
           return Stack(
             children: [
@@ -202,6 +205,10 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                       charges: cfg,
                       minimumServiceBoys: event.suggestedServiceBoys,
                       guests: event.guestCount,
+                      includeServiceTax: includeServiceTax,
+                      onServiceTaxChanged: (bool v) => ref
+                          .read(includeServiceTaxProvider.notifier)
+                          .state = v,
                       onMinusBoy: () => ref
                           .read(eventDraftProvider.notifier)
                           .bumpServiceBoyCount(-1),
@@ -236,6 +243,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     List<Restaurant> restaurants,
     int guestCount,
     int serviceBoyCount,
+    bool includeServiceTax,
   ) {
     final uniq = cart.map((c) => c.item.restaurantId).toSet();
     final delivery = <String, double>{};
@@ -254,6 +262,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       deliveryByRestaurant: delivery,
       guestCount: guestCount,
       serviceBoyCount: serviceBoyCount,
+      includeServiceTax: includeServiceTax,
     );
   }
 }
@@ -550,6 +559,8 @@ class _BillSummary extends StatelessWidget {
     required this.charges,
     required this.minimumServiceBoys,
     required this.guests,
+    required this.includeServiceTax,
+    required this.onServiceTaxChanged,
     required this.onMinusBoy,
     required this.onPlusBoy,
   });
@@ -558,6 +569,8 @@ class _BillSummary extends StatelessWidget {
   final ChargesConfig charges;
   final int minimumServiceBoys;
   final int guests;
+  final bool includeServiceTax;
+  final ValueChanged<bool> onServiceTaxChanged;
   final VoidCallback onMinusBoy;
   final VoidCallback onPlusBoy;
 
@@ -608,9 +621,11 @@ class _BillSummary extends StatelessWidget {
             'GST (${_pct(charges.gstPercent)}%)',
             Formatters.currency(totals.gst),
           ),
-          _BillRow(
-            'Service tax (${_pct(charges.serviceTaxPercent)}%)',
-            Formatters.currency(totals.serviceTax),
+          ServiceTaxTile(
+            percent: charges.serviceTaxPercent,
+            amount: totals.subtotal * (charges.serviceTaxPercent / 100),
+            included: includeServiceTax,
+            onChanged: onServiceTaxChanged,
           ),
           const Padding(
             padding: EdgeInsets.symmetric(vertical: AppSizes.sm),
