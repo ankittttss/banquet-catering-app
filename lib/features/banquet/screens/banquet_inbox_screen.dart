@@ -6,12 +6,11 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_sizes.dart';
 import '../../../core/constants/app_text_styles.dart';
+import '../../../core/router/app_routes.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../data/models/banquet_venue.dart';
 import '../../../data/models/event_assignment.dart';
-import '../../../data/models/user_profile.dart';
 import '../../../shared/providers/banquet_providers.dart';
-import '../../../shared/providers/repositories_providers.dart';
 import '../../../shared/providers/staffing_providers.dart';
 import '../../../shared/widgets/app_card.dart';
 import '../../../shared/widgets/app_scaffold.dart';
@@ -106,42 +105,27 @@ class _InboxCard extends ConsumerWidget {
   final BanquetInboxEvent event;
 
   Color _statusColor() => switch (event.status) {
-        BanquetEventStatus.pending => AppColors.primary,
+        BanquetEventStatus.pending => AppColors.warning,
         BanquetEventStatus.accepted => AppColors.success,
         BanquetEventStatus.declined => AppColors.textMuted,
         BanquetEventStatus.cancelled => AppColors.textMuted,
         BanquetEventStatus.completed => AppColors.success,
       };
 
-  Future<void> _setStatus(
-    BuildContext context,
-    WidgetRef ref,
-    BanquetEventStatus next,
-  ) async {
-    try {
-      await ref.read(banquetRepositoryProvider).updateEventStatus(
-            eventId: event.id,
-            status: next,
-          );
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Marked ${next.label.toLowerCase()}')),
-        );
-      }
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed: $e')),
-        );
-      }
-    }
-  }
+  String _ctaHint() => switch (event.status) {
+        BanquetEventStatus.pending =>
+          'Tap to review full details before accepting',
+        BanquetEventStatus.accepted =>
+          'Tap to view details or assign a manager',
+        _ => 'Tap to view booking details',
+      };
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final statusColor = _statusColor();
-    final canAct = event.status == BanquetEventStatus.pending;
     return AppCard(
+      onTap: () =>
+          context.push(AppRoutes.banquetBookingDetailFor(event.id)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -155,7 +139,9 @@ class _InboxCard extends ConsumerWidget {
               ),
               Container(
                 padding: const EdgeInsets.symmetric(
-                    horizontal: 10, vertical: 4),
+                  horizontal: 10,
+                  vertical: 4,
+                ),
                 decoration: BoxDecoration(
                   color: statusColor.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(100),
@@ -182,46 +168,38 @@ class _InboxCard extends ConsumerWidget {
                     size: 16, color: AppColors.textMuted),
                 const SizedBox(width: 4),
                 Expanded(
-                  child: Text(event.location!,
-                      style: AppTextStyles.caption, maxLines: 2),
-                ),
-              ],
-            ),
-          ],
-          if (canAct) ...[
-            const SizedBox(height: AppSizes.md),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () => _setStatus(
-                      context,
-                      ref,
-                      BanquetEventStatus.declined,
-                    ),
-                    icon: const Icon(PhosphorIconsBold.x, size: 16),
-                    label: const Text('Decline'),
-                  ),
-                ),
-                const SizedBox(width: AppSizes.sm),
-                Expanded(
-                  child: FilledButton.icon(
-                    onPressed: () => _setStatus(
-                      context,
-                      ref,
-                      BanquetEventStatus.accepted,
-                    ),
-                    icon: const Icon(PhosphorIconsBold.check, size: 16),
-                    label: const Text('Accept'),
+                  child: Text(
+                    event.location!,
+                    style: AppTextStyles.caption,
+                    maxLines: 2,
                   ),
                 ),
               ],
             ),
           ],
           if (event.status == BanquetEventStatus.accepted) ...[
-            const SizedBox(height: AppSizes.md),
+            const SizedBox(height: AppSizes.sm),
             _ManagerRow(eventId: event.id),
           ],
+          const SizedBox(height: AppSizes.sm),
+          // Replaces the old inline Accept/Decline/Assign row — operators
+          // now open the booking-detail screen first so they're never
+          // forced to act on a thin summary card.
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  _ctaHint(),
+                  style: AppTextStyles.caption.copyWith(
+                    color: AppColors.primary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              const Icon(PhosphorIconsBold.caretRight,
+                  size: 16, color: AppColors.primary),
+            ],
+          ),
         ],
       ),
     );
@@ -277,197 +255,38 @@ class _ManagerRow extends ConsumerWidget {
     );
 
     final hasManager = manager != null && manager.id.isNotEmpty;
-    if (hasManager) {
-      final name = manager.profileName ?? 'Manager';
-      return Container(
-        padding: const EdgeInsets.symmetric(
-            horizontal: AppSizes.md, vertical: 10),
-        decoration: BoxDecoration(
-          color: AppColors.success.withValues(alpha: 0.10),
-          borderRadius: BorderRadius.circular(AppSizes.radiusSm),
-          border: Border.all(color: AppColors.success.withValues(alpha: 0.3)),
-        ),
-        child: Row(
-          children: [
-            const Icon(PhosphorIconsBold.userGear,
-                color: AppColors.success, size: 18),
-            const SizedBox(width: AppSizes.sm),
-            Expanded(
-              child: Text('Manager: $name',
-                  style: AppTextStyles.bodyBold
-                      .copyWith(color: AppColors.success)),
+    final color =
+        hasManager ? AppColors.success : AppColors.warning;
+    final label = hasManager
+        ? 'Manager: ${manager.profileName ?? 'Assigned'}'
+        : 'Manager not yet assigned';
+    // Read-only chip — assign / reassign actions live on the booking
+    // detail screen so the operator always sees full info first.
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSizes.md,
+        vertical: 10,
+      ),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(AppSizes.radiusSm),
+        border: Border.all(color: color.withValues(alpha: 0.30)),
+      ),
+      child: Row(
+        children: [
+          Icon(PhosphorIconsBold.userGear, color: color, size: 18),
+          const SizedBox(width: AppSizes.sm),
+          Expanded(
+            child: Text(
+              label,
+              style: AppTextStyles.bodyBold.copyWith(color: color),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
-            TextButton(
-              onPressed: () => showModalBottomSheet<void>(
-                context: context,
-                isScrollControlled: true,
-                builder: (_) => _AssignManagerSheet(eventId: eventId),
-              ),
-              child: const Text('Reassign'),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return SizedBox(
-      width: double.infinity,
-      child: OutlinedButton.icon(
-        onPressed: () => showModalBottomSheet<void>(
-          context: context,
-          isScrollControlled: true,
-          builder: (_) => _AssignManagerSheet(eventId: eventId),
-        ),
-        icon: const Icon(PhosphorIconsBold.userGear, size: 16),
-        label: const Text('Assign manager'),
+          ),
+        ],
       ),
     );
   }
 }
 
-class _AssignManagerSheet extends ConsumerWidget {
-  const _AssignManagerSheet({required this.eventId});
-  final String eventId;
-
-  Future<void> _assign(
-    BuildContext context,
-    WidgetRef ref,
-    UserProfile manager,
-  ) async {
-    try {
-      await ref.read(staffingRepositoryProvider).setEventManager(
-            eventId: eventId,
-            managerProfileId: manager.id,
-          );
-      // Make the inbox card re-render with the new manager immediately.
-      ref.invalidate(eventStaffProvider(eventId));
-      if (context.mounted) {
-        Navigator.of(context).pop();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content:
-                  Text('${manager.name ?? 'Manager'} assigned to event')),
-        );
-      }
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed: $e')),
-        );
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final managers = ref.watch(availableManagersProvider);
-    return DraggableScrollableSheet(
-      initialChildSize: 0.6,
-      maxChildSize: 0.95,
-      minChildSize: 0.4,
-      expand: false,
-      builder: (_, scrollCtrl) => Container(
-        decoration: const BoxDecoration(
-          color: AppColors.surface,
-          borderRadius:
-              BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        padding: const EdgeInsets.all(AppSizes.pagePadding),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Assign manager', style: AppTextStyles.display),
-            const SizedBox(height: AppSizes.xs),
-            Text(
-              'Pick a manager to run this event. They can then staff service boys from their team.',
-              style: AppTextStyles.bodyMuted,
-            ),
-            const SizedBox(height: AppSizes.lg),
-            Expanded(
-              child: managers.when(
-                loading: () =>
-                    const Center(child: CircularProgressIndicator()),
-                error: (e, _) => Text('Could not load managers: $e',
-                    style: AppTextStyles.caption),
-                data: (rows) {
-                  if (rows.isEmpty) {
-                    return Center(
-                      child: Text(
-                        'No managers available. An admin must promote a user to the manager role first.',
-                        textAlign: TextAlign.center,
-                        style: AppTextStyles.bodyMuted,
-                      ),
-                    );
-                  }
-                  return ListView.separated(
-                    controller: scrollCtrl,
-                    itemCount: rows.length,
-                    separatorBuilder: (_, __) =>
-                        const SizedBox(height: AppSizes.sm),
-                    itemBuilder: (_, i) => _PersonTile(
-                      profile: rows[i],
-                      onTap: () => _assign(context, ref, rows[i]),
-                    ),
-                  );
-                },
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _PersonTile extends StatelessWidget {
-  const _PersonTile({required this.profile, required this.onTap});
-  final UserProfile profile;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final initial = (profile.name?.isNotEmpty ?? false)
-        ? profile.name![0].toUpperCase()
-        : (profile.email?.isNotEmpty ?? false)
-            ? profile.email![0].toUpperCase()
-            : '?';
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(AppSizes.radiusSm),
-      child: Container(
-        padding: const EdgeInsets.all(AppSizes.md),
-        decoration: BoxDecoration(
-          color: AppColors.surfaceAlt,
-          border: Border.all(color: AppColors.border),
-          borderRadius: BorderRadius.circular(AppSizes.radiusSm),
-        ),
-        child: Row(
-          children: [
-            CircleAvatar(
-              backgroundColor: AppColors.primarySoft,
-              foregroundColor: AppColors.primary,
-              child: Text(initial),
-            ),
-            const SizedBox(width: AppSizes.md),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(profile.name ?? 'Manager',
-                      style: AppTextStyles.bodyBold),
-                  if (profile.email != null)
-                    Text(profile.email!,
-                        style: AppTextStyles.caption,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis),
-                ],
-              ),
-            ),
-            const Icon(PhosphorIconsBold.caretRight,
-                color: AppColors.textMuted),
-          ],
-        ),
-      ),
-    );
-  }
-}

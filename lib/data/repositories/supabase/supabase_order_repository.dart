@@ -2,6 +2,7 @@ import '../../../core/supabase/supabase_client.dart';
 import '../../models/cart_item.dart';
 import '../../models/checkout_totals.dart';
 import '../../models/event_draft.dart';
+import '../../models/manager_event_detail.dart';
 import '../../models/order.dart';
 import '../order_repository.dart';
 
@@ -159,5 +160,31 @@ class SupabaseOrderRepository implements OrderRepository {
     await supabase
         .from('orders')
         .update({'order_status': status.dbValue}).eq('id', orderId);
+  }
+
+  @override
+  Future<ManagerEventDetail?> fetchEventDetail(String eventId) async {
+    // One round-trip: event row + venue + tier + the booking order +
+    // each restaurant's vendor lot with the restaurant's display name.
+    // PostgREST returns `orders` and `order_vendor_lots` as nested
+    // arrays — the model handles the unwrap.
+    final row = await supabase
+        .from('events')
+        .select(
+          '*, '
+          'banquet_venues(name), '
+          'event_tiers(label, code), '
+          'orders('
+          'id, order_status, payment_status, total, subtotal, food_cost, '
+          'banquet_charge, delivery_charge, buffet_setup, service_boy_cost, '
+          'service_boy_count, water_bottle_cost, platform_fee, gst, '
+          'created_at, '
+          'order_vendor_lots(*, restaurants(name))'
+          ')',
+        )
+        .eq('id', eventId)
+        .maybeSingle();
+    if (row == null) return null;
+    return ManagerEventDetail.fromMap(row);
   }
 }

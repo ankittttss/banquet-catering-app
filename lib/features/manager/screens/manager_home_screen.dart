@@ -159,6 +159,8 @@ class _EventCard extends ConsumerWidget {
             .length ??
         0;
     return AppCard(
+      onTap: () =>
+          context.push(AppRoutes.managerEventDetailFor(assignment.eventId)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -207,19 +209,33 @@ class _EventCard extends ConsumerWidget {
             ],
           ),
           const SizedBox(height: AppSizes.md),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: () => showModalBottomSheet<void>(
-                context: context,
-                isScrollControlled: true,
-                builder: (_) => _AddServiceBoySheet(
-                  eventId: assignment.eventId,
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () => context.push(
+                    AppRoutes.managerEventDetailFor(assignment.eventId),
+                  ),
+                  icon: const Icon(
+                      PhosphorIconsBold.arrowRight, size: 16),
+                  label: const Text('View details'),
                 ),
               ),
-              icon: const Icon(PhosphorIconsBold.userPlus, size: 16),
-              label: const Text('Add service boy'),
-            ),
+              const SizedBox(width: AppSizes.sm),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () => showModalBottomSheet<void>(
+                    context: context,
+                    isScrollControlled: true,
+                    builder: (_) => _AddServiceBoySheet(
+                      eventId: assignment.eventId,
+                    ),
+                  ),
+                  icon: const Icon(PhosphorIconsBold.userPlus, size: 16),
+                  label: const Text('Add boy'),
+                ),
+              ),
+            ],
           ),
         ],
       ),
