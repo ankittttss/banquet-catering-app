@@ -12,6 +12,7 @@ import '../../features/admin/screens/admin_partners_screen.dart';
 import '../../features/auth/screens/login_screen.dart';
 import '../../features/auth/screens/otp_screen.dart';
 import '../../features/banquet/screens/banquet_home_screen.dart';
+import '../../features/banquet/screens/banquet_booking_detail_screen.dart';
 import '../../features/banquet/screens/banquet_inbox_screen.dart';
 import '../../features/banquet/screens/banquet_inventory_screen.dart';
 import '../../features/banquet/screens/banquet_venues_screen.dart';
@@ -23,6 +24,7 @@ import '../../features/delivery/screens/delivery_home_screen.dart';
 import '../../features/delivery/screens/delivery_otp_screen.dart';
 import '../../features/delivery/screens/delivery_profile_screen.dart';
 import '../../features/delivery/screens/pickup_checklist_screen.dart';
+import '../../features/manager/screens/manager_event_detail_screen.dart';
 import '../../features/manager/screens/manager_home_screen.dart';
 import '../../features/onboarding/onboarding_screen.dart';
 import '../../features/restaurant/screens/restaurant_home_screen.dart';
@@ -254,6 +256,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         },
       ),
       GoRoute(
+        path: AppRoutes.banquetBookingDetail,
+        pageBuilder: (_, s) => _page(
+          s,
+          BanquetBookingDetailScreen(eventId: s.pathParameters['id']!),
+        ),
+      ),
+      GoRoute(
         path: AppRoutes.banquetVenues,
         pageBuilder: (_, s) => _page(s, const BanquetVenuesScreen()),
       ),
@@ -268,6 +277,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: AppRoutes.managerHome,
         pageBuilder: (_, s) => _page(s, const ManagerHomeScreen()),
+      ),
+      GoRoute(
+        path: AppRoutes.managerEventDetail,
+        pageBuilder: (_, s) => _page(
+          s,
+          ManagerEventDetailScreen(eventId: s.pathParameters['id']!),
+        ),
       ),
       GoRoute(
         path: AppRoutes.serviceBoyHome,

@@ -17,6 +17,7 @@ import '../../../data/models/user_profile.dart';
 import '../../../data/models/user_role.dart';
 import '../../../shared/providers/auth_providers.dart';
 import '../../../shared/providers/repositories_providers.dart';
+import '../widgets/dev_sign_in_panel.dart';
 
 // ───────────────────────── Palette ─────────────────────────
 
@@ -302,7 +303,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _Title('Welcome back', 'Sign in to continue hosting'),
-          const SizedBox(height: 24),
+          const SizedBox(height: 16),
+          // Local-dev only — renders nothing in prod via AppConfig.isDev
+          // gate inside the widget. Tap any role chip to sign in
+          // instantly with the seeded test account.
+          const DevSignInPanel(),
           _FieldLabel('Email'),
           _InputField(
             controller: _emailCtrl,

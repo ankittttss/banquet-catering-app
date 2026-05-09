@@ -45,12 +45,19 @@ class CheckoutTotals {
   /// real billable amount, but won't break the build.
   ///
   /// [serviceBoyCount] multiplies the per-boy cost. Defaults to 1.
+  ///
+  /// [includeServiceTax] is the customer-side opt-in toggle. The tile is
+  /// always shown in the bill details so the customer sees the configured
+  /// percentage, but when this is `false` the amount is zeroed and the
+  /// total drops accordingly. Defaults to `true` so legacy call sites keep
+  /// applying service tax.
   static CheckoutTotals compute({
     required List<CartItem> cart,
     required ChargesConfig charges,
     required Map<String, double> deliveryByRestaurant,
     int guestCount = 1,
     int serviceBoyCount = 1,
+    bool includeServiceTax = true,
   }) {
     final scale = guestCount.clamp(1, 100000);
     final boys = serviceBoyCount.clamp(0, 999);
@@ -67,7 +74,9 @@ class CheckoutTotals {
         charges.waterBottleCost +
         charges.platformFee;
     final gst = subtotal * (charges.gstPercent / 100);
-    final serviceTax = subtotal * (charges.serviceTaxPercent / 100);
+    final serviceTax = includeServiceTax
+        ? subtotal * (charges.serviceTaxPercent / 100)
+        : 0.0;
     final total = subtotal + gst + serviceTax;
     return CheckoutTotals(
       foodCost: food,

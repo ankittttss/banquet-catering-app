@@ -1,6 +1,7 @@
 import '../../models/cart_item.dart';
 import '../../models/checkout_totals.dart';
 import '../../models/event_draft.dart';
+import '../../models/manager_event_detail.dart';
 import '../../models/order.dart';
 import '../order_repository.dart';
 
@@ -26,4 +27,7 @@ class StubOrderRepository implements OrderRepository {
 
   @override
   Future<void> updateStatus(String orderId, OrderStatus status) async {}
+
+  @override
+  Future<ManagerEventDetail?> fetchEventDetail(String eventId) async => null;
 }

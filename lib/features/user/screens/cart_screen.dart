@@ -19,6 +19,7 @@ import '../../../shared/providers/charges_providers.dart';
 import '../../../shared/providers/event_providers.dart';
 import '../../../shared/providers/menu_providers.dart';
 import '../../../shared/widgets/app_scaffold.dart';
+import '../../../shared/widgets/service_tax_tile.dart';
 import '../../../shared/widgets/user_bottom_nav.dart';
 
 class CartScreen extends ConsumerWidget {
@@ -115,12 +116,14 @@ class _CartBody extends ConsumerWidget {
           loading: () => const SizedBox.shrink(),
           error: (_, __) => const SizedBox.shrink(),
           data: (cfg) {
+            final includeServiceTax = ref.watch(includeServiceTaxProvider);
             final totals = _totalsFor(
               cart,
               cfg,
               restaurants,
               event.guestCount,
               event.effectiveServiceBoyCount,
+              includeServiceTax,
             );
             return Positioned(
               left: 0,
@@ -140,6 +143,7 @@ class _CartBody extends ConsumerWidget {
     List<Restaurant> restaurants,
     int guestCount,
     int serviceBoyCount,
+    bool includeServiceTax,
   ) {
     final uniq = cart.map((c) => c.item.restaurantId).toSet();
     final delivery = <String, double>{};
@@ -158,6 +162,7 @@ class _CartBody extends ConsumerWidget {
       deliveryByRestaurant: delivery,
       guestCount: guestCount,
       serviceBoyCount: serviceBoyCount,
+      includeServiceTax: includeServiceTax,
     );
   }
 }
@@ -502,13 +507,18 @@ class _BillDetails extends ConsumerWidget {
           )
           .deliveryCharge;
     }
+    final includeServiceTax = ref.watch(includeServiceTaxProvider);
     final totals = CheckoutTotals.compute(
       cart: cart,
       charges: charges,
       deliveryByRestaurant: delivery,
       guestCount: event.guestCount,
       serviceBoyCount: event.effectiveServiceBoyCount,
+      includeServiceTax: includeServiceTax,
     );
+    // Always-on amount so the tile can show "you save ₹X" when skipped.
+    final serviceTaxIfIncluded =
+        totals.subtotal * (charges.serviceTaxPercent / 100);
 
     return Container(
       color: AppColors.surface,
@@ -553,9 +563,13 @@ class _BillDetails extends ConsumerWidget {
             'GST (${charges.gstPercent.toStringAsFixed(charges.gstPercent.truncateToDouble() == charges.gstPercent ? 0 : 1)}%)',
             Formatters.currency(totals.gst),
           ),
-          _BillRow(
-            'Service tax (${charges.serviceTaxPercent.toStringAsFixed(charges.serviceTaxPercent.truncateToDouble() == charges.serviceTaxPercent ? 0 : 1)}%)',
-            Formatters.currency(totals.serviceTax),
+          ServiceTaxTile(
+            percent: charges.serviceTaxPercent,
+            amount: serviceTaxIfIncluded,
+            included: includeServiceTax,
+            onChanged: (v) => ref
+                .read(includeServiceTaxProvider.notifier)
+                .state = v,
           ),
           const Padding(
             padding: EdgeInsets.symmetric(vertical: AppSizes.sm),

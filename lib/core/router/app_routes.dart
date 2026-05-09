@@ -37,14 +37,20 @@ class AppRoutes {
   // Banquet operator
   static const banquetHome = '/banquet';
   static const banquetInbox = '/banquet/inbox';
+  static const banquetBookingDetail = '/banquet/inbox/:id'; // template
   static const banquetVenues = '/banquet/venues';
   static const banquetInventory = '/banquet/inventory';
+
+  static String banquetBookingDetailFor(String id) => '/banquet/inbox/$id';
 
   // Restaurant operator
   static const restaurantHome = '/restaurant';
 
   // Manager
   static const managerHome = '/manager';
+  static const managerEventDetail = '/manager/events/:id'; // template
+
+  static String managerEventDetailFor(String id) => '/manager/events/$id';
 
   // Service boy
   static const serviceBoyHome = '/service-boy';
