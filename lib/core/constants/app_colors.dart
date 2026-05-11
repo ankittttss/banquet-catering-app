@@ -16,9 +16,11 @@ class AppColors {
   static const Color accentSoft = Color(0xFFFFF8E7);
 
   // Surfaces
-  static const Color pageBg     = Color(0xFFFFFFFF);
-  static const Color surface    = Color(0xFFFFFFFF);
-  static const Color surfaceAlt = Color(0xFFF9F9F9);
+  static const Color pageBg      = Color(0xFFFFFFFF);
+  static const Color surface     = Color(0xFFFFFFFF);
+  static const Color surfaceAlt  = Color(0xFFF9F9F9);
+  /// Warm off-white page background used on the plan-your-event flow.
+  static const Color surfaceWarm = Color(0xFFFBF8F4);
 
   // Text
   static const Color textPrimary   = Color(0xFF1C1C1C);

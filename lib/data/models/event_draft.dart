@@ -1,3 +1,7 @@
+import 'chef.dart';
+import 'private_property.dart';
+import 'venue_type.dart';
+
 /// Client-side draft of an event — not persisted until the order is placed.
 class EventDraft {
   const EventDraft({
@@ -12,6 +16,10 @@ class EventDraft {
     this.banquetVenueId,
     this.banquetVenueName,
     this.serviceBoyCount,
+    this.venueType,
+    this.propertyDraft,
+    this.addonQuantities = const {},
+    this.recce,
   });
 
   final DateTime? date;
@@ -35,6 +43,20 @@ class EventDraft {
   /// Customer-chosen number of service boys. When null, falls back to
   /// suggestedServiceBoys (1 per 10 guests, min 1).
   final int? serviceBoyCount;
+
+  /// Hall vs private property. Drives which sub-flow the user enters after
+  /// step 1 of plan-your-event.
+  final VenueType? venueType;
+
+  /// Filled when [venueType] is [VenueType.privateProperty].
+  final PrivatePropertyDraft? propertyDraft;
+
+  /// Addon id → quantity. Empty when the user hasn't customised anything.
+  final Map<String, int> addonQuantities;
+
+  /// Optional free site-recce booking. Only meaningful on the private-
+  /// property path.
+  final ReccePick? recce;
 
   /// Suggested staffing level — 1 service boy per 10 guests (rounded up),
   /// floor of 1. e.g. 25 guests → 3, 100 guests → 10, 150 guests → 15.
@@ -66,6 +88,10 @@ class EventDraft {
     String? banquetVenueId,
     String? banquetVenueName,
     int? serviceBoyCount,
+    VenueType? venueType,
+    PrivatePropertyDraft? propertyDraft,
+    Map<String, int>? addonQuantities,
+    ReccePick? recce,
   }) =>
       EventDraft(
         date: date ?? this.date,
@@ -79,6 +105,10 @@ class EventDraft {
         banquetVenueId: banquetVenueId ?? this.banquetVenueId,
         banquetVenueName: banquetVenueName ?? this.banquetVenueName,
         serviceBoyCount: serviceBoyCount ?? this.serviceBoyCount,
+        venueType: venueType ?? this.venueType,
+        propertyDraft: propertyDraft ?? this.propertyDraft,
+        addonQuantities: addonQuantities ?? this.addonQuantities,
+        recce: recce ?? this.recce,
       );
 
   Map<String, dynamic> toInsertMap(String userId) => {
