@@ -12,6 +12,10 @@ class AppRoutes {
   static const editProfile = '/user/profile/edit';
   static const addresses = '/user/addresses';
   static const eventDetails = '/user/event';
+  static const eventVenueType = '/user/event/venue';
+  static const eventProperty = '/user/event/property';
+  static const eventSetup = '/user/event/setup';
+  static const eventRecce = '/user/event/recce';
   static const menu = '/user/menu';
   static const restaurantDetail = '/user/restaurants/:id'; // template
   static const search = '/user/search';

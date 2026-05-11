@@ -36,6 +36,10 @@ import '../../features/user/screens/cart_screen.dart';
 import '../../features/user/screens/checkout_screen.dart';
 import '../../features/user/screens/edit_profile_screen.dart';
 import '../../features/user/screens/event_details_screen.dart';
+import '../../features/user/screens/private_property_screen.dart';
+import '../../features/user/screens/recce_screen.dart';
+import '../../features/user/screens/setup_equipment_screen.dart';
+import '../../features/user/screens/venue_type_screen.dart';
 import '../../features/user/screens/favorites_screen.dart';
 import '../../features/user/screens/help_support_screen.dart';
 import '../../features/user/screens/menu_screen.dart';
@@ -165,6 +169,22 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: AppRoutes.eventDetails,
         pageBuilder: (_, s) => _page(s, const EventDetailsScreen()),
+      ),
+      GoRoute(
+        path: AppRoutes.eventVenueType,
+        pageBuilder: (_, s) => _page(s, const VenueTypeScreen()),
+      ),
+      GoRoute(
+        path: AppRoutes.eventProperty,
+        pageBuilder: (_, s) => _page(s, const PrivatePropertyScreen()),
+      ),
+      GoRoute(
+        path: AppRoutes.eventSetup,
+        pageBuilder: (_, s) => _page(s, const SetupEquipmentScreen()),
+      ),
+      GoRoute(
+        path: AppRoutes.eventRecce,
+        pageBuilder: (_, s) => _page(s, const RecceScreen()),
       ),
       GoRoute(
         path: AppRoutes.menu,

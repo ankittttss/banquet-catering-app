@@ -11,6 +11,7 @@ import '../../../core/router/app_routes.dart';
 import '../../../core/utils/material_icon_map.dart';
 import '../../../data/models/collection.dart';
 import '../../../data/models/event_category.dart';
+import '../../../data/models/event_draft.dart';
 import '../../../data/models/restaurant.dart';
 import '../../../shared/providers/address_providers.dart';
 import '../../../shared/providers/event_providers.dart';
@@ -75,7 +76,7 @@ class _UserHomeScreenState extends ConsumerState<UserHomeScreen> {
           slivers: [
             const _LocationHeader(),
             const SliverToBoxAdapter(child: _SearchBar()),
-            const SliverToBoxAdapter(child: _HeroBanner()),
+            const SliverToBoxAdapter(child: _HeroOrDraft()),
             const _SectionHeader(title: "What's the occasion?"),
             const SliverToBoxAdapter(child: _EventCategoriesGrid()),
             const SliverToBoxAdapter(child: SizedBox(height: AppSizes.md)),
@@ -281,6 +282,292 @@ class _SearchBar extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+// ───────────────────────── Hero or draft picker ─────────────────────────
+
+/// Switches the hero spot between the marketing banner and a "Continue
+/// planning" card whenever the user has an in-progress draft event.
+class _HeroOrDraft extends ConsumerWidget {
+  const _HeroOrDraft();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final draft = ref.watch(eventDraftProvider);
+    final progress = _DraftProgress.from(draft);
+    if (!progress.hasStarted) return const _HeroBanner();
+    return _DraftEventCard(draft: draft, progress: progress);
+  }
+}
+
+// ───────────────────────── Draft event card ─────────────────────────
+
+class _DraftEventCard extends StatelessWidget {
+  const _DraftEventCard({required this.draft, required this.progress});
+  final EventDraft draft;
+  final _DraftProgress progress;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppSizes.pagePadding,
+        AppSizes.sm,
+        AppSizes.pagePadding,
+        0,
+      ),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(AppSizes.radiusLg),
+        child: InkWell(
+          onTap: () {
+            HapticFeedback.lightImpact();
+            context.push(AppRoutes.eventDetails);
+          },
+          borderRadius: BorderRadius.circular(AppSizes.radiusLg),
+          child: Container(
+            padding: const EdgeInsets.all(AppSizes.lg),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: AppColors.heroGradient,
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(AppSizes.radiusLg),
+              boxShadow: [
+                BoxShadow(
+                  color: AppColors.primary.withValues(alpha: 0.32),
+                  blurRadius: 20,
+                  offset: const Offset(0, 10),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Text(
+                      'CONTINUE PLANNING',
+                      style: AppTextStyles.captionBold.copyWith(
+                        color: Colors.white,
+                        fontSize: 11,
+                        letterSpacing: 1.4,
+                      ),
+                    ),
+                    const Spacer(),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.18),
+                        borderRadius:
+                            BorderRadius.circular(AppSizes.radiusPill),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.45),
+                        ),
+                      ),
+                      child: Text(
+                        'DRAFT',
+                        style: AppTextStyles.captionBold.copyWith(
+                          color: Colors.white,
+                          fontSize: 11,
+                          letterSpacing: 1.4,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: AppSizes.md),
+                Text(
+                  progress.title,
+                  style: AppTextStyles.display.copyWith(
+                    color: Colors.white,
+                    fontSize: 26,
+                    height: 1.15,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: AppSizes.sm),
+                Wrap(
+                  spacing: AppSizes.md,
+                  runSpacing: 4,
+                  children: [
+                    _DraftMeta(
+                      icon: Icons.calendar_today_outlined,
+                      text: progress.dateText,
+                    ),
+                    _DraftMeta(
+                      icon: Icons.group_outlined,
+                      text: '${draft.guestCount} guests',
+                    ),
+                  ],
+                ),
+                const SizedBox(height: AppSizes.md),
+                ClipRRect(
+                  borderRadius:
+                      BorderRadius.circular(AppSizes.radiusPill),
+                  child: LinearProgressIndicator(
+                    value: progress.fraction,
+                    minHeight: 6,
+                    backgroundColor: Colors.white.withValues(alpha: 0.28),
+                    valueColor:
+                        const AlwaysStoppedAnimation<Color>(Colors.white),
+                  ),
+                ),
+                const SizedBox(height: AppSizes.md),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        progress.nextHint,
+                        style: AppTextStyles.body.copyWith(
+                          color: Colors.white.withValues(alpha: 0.92),
+                          fontSize: 14,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const SizedBox(width: AppSizes.sm),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          'Continue',
+                          style: AppTextStyles.bodyBold.copyWith(
+                            color: Colors.white,
+                            fontSize: 15,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        const Icon(
+                          Icons.chevron_right_rounded,
+                          color: Colors.white,
+                          size: 20,
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ).animate().fadeIn(duration: 280.ms).slideY(begin: 0.05, end: 0),
+    );
+  }
+}
+
+class _DraftMeta extends StatelessWidget {
+  const _DraftMeta({required this.icon, required this.text});
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 16, color: Colors.white.withValues(alpha: 0.92)),
+        const SizedBox(width: 6),
+        Text(
+          text,
+          style: AppTextStyles.body.copyWith(
+            color: Colors.white,
+            fontSize: 14,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _DraftProgress {
+  const _DraftProgress({
+    required this.fraction,
+    required this.title,
+    required this.dateText,
+    required this.nextHint,
+    required this.hasStarted,
+  });
+
+  final double fraction;
+  final String title;
+  final String dateText;
+  final String nextHint;
+  final bool hasStarted;
+
+  static _DraftProgress from(EventDraft d) {
+    final hasStarted = d.session != null ||
+        d.date != null ||
+        (d.location != null && d.location!.trim().isNotEmpty) ||
+        d.tierId != null ||
+        d.banquetVenueId != null;
+
+    final steps = <bool>[
+      d.session != null,
+      d.date != null,
+      d.startTime != null && d.endTime != null,
+      d.location != null && d.location!.trim().isNotEmpty,
+      d.tierId != null,
+      d.banquetVenueId != null,
+    ];
+    final filled = steps.where((e) => e).length;
+    final fraction = filled / steps.length;
+
+    String nextHint;
+    if (d.session == null) {
+      nextHint = 'Pick the session to start';
+    } else if (d.date == null) {
+      nextHint = 'Pick a date to lock pricing';
+    } else if (d.startTime == null || d.endTime == null) {
+      nextHint = 'Set the start & end time';
+    } else if (d.location == null || d.location!.trim().isEmpty) {
+      nextHint = 'Add the event address';
+    } else if (d.tierId == null) {
+      nextHint = 'Pick a tier that fits your budget';
+    } else if (d.banquetVenueId == null) {
+      nextHint = 'Pick a banquet venue to finish';
+    } else {
+      nextHint = 'Add dishes to finalise the menu';
+    }
+
+    return _DraftProgress(
+      fraction: fraction,
+      title: _composeTitle(d),
+      dateText: _composeDate(d),
+      nextHint: nextHint,
+      hasStarted: hasStarted,
+    );
+  }
+
+  static String _composeTitle(EventDraft d) {
+    final session = d.session;
+    if (session != null) return '$session for ${d.guestCount}';
+    return 'Your event for ${d.guestCount}';
+  }
+
+  static String _composeDate(EventDraft d) {
+    if (d.date == null) return 'Date not set';
+    const months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    ];
+    const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    final dt = d.date!;
+    final base =
+        '${weekdays[dt.weekday - 1]}, ${dt.day} ${months[dt.month - 1]}';
+    if (d.startTime == null) return base;
+    final st = d.startTime!;
+    final hour12 = st.hour % 12 == 0 ? 12 : st.hour % 12;
+    final ampm = st.hour >= 12 ? 'PM' : 'AM';
+    final mm = st.minute.toString().padLeft(2, '0');
+    return '$base · $hour12:$mm $ampm';
   }
 }
 
