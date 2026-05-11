@@ -185,6 +185,30 @@ class SupabaseOrderRepository implements OrderRepository {
         .eq('id', eventId)
         .maybeSingle();
     if (row == null) return null;
-    return ManagerEventDetail.fromMap(row);
+    final detail = ManagerEventDetail.fromMap(row);
+    return _attachCustomer(detail);
+  }
+
+  /// Hydrates the customer name/phone/email on the detail snapshot via
+  /// a single profile lookup. RLS (phase 28) lets the operator and any
+  /// assigned staff read the customer row.
+  Future<ManagerEventDetail> _attachCustomer(ManagerEventDetail d) async {
+    final uid = d.userId;
+    if (uid == null || uid.isEmpty) return d;
+    try {
+      final p = await supabase
+          .from('profiles')
+          .select('name, phone, email')
+          .eq('id', uid)
+          .maybeSingle();
+      if (p == null) return d;
+      return d.withCustomer(
+        name: p['name'] as String?,
+        phone: p['phone'] as String?,
+        email: p['email'] as String?,
+      );
+    } catch (_) {
+      return d;
+    }
   }
 }

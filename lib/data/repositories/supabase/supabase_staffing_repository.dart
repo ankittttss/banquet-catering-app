@@ -13,13 +13,53 @@ class SupabaseStaffingRepository implements StaffingRepository {
         .select(
             // Disambiguate the FK embed: event_assignments has TWO FKs to profiles
 // (profile_id + assigned_by), so PostgREST needs the constraint name.
-'*, events(event_date, location, session, guest_count), '
+'*, events(event_date, location, session, guest_count, user_id), '
             'assignee:profiles!event_assignments_profile_id_fkey(name)')
         .eq('profile_id', uid)
         .order('assigned_at', ascending: false);
-    return rows
+    final assignments = rows
         .map<EventAssignment>(EventAssignment.fromMap)
         .toList(growable: false);
+    return _attachCustomers(assignments);
+  }
+
+  /// Hydrates customer fields on assignments via one batched profile
+  /// lookup. RLS (phase 28) lets the assigned manager / service boy
+  /// read customer rows tied to events they're staffed on.
+  Future<List<EventAssignment>> _attachCustomers(
+    List<EventAssignment> assignments,
+  ) async {
+    final ids = <String>{
+      for (final a in assignments)
+        if (a.eventUserId != null && a.eventUserId!.isNotEmpty)
+          a.eventUserId!,
+    }.toList(growable: false);
+    if (ids.isEmpty) return assignments;
+    Map<String, Map<String, dynamic>> byId = {};
+    try {
+      final profileRows = await supabase
+          .from('profiles')
+          .select('id, name, phone, email')
+          .inFilter('id', ids);
+      byId = {
+        for (final p in profileRows)
+          (p as Map)['id'] as String: p.cast<String, dynamic>(),
+      };
+    } catch (_) {
+      // Profile read may be denied — degrade gracefully to id-only.
+    }
+    return [
+      for (final a in assignments)
+        () {
+          final p = a.eventUserId != null ? byId[a.eventUserId!] : null;
+          if (p == null) return a;
+          return a.withCustomer(
+            name: p['name'] as String?,
+            phone: p['phone'] as String?,
+            email: p['email'] as String?,
+          );
+        }(),
+    ];
   }
 
   @override
@@ -52,13 +92,14 @@ class SupabaseStaffingRepository implements StaffingRepository {
         .select(
             // Disambiguate the FK embed: event_assignments has TWO FKs to profiles
 // (profile_id + assigned_by), so PostgREST needs the constraint name.
-'*, events(event_date, location, session, guest_count), '
+'*, events(event_date, location, session, guest_count, user_id), '
             'assignee:profiles!event_assignments_profile_id_fkey(name)')
         .eq('event_id', eventId)
         .order('role_on_event');
-    return rows
+    final assignments = rows
         .map<EventAssignment>(EventAssignment.fromMap)
         .toList(growable: false);
+    return _attachCustomers(assignments);
   }
 
   @override

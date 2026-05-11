@@ -17,6 +17,7 @@ import '../../../shared/providers/repositories_providers.dart';
 import '../../../shared/providers/staffing_providers.dart';
 import '../../../shared/widgets/app_card.dart';
 import '../../../shared/widgets/app_scaffold.dart';
+import '../../../shared/widgets/customer_line.dart';
 
 class ManagerHomeScreen extends ConsumerWidget {
   const ManagerHomeScreen({super.key});
@@ -164,17 +165,26 @@ class _EventCard extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Customer first — manager's primary "which booking is this?"
+          // signal. Falls back to phone / email / short event id.
           Row(
             children: [
               Expanded(
-                child: Text(
-                  date != null ? Formatters.date(date) : 'Date TBD',
-                  style: AppTextStyles.heading2,
+                child: CustomerLine(
+                  bookingId: assignment.eventId,
+                  name: assignment.customerName,
+                  phone: assignment.customerPhone,
+                  email: assignment.customerEmail,
                 ),
               ),
               const Icon(PhosphorIconsBold.userGear,
                   size: 18, color: AppColors.primary),
             ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            date != null ? Formatters.date(date) : 'Date TBD',
+            style: AppTextStyles.heading2,
           ),
           const SizedBox(height: 4),
           Text(

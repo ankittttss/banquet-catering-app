@@ -23,6 +23,10 @@ class ManagerEventDetail {
     this.banquetNotes,
     this.tierLabel,
     this.tierCode,
+    this.userId,
+    this.customerName,
+    this.customerPhone,
+    this.customerEmail,
     this.orderId,
     this.orderStatus,
     this.paymentStatus,
@@ -64,6 +68,13 @@ class ManagerEventDetail {
 
   final String? tierLabel;
   final String? tierCode;
+
+  /// Owning customer (auth user id) — used to look the customer up in
+  /// the profile batch fetch when the joined query can't include it.
+  final String? userId;
+  final String? customerName;
+  final String? customerPhone;
+  final String? customerEmail;
 
   // ── Booking / order ─────────────────────────────────────────
   final String? orderId;
@@ -130,6 +141,7 @@ class ManagerEventDetail {
           ? BanquetEventStatus.fromString(map['banquet_status'] as String?)
           : null,
       banquetNotes: map['banquet_notes'] as String?,
+      userId: map['user_id'] as String?,
       tierLabel: tier is Map ? tier['label'] as String? : null,
       tierCode: tier is Map ? tier['code'] as String? : null,
       orderId: order?['id'] as String?,
@@ -154,6 +166,48 @@ class ManagerEventDetail {
       vendorLots: lots,
     );
   }
+
+  /// Returns a copy with denormalised customer fields filled in (used
+  /// after the order repo's follow-up profile batch fetch).
+  ManagerEventDetail withCustomer({
+    String? name,
+    String? phone,
+    String? email,
+  }) =>
+      ManagerEventDetail(
+        eventId: eventId,
+        eventDate: eventDate,
+        location: location,
+        session: session,
+        startTime: startTime,
+        endTime: endTime,
+        guestCount: guestCount,
+        banquetVenueName: banquetVenueName,
+        banquetStatus: banquetStatus,
+        banquetNotes: banquetNotes,
+        tierLabel: tierLabel,
+        tierCode: tierCode,
+        userId: userId,
+        customerName: name ?? customerName,
+        customerPhone: phone ?? customerPhone,
+        customerEmail: email ?? customerEmail,
+        orderId: orderId,
+        orderStatus: orderStatus,
+        paymentStatus: paymentStatus,
+        total: total,
+        subtotal: subtotal,
+        foodCost: foodCost,
+        banquetCharge: banquetCharge,
+        deliveryCharge: deliveryCharge,
+        buffetSetup: buffetSetup,
+        serviceBoyCost: serviceBoyCost,
+        serviceBoyCount: serviceBoyCount,
+        waterBottleCost: waterBottleCost,
+        platformFee: platformFee,
+        gst: gst,
+        orderCreatedAt: orderCreatedAt,
+        vendorLots: vendorLots,
+      );
 
   static DateTime? _date(Object? raw) =>
       raw is String && raw.isNotEmpty ? DateTime.tryParse(raw) : null;

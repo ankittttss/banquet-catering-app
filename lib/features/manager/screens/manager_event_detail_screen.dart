@@ -71,6 +71,9 @@ class ManagerEventDetailScreen extends ConsumerWidget {
               children: [
                 _StatusBanner(detail: detail),
                 const SizedBox(height: AppSizes.md),
+                _SectionTitle('Customer'),
+                _CustomerCard(detail: detail),
+                const SizedBox(height: AppSizes.lg),
                 _SectionTitle('When & where'),
                 _WhenWhereCard(detail: detail),
                 const SizedBox(height: AppSizes.lg),
@@ -169,6 +172,57 @@ class _StatusBanner extends StatelessWidget {
                 ),
               ],
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CustomerCard extends StatelessWidget {
+  const _CustomerCard({required this.detail});
+  final ManagerEventDetail detail;
+
+  bool _has(String? s) => s != null && s.trim().isNotEmpty;
+
+  String get _shortId => detail.eventId.length >= 8
+      ? '#${detail.eventId.substring(0, 8)}'
+      : '#${detail.eventId}';
+
+  @override
+  Widget build(BuildContext context) {
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _DetailRow(
+            icon: PhosphorIconsDuotone.user,
+            label: 'Customer',
+            value: _has(detail.customerName)
+                ? detail.customerName!
+                : (_has(detail.customerPhone)
+                    ? detail.customerPhone!
+                    : (_has(detail.customerEmail)
+                        ? detail.customerEmail!
+                        : _shortId)),
+          ),
+          if (_has(detail.customerPhone) && _has(detail.customerName))
+            _DetailRow(
+              icon: PhosphorIconsDuotone.phone,
+              label: 'Phone',
+              value: detail.customerPhone!,
+            ),
+          if (_has(detail.customerEmail) &&
+              (_has(detail.customerName) || _has(detail.customerPhone)))
+            _DetailRow(
+              icon: PhosphorIconsDuotone.envelope,
+              label: 'Email',
+              value: detail.customerEmail!,
+            ),
+          _DetailRow(
+            icon: PhosphorIconsDuotone.identificationCard,
+            label: 'Booking ID',
+            value: _shortId,
           ),
         ],
       ),

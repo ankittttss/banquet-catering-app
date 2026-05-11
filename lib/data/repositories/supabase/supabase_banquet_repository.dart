@@ -33,9 +33,51 @@ class SupabaseBanquetRepository implements BanquetRepository {
         .select()
         .not('banquet_venue_id', 'is', null)
         .order('event_date', ascending: true);
-    return rows
+    final events = rows
         .map<BanquetInboxEvent>(BanquetInboxEvent.fromMap)
         .toList(growable: false);
+    return _attachCustomers(events);
+  }
+
+  /// Hydrates the customer name/phone/email on a list of inbox events
+  /// via one extra batched profile lookup. RLS (phase 28) lets the
+  /// operator read just the customer rows tied to bookings at their
+  /// venues; if the lookup fails for any reason the events still come
+  /// back, just without customer info.
+  Future<List<BanquetInboxEvent>> _attachCustomers(
+    List<BanquetInboxEvent> events,
+  ) async {
+    final ids = <String>{
+      for (final e in events)
+        if (e.userId != null && e.userId!.isNotEmpty) e.userId!,
+    }.toList(growable: false);
+    if (ids.isEmpty) return events;
+    Map<String, Map<String, dynamic>> byId = {};
+    try {
+      final profileRows = await supabase
+          .from('profiles')
+          .select('id, name, phone, email')
+          .inFilter('id', ids);
+      byId = {
+        for (final p in profileRows)
+          (p as Map)['id'] as String: p.cast<String, dynamic>(),
+      };
+    } catch (_) {
+      // Profile read may be denied for some events (e.g. customer
+      // deactivated their account). Fall back to id-only display in UI.
+    }
+    return [
+      for (final e in events)
+        () {
+          final p = e.userId != null ? byId[e.userId!] : null;
+          if (p == null) return e;
+          return e.withCustomer(
+            name: p['name'] as String?,
+            phone: p['phone'] as String?,
+            email: p['email'] as String?,
+          );
+        }(),
+    ];
   }
 
   @override
@@ -56,10 +98,11 @@ class SupabaseBanquetRepository implements BanquetRepository {
           .stream(primaryKey: ['id'])
           .order('event_date', ascending: true);
       await for (final rows in stream) {
-        yield rows
+        final events = rows
             .where((r) => r['banquet_venue_id'] != null)
             .map<BanquetInboxEvent>(BanquetInboxEvent.fromMap)
             .toList(growable: false);
+        yield await _attachCustomers(events);
       }
     } catch (_) {
       // Realtime unavailable — initial snapshot already surfaced.

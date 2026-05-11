@@ -14,6 +14,7 @@ import '../../../shared/providers/banquet_providers.dart';
 import '../../../shared/providers/staffing_providers.dart';
 import '../../../shared/widgets/app_card.dart';
 import '../../../shared/widgets/app_scaffold.dart';
+import '../../../shared/widgets/customer_line.dart';
 
 class BanquetInboxScreen extends ConsumerWidget {
   const BanquetInboxScreen({super.key, this.initialFilter});
@@ -129,12 +130,17 @@ class _InboxCard extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Customer first — operator's primary "which booking is this?"
+          // signal. Falls back to phone / email / short id when name
+          // isn't available.
           Row(
             children: [
               Expanded(
-                child: Text(
-                  Formatters.date(event.eventDate),
-                  style: AppTextStyles.heading2,
+                child: CustomerLine(
+                  bookingId: event.id,
+                  name: event.customerName,
+                  phone: event.customerPhone,
+                  email: event.customerEmail,
                 ),
               ),
               Container(
@@ -153,6 +159,11 @@ class _InboxCard extends ConsumerWidget {
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            Formatters.date(event.eventDate),
+            style: AppTextStyles.heading2,
           ),
           const SizedBox(height: 4),
           Text(
