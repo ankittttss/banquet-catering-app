@@ -20,6 +20,7 @@ import '../../../shared/widgets/app_card.dart';
 import '../../../shared/widgets/app_error_view.dart';
 import '../../../shared/widgets/app_scaffold.dart';
 import '../../../shared/widgets/customer_line.dart';
+import '../../../shared/widgets/empty_state.dart';
 import '../../../shared/widgets/shimmer.dart';
 
 /// Manager dashboard — the manager's mental model is "what am I running
@@ -101,9 +102,7 @@ class ManagerHomeScreen extends ConsumerWidget {
                 AppSizes.xxl,
               ),
               children: [
-                _Greeting(profile: profile),
-                const SizedBox(height: AppSizes.lg),
-                _StatsRow(events: managed),
+                _ManagerDashboardHero(profile: profile, events: managed),
                 const SizedBox(height: AppSizes.xl),
                 if (managed.isEmpty)
                   const _EmptyEventsHint()
@@ -123,9 +122,14 @@ class ManagerHomeScreen extends ConsumerWidget {
 
 // ───────────────────────── Greeting ─────────────────────────
 
-class _Greeting extends StatelessWidget {
-  const _Greeting({required this.profile});
+class _ManagerDashboardHero extends StatelessWidget {
+  const _ManagerDashboardHero({
+    required this.profile,
+    required this.events,
+  });
+
   final UserProfile? profile;
+  final List<EventAssignment> events;
 
   String get _timeOfDayGreeting {
     final hour = DateTime.now().hour;
@@ -137,21 +141,320 @@ class _Greeting extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final name = profile?.name;
-    final headline = name != null && name.trim().isNotEmpty
-        ? '$_timeOfDayGreeting, $name'
-        : _timeOfDayGreeting;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(headline, style: AppTextStyles.display),
-        const SizedBox(height: 2),
-        Text(
-          'Here is what you are running.',
-          style: AppTextStyles.bodyMuted,
-        ),
-      ],
+    final displayName = name != null && name.trim().isNotEmpty
+        ? name.trim().split(' ').first
+        : 'manager';
+    final stats = _ManagerStats.from(events);
+    final nextEvent = _nextUpcoming(events);
+    return Container(
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(AppSizes.radiusXl),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.primary.withValues(alpha: 0.13),
+            blurRadius: 24,
+            offset: const Offset(0, 12),
+          ),
+        ],
+      ),
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    AppColors.primaryDark,
+                    AppColors.primary,
+                    AppColors.accentDark.withValues(alpha: 0.92),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(AppSizes.lg),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '$_timeOfDayGreeting, $displayName',
+                            style: AppTextStyles.display.copyWith(
+                              color: Colors.white,
+                              fontSize: 25,
+                            ),
+                          ),
+                          const SizedBox(height: AppSizes.xs),
+                          Text(
+                            'Your event command board for service day.',
+                            style: AppTextStyles.body.copyWith(
+                              color: Colors.white.withValues(alpha: 0.82),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    _HeroBadge(
+                      icon: PhosphorIconsBold.userGear,
+                      label: '${stats.total} assigned',
+                    ),
+                  ],
+                ),
+                const SizedBox(height: AppSizes.lg),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _HeroMetric(
+                        value: '${stats.today}',
+                        label: 'Today',
+                        icon: PhosphorIconsBold.calendarCheck,
+                      ),
+                    ),
+                    const SizedBox(width: AppSizes.sm),
+                    Expanded(
+                      child: _HeroMetric(
+                        value: '${stats.tomorrow}',
+                        label: 'Tomorrow',
+                        icon: PhosphorIconsDuotone.sun,
+                      ),
+                    ),
+                    const SizedBox(width: AppSizes.sm),
+                    Expanded(
+                      child: _HeroMetric(
+                        value: '${stats.thisWeek}',
+                        label: 'This week',
+                        icon: PhosphorIconsBold.sparkle,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: AppSizes.md),
+                Container(
+                  padding: const EdgeInsets.all(AppSizes.md),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.14),
+                    borderRadius: BorderRadius.circular(AppSizes.radiusLg),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.20),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 38,
+                        height: 38,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.18),
+                          shape: BoxShape.circle,
+                        ),
+                        alignment: Alignment.center,
+                        child: const Icon(
+                          PhosphorIconsBold.bellRinging,
+                          color: Colors.white,
+                          size: 19,
+                        ),
+                      ),
+                      const SizedBox(width: AppSizes.md),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              nextEvent == null
+                                  ? 'No upcoming service pressure'
+                                  : 'Next event ${_urgencyLabel(nextEvent.eventDate)}',
+                              style: AppTextStyles.bodyBold.copyWith(
+                                color: Colors.white,
+                                fontSize: 13.5,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              nextEvent == null
+                                  ? 'New manager assignments will appear here.'
+                                  : [
+                                      if (nextEvent.eventLocation != null)
+                                        nextEvent.eventLocation!,
+                                      if (nextEvent.eventSession != null)
+                                        nextEvent.eventSession!,
+                                      '${nextEvent.eventGuestCount ?? 0} guests',
+                                    ].join(' - '),
+                              style: AppTextStyles.caption.copyWith(
+                                color: Colors.white.withValues(alpha: 0.78),
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
+}
+
+class _HeroBadge extends StatelessWidget {
+  const _HeroBadge({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.16),
+        borderRadius: BorderRadius.circular(AppSizes.radiusPill),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.24)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: Colors.white),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: AppTextStyles.captionBold.copyWith(
+              color: Colors.white,
+              fontSize: 10,
+              letterSpacing: 0.1,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HeroMetric extends StatelessWidget {
+  const _HeroMetric({
+    required this.value,
+    required this.label,
+    required this.icon,
+  });
+
+  final String value;
+  final String label;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(AppSizes.md),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(AppSizes.radiusMd),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.20)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: Colors.white.withValues(alpha: 0.82), size: 17),
+          const SizedBox(height: AppSizes.sm),
+          Text(
+            value,
+            style: AppTextStyles.display.copyWith(
+              color: Colors.white,
+              fontSize: 24,
+            ),
+          ),
+          Text(
+            label,
+            style: AppTextStyles.captionBold.copyWith(
+              color: Colors.white.withValues(alpha: 0.78),
+              fontSize: 10,
+              letterSpacing: 0.1,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ManagerStats {
+  const _ManagerStats({
+    required this.today,
+    required this.tomorrow,
+    required this.thisWeek,
+    required this.total,
+  });
+
+  final int today;
+  final int tomorrow;
+  final int thisWeek;
+  final int total;
+
+  factory _ManagerStats.from(List<EventAssignment> events) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final tomorrow = today.add(const Duration(days: 1));
+    final weekEnd = today.add(const Duration(days: 7));
+    var todayCount = 0;
+    var tomorrowCount = 0;
+    var weekCount = 0;
+    for (final event in events) {
+      final date = event.eventDate;
+      if (date == null) continue;
+      final day = DateTime(date.year, date.month, date.day);
+      if (day == today) todayCount++;
+      if (day == tomorrow) tomorrowCount++;
+      if (!day.isBefore(today) && day.isBefore(weekEnd)) weekCount++;
+    }
+    return _ManagerStats(
+      today: todayCount,
+      tomorrow: tomorrowCount,
+      thisWeek: weekCount,
+      total: events.length,
+    );
+  }
+}
+
+EventAssignment? _nextUpcoming(List<EventAssignment> events) {
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+  final upcoming = events
+      .where((event) =>
+          event.eventDate != null && !event.eventDate!.isBefore(today))
+      .toList(growable: false)
+    ..sort((a, b) => a.eventDate!.compareTo(b.eventDate!));
+  return upcoming.isEmpty ? null : upcoming.first;
+}
+
+String _urgencyLabel(DateTime? eventDate) {
+  if (eventDate == null) return 'soon';
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+  final target = DateTime(eventDate.year, eventDate.month, eventDate.day);
+  final days = target.difference(today).inDays;
+  if (days < 0) return '${-days}d ago';
+  if (days == 0) return 'today';
+  if (days == 1) return 'tomorrow';
+  if (days < 7) return 'in ${days}d';
+  if (days < 30) return 'in ${(days / 7).round()}w';
+  return 'in ${(days / 30).round()}mo';
 }
 
 // ───────────────────────── Stats row ─────────────────────────
@@ -346,7 +649,7 @@ class _GroupedEvents extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           for (var i = 0; i < groups[gi].value.length; i++) ...[
-            _EventCard(assignment: groups[gi].value[i]),
+            _EventCardV2(assignment: groups[gi].value[i]),
             if (i != groups[gi].value.length - 1)
               const SizedBox(height: AppSizes.md),
           ],
@@ -449,30 +752,10 @@ class _EmptyEventsHint extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AppCard(
-      child: Row(
-        children: [
-          const Icon(
-            PhosphorIconsDuotone.calendarBlank,
-            size: 40,
-            color: AppColors.textMuted,
-          ),
-          const SizedBox(width: AppSizes.md),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Nothing on your plate', style: AppTextStyles.bodyBold),
-                const SizedBox(height: 2),
-                Text(
-                  'Your banquet operator will assign you to events here.',
-                  style: AppTextStyles.caption,
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
+    return const EmptyState(
+      icon: PhosphorIconsDuotone.calendarBlank,
+      title: 'Nothing on your plate',
+      message: 'Your banquet operator will assign you to events here.',
     );
   }
 }
@@ -598,6 +881,287 @@ class _EventCard extends ConsumerWidget {
   }
 }
 
+class _EventCardV2 extends ConsumerWidget {
+  const _EventCardV2({required this.assignment});
+
+  final EventAssignment assignment;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final date = assignment.eventDate;
+    final urgency = _urgencyLabel(date);
+    final staff = ref.watch(eventStaffProvider(assignment.eventId));
+    final serviceBoyCount = staff.valueOrNull
+            ?.where((a) => a.roleOnEvent == EventAssignmentRole.serviceBoy)
+            .length ??
+        0;
+    return AppCard(
+      padding: EdgeInsets.zero,
+      onTap: () =>
+          context.push(AppRoutes.managerEventDetailFor(assignment.eventId)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.fromLTRB(
+              AppSizes.lg,
+              AppSizes.md,
+              AppSizes.lg,
+              AppSizes.md,
+            ),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  AppColors.primary.withValues(alpha: 0.12),
+                  AppColors.accentSoft.withValues(alpha: 0.72),
+                ],
+              ),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(AppSizes.radiusLg),
+              ),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: CustomerLine(
+                    bookingId: assignment.eventId,
+                    name: assignment.customerName,
+                    phone: assignment.customerPhone,
+                    email: assignment.customerEmail,
+                  ),
+                ),
+                _EventPill(label: urgency, color: AppColors.primary),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(AppSizes.lg),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: AppColors.primarySoft,
+                        borderRadius: BorderRadius.circular(AppSizes.radiusSm),
+                      ),
+                      alignment: Alignment.center,
+                      child: const Icon(
+                        PhosphorIconsDuotone.calendarBlank,
+                        color: AppColors.primary,
+                      ),
+                    ),
+                    const SizedBox(width: AppSizes.md),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            date != null ? Formatters.date(date) : 'Date TBD',
+                            style: AppTextStyles.heading2.copyWith(
+                              fontSize: 18,
+                            ),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            [
+                              if (assignment.eventSession != null)
+                                assignment.eventSession!,
+                              '${assignment.eventGuestCount ?? 0} guests',
+                            ].join(' - '),
+                            style: AppTextStyles.caption,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                if (assignment.eventLocation != null) ...[
+                  const SizedBox(height: AppSizes.md),
+                  _EventMetaRow(
+                    icon: PhosphorIconsDuotone.mapPin,
+                    text: assignment.eventLocation!,
+                  ),
+                ],
+                const SizedBox(height: AppSizes.md),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _EventInfoTile(
+                        icon: PhosphorIconsDuotone.users,
+                        label: 'Service team',
+                        value: '$serviceBoyCount assigned',
+                        color: serviceBoyCount > 0
+                            ? AppColors.success
+                            : AppColors.warning,
+                      ),
+                    ),
+                    const SizedBox(width: AppSizes.sm),
+                    Expanded(
+                      child: _EventInfoTile(
+                        icon: PhosphorIconsBold.userGear,
+                        label: 'Your role',
+                        value: 'Manager',
+                        color: AppColors.primary,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: AppSizes.md),
+                Row(
+                  children: [
+                    Expanded(
+                      child: FilledButton.icon(
+                        onPressed: () => context.push(
+                          AppRoutes.managerEventDetailFor(assignment.eventId),
+                        ),
+                        icon: const Icon(
+                          PhosphorIconsBold.arrowRight,
+                          size: 16,
+                        ),
+                        label: const Text('View details'),
+                      ),
+                    ),
+                    const SizedBox(width: AppSizes.sm),
+                    IconButton.outlined(
+                      tooltip: 'Add service boy',
+                      onPressed: () => showModalBottomSheet<void>(
+                        context: context,
+                        isScrollControlled: true,
+                        builder: (_) => _AddServiceBoySheet(
+                          eventId: assignment.eventId,
+                        ),
+                      ),
+                      icon: const Icon(PhosphorIconsBold.userPlus, size: 18),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EventMetaRow extends StatelessWidget {
+  const _EventMetaRow({required this.icon, required this.text});
+
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, size: 16, color: AppColors.textMuted),
+        const SizedBox(width: AppSizes.sm),
+        Expanded(
+          child: Text(
+            text,
+            style: AppTextStyles.caption,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _EventInfoTile extends StatelessWidget {
+  const _EventInfoTile({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(AppSizes.md),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(AppSizes.radiusMd),
+        border: Border.all(color: color.withValues(alpha: 0.22)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: color, size: 18),
+          const SizedBox(width: AppSizes.sm),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: AppTextStyles.caption.copyWith(
+                    color: AppColors.textMuted,
+                    fontSize: 11,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 1),
+                Text(
+                  value,
+                  style: AppTextStyles.captionBold.copyWith(
+                    color: color,
+                    fontSize: 11,
+                    letterSpacing: 0.1,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EventPill extends StatelessWidget {
+  const _EventPill({required this.label, required this.color});
+
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(AppSizes.radiusPill),
+        border: Border.all(color: color.withValues(alpha: 0.24)),
+      ),
+      child: Text(
+        label,
+        style: AppTextStyles.captionBold.copyWith(
+          color: color,
+          fontSize: 10,
+          letterSpacing: 0.1,
+        ),
+      ),
+    );
+  }
+}
+
 // ───────────────────────── Add-service-boy sheet ─────────────────────────
 
 class _AddServiceBoySheet extends ConsumerWidget {
@@ -664,25 +1228,54 @@ class _AddServiceBoySheet extends ConsumerWidget {
             const SizedBox(height: AppSizes.lg),
             Expanded(
               child: reports.when(
-                loading: () =>
-                    const Center(child: CircularProgressIndicator()),
-                error: (e, _) => Text(
-                  'Could not load reports: $e',
-                  style: AppTextStyles.caption,
+                loading: () => ListView.separated(
+                  controller: scrollCtrl,
+                  itemCount: 5,
+                  separatorBuilder: (_, __) =>
+                      const SizedBox(height: AppSizes.sm),
+                  itemBuilder: (_, __) => Container(
+                    padding: const EdgeInsets.all(AppSizes.md),
+                    decoration: BoxDecoration(
+                      color: AppColors.surfaceAlt,
+                      border: Border.all(color: AppColors.border),
+                      borderRadius: BorderRadius.circular(AppSizes.radiusSm),
+                    ),
+                    child: Row(
+                      children: [
+                        ShimmerBox(
+                          width: 40,
+                          height: 40,
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        const SizedBox(width: AppSizes.md),
+                        const Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              ShimmerBox(width: 130, height: 14),
+                              SizedBox(height: 8),
+                              ShimmerBox(width: 190, height: 11),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
+                error: (e, _) => AppErrorView(error: e, compact: true),
                 data: (rows) {
                   final available = rows
                       .where((p) => !alreadyAssigned.contains(p.id))
                       .toList();
                   if (available.isEmpty) {
-                    return Center(
-                      child: Text(
-                        rows.isEmpty
-                            ? 'No service boys report to you yet.'
-                            : 'Every report is already assigned.',
-                        textAlign: TextAlign.center,
-                        style: AppTextStyles.bodyMuted,
-                      ),
+                    return EmptyState(
+                      icon: PhosphorIconsDuotone.users,
+                      title: rows.isEmpty
+                          ? 'No service boys yet'
+                          : 'Team already assigned',
+                      message: rows.isEmpty
+                          ? 'Service boys linked to you will appear here.'
+                          : 'Every available report is already staffed on this event.',
                     );
                   }
                   return ListView.separated(

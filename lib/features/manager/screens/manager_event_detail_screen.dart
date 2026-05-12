@@ -71,7 +71,10 @@ class ManagerEventDetailScreen extends ConsumerWidget {
                 AppSizes.xl,
               ),
               children: [
-                _StatusBanner(detail: detail),
+                _ManagerEventSummaryCard(
+                  detail: detail,
+                  staffAsync: staffAsync,
+                ),
                 const SizedBox(height: AppSizes.lg),
                 _SectionTitle('Timeline'),
                 _TimelineCard(detail: detail, staffAsync: staffAsync),
@@ -196,6 +199,311 @@ class _SectionTitle extends StatelessWidget {
 }
 
 // ───────────────────────── Status banner ─────────────────────────
+
+class _ManagerEventSummaryCard extends StatelessWidget {
+  const _ManagerEventSummaryCard({
+    required this.detail,
+    required this.staffAsync,
+  });
+
+  final ManagerEventDetail detail;
+  final AsyncValue<List<EventAssignment>> staffAsync;
+
+  String get _customerLabel {
+    final name = detail.customerName?.trim();
+    if (name != null && name.isNotEmpty) return name;
+    final phone = detail.customerPhone?.trim();
+    if (phone != null && phone.isNotEmpty) return phone;
+    final email = detail.customerEmail?.trim();
+    if (email != null && email.isNotEmpty) return email;
+    return detail.eventId.length >= 8
+        ? '#${detail.eventId.substring(0, 8)}'
+        : '#${detail.eventId}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final dateText = detail.eventDate != null
+        ? Formatters.date(detail.eventDate!)
+        : 'Date TBD';
+    final timeRange = _timeRange(detail.startTime, detail.endTime);
+    final countdown = _countdown(detail.eventDate);
+    final rows = staffAsync.valueOrNull ?? const <EventAssignment>[];
+    final serviceBoyCount = rows
+        .where((r) => r.roleOnEvent == EventAssignmentRole.serviceBoy)
+        .length;
+    final managerCount = rows
+        .where((r) => r.roleOnEvent == EventAssignmentRole.manager)
+        .length;
+    final paymentLabel = _payLabel(detail.paymentStatus);
+    final totalLabel = detail.total != null && detail.total! > 0
+        ? Formatters.currency(detail.total!)
+        : 'Pending';
+
+    return Container(
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(AppSizes.radiusXl),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.primary.withValues(alpha: 0.13),
+            blurRadius: 22,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    AppColors.primary.withValues(alpha: 0.18),
+                    AppColors.surface,
+                    AppColors.accentSoft.withValues(alpha: 0.86),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(AppSizes.lg),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: AppColors.primary,
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppColors.primary.withValues(alpha: 0.28),
+                            blurRadius: 12,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      alignment: Alignment.center,
+                      child: const Icon(
+                        PhosphorIconsBold.userGear,
+                        color: Colors.white,
+                        size: 23,
+                      ),
+                    ),
+                    const SizedBox(width: AppSizes.md),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _customerLabel,
+                            style: AppTextStyles.heading2.copyWith(
+                              fontSize: 18,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            [
+                              dateText,
+                              if (timeRange != null) timeRange,
+                              if (detail.session != null) detail.session!,
+                            ].join(' - '),
+                            style: AppTextStyles.caption.copyWith(
+                              color: AppColors.textMuted,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (countdown != null) ...[
+                      const SizedBox(width: AppSizes.sm),
+                      _SummaryPill(
+                        label: countdown,
+                        color: AppColors.primary,
+                      ),
+                    ],
+                  ],
+                ),
+                const SizedBox(height: AppSizes.lg),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _SummaryMetric(
+                        label: 'Guests',
+                        value: detail.guestCount != null
+                            ? '${detail.guestCount}'
+                            : '--',
+                        icon: PhosphorIconsDuotone.users,
+                      ),
+                    ),
+                    const SizedBox(width: AppSizes.sm),
+                    Expanded(
+                      child: _SummaryMetric(
+                        label: 'Team',
+                        value: '$serviceBoyCount boys',
+                        icon: PhosphorIconsDuotone.handshake,
+                        highlight: serviceBoyCount > 0,
+                      ),
+                    ),
+                    const SizedBox(width: AppSizes.sm),
+                    Expanded(
+                      child: _SummaryMetric(
+                        label: 'Total',
+                        value: totalLabel,
+                        icon: PhosphorIconsDuotone.receipt,
+                        highlight: detail.total != null,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: AppSizes.sm),
+                Wrap(
+                  spacing: AppSizes.sm,
+                  runSpacing: AppSizes.sm,
+                  children: [
+                    _SummaryPill(
+                      label: '$managerCount manager assigned',
+                      color: AppColors.primary,
+                      icon: PhosphorIconsBold.userGear,
+                    ),
+                    _SummaryPill(
+                      label: 'Payment $paymentLabel',
+                      color: _payColor(detail.paymentStatus),
+                      icon: PhosphorIconsDuotone.creditCard,
+                    ),
+                    if (detail.banquetVenueName != null)
+                      _SummaryPill(
+                        label: detail.banquetVenueName!,
+                        color: AppColors.info,
+                        icon: PhosphorIconsDuotone.buildings,
+                      ),
+                    if (detail.tierLabel != null)
+                      _SummaryPill(
+                        label: detail.tierLabel!,
+                        color: AppColors.accentDark,
+                        icon: PhosphorIconsDuotone.crown,
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SummaryMetric extends StatelessWidget {
+  const _SummaryMetric({
+    required this.label,
+    required this.value,
+    required this.icon,
+    this.highlight = false,
+  });
+
+  final String label;
+  final String value;
+  final IconData icon;
+  final bool highlight;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = highlight ? AppColors.primary : AppColors.textPrimary;
+    return Container(
+      padding: const EdgeInsets.all(AppSizes.md),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.76),
+        borderRadius: BorderRadius.circular(AppSizes.radiusMd),
+        border: Border.all(color: AppColors.border.withValues(alpha: 0.7)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: AppColors.textMuted, size: 18),
+          const SizedBox(height: AppSizes.sm),
+          Text(
+            value,
+            style: AppTextStyles.bodyBold.copyWith(
+              color: color,
+              fontSize: 14,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          Text(
+            label,
+            style: AppTextStyles.captionBold.copyWith(
+              color: AppColors.textMuted,
+              fontSize: 10,
+              letterSpacing: 0.1,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SummaryPill extends StatelessWidget {
+  const _SummaryPill({
+    required this.label,
+    required this.color,
+    this.icon,
+  });
+
+  final String label;
+  final Color color;
+  final IconData? icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 260),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(AppSizes.radiusPill),
+        border: Border.all(color: color.withValues(alpha: 0.26)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (icon != null) ...[
+            Icon(icon, size: 13, color: color),
+            const SizedBox(width: 5),
+          ],
+          Flexible(
+            child: Text(
+              label,
+              style: AppTextStyles.captionBold.copyWith(
+                color: color,
+                fontSize: 10,
+                letterSpacing: 0.1,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 class _StatusBanner extends StatelessWidget {
   const _StatusBanner({required this.detail});
@@ -846,16 +1154,19 @@ class _RosterCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return staffAsync.when(
       loading: () => const AppCard(
-        child: Padding(
-          padding: EdgeInsets.symmetric(vertical: AppSizes.sm),
-          child: Center(child: CircularProgressIndicator()),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            ShimmerBox(width: 190, height: 14),
+            SizedBox(height: AppSizes.md),
+            ShimmerBox(width: double.infinity, height: 34),
+            SizedBox(height: AppSizes.sm),
+            ShimmerBox(width: double.infinity, height: 34),
+          ],
         ),
       ),
       error: (e, _) => AppCard(
-        child: Text(
-          'Could not load roster: $e',
-          style: AppTextStyles.caption,
-        ),
+        child: AppErrorView(error: e, compact: true),
       ),
       data: (rows) {
         final managers = rows
