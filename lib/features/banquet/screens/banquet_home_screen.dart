@@ -15,6 +15,7 @@ import '../../../data/models/banquet_venue.dart';
 import '../../../shared/providers/auth_providers.dart';
 import '../../../shared/providers/banquet_providers.dart';
 import '../../../shared/widgets/app_card.dart';
+import '../../../shared/widgets/app_error_view.dart';
 import '../../../shared/widgets/app_scaffold.dart';
 import '../../../shared/widgets/customer_line.dart';
 import '../../../shared/widgets/shimmer.dart';
@@ -32,6 +33,7 @@ class BanquetHomeScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final profile = ref.watch(currentProfileProvider).valueOrNull;
     final inboxAsync = ref.watch(banquetInboxProvider);
+    final venuesAsync = ref.watch(myBanquetVenuesProvider);
 
     return AppScaffold(
       padded: false,
@@ -63,9 +65,11 @@ class BanquetHomeScreen extends ConsumerWidget {
             AppSizes.xxl,
           ),
           children: [
-            _Greeting(profile: profile),
-            const SizedBox(height: AppSizes.lg),
-            _StatsRow(inboxAsync: inboxAsync),
+            _HomeDashboardHero(
+              profile: profile,
+              inboxAsync: inboxAsync,
+              venuesAsync: venuesAsync,
+            ),
             const SizedBox(height: AppSizes.xl),
             _SectionHeader('Quick actions'),
             const SizedBox(height: AppSizes.sm),
@@ -77,7 +81,10 @@ class BanquetHomeScreen extends ConsumerWidget {
               onTrailingTap: () => context.push(AppRoutes.banquetInbox),
             ),
             const SizedBox(height: AppSizes.sm),
-            _RecentBookings(inboxAsync: inboxAsync),
+            _RecentBookings(
+              inboxAsync: inboxAsync,
+              venuesAsync: venuesAsync,
+            ),
           ]
               .animate(interval: 60.ms)
               .fadeIn(duration: 280.ms)
@@ -90,9 +97,16 @@ class BanquetHomeScreen extends ConsumerWidget {
 
 // ───────────────────────── Greeting ─────────────────────────
 
-class _Greeting extends StatelessWidget {
-  const _Greeting({required this.profile});
+class _HomeDashboardHero extends StatelessWidget {
+  const _HomeDashboardHero({
+    required this.profile,
+    required this.inboxAsync,
+    required this.venuesAsync,
+  });
+
   final dynamic profile;
+  final AsyncValue<List<BanquetInboxEvent>> inboxAsync;
+  final AsyncValue<List<BanquetVenue>> venuesAsync;
 
   String get _timeOfDayGreeting {
     final hour = DateTime.now().hour;
@@ -104,19 +118,261 @@ class _Greeting extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final name = profile?.name as String?;
-    final headline = name != null && name.trim().isNotEmpty
-        ? '$_timeOfDayGreeting, $name'
-        : _timeOfDayGreeting;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(headline, style: AppTextStyles.display),
-        const SizedBox(height: 2),
-        Text(
-          'Here is what is happening at your venues today.',
-          style: AppTextStyles.bodyMuted,
-        ),
-      ],
+    final displayName = name != null && name.trim().isNotEmpty
+        ? name.trim().split(' ').first
+        : 'operator';
+    final events = inboxAsync.valueOrNull ?? const <BanquetInboxEvent>[];
+    final venues = venuesAsync.valueOrNull ?? const <BanquetVenue>[];
+    final stats = _computeStats(events);
+    final activeVenueCount = venues.where((v) => v.isActive).length;
+    final nextEvent = _nextUpcoming(events);
+    final nextVenue = nextEvent == null
+        ? null
+        : _venueNameFor(venues, nextEvent.banquetVenueId);
+    final isLoading = (inboxAsync.isLoading && !inboxAsync.hasValue) ||
+        (venuesAsync.isLoading && !venuesAsync.hasValue);
+
+    return Container(
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(AppSizes.radiusXl),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.primary.withValues(alpha: 0.14),
+            blurRadius: 24,
+            offset: const Offset(0, 12),
+          ),
+        ],
+      ),
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: Image.asset(
+              'assets/images/dawat.png',
+              fit: BoxFit.cover,
+              alignment: Alignment.centerRight,
+              opacity: const AlwaysStoppedAnimation(0.22),
+            ),
+          ),
+          Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    AppColors.primaryDark,
+                    AppColors.primary,
+                    AppColors.accentDark.withValues(alpha: 0.92),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(AppSizes.lg),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '$_timeOfDayGreeting, $displayName',
+                            style: AppTextStyles.display.copyWith(
+                              color: Colors.white,
+                              fontSize: 25,
+                            ),
+                          ),
+                          const SizedBox(height: AppSizes.xs),
+                          Text(
+                            'Your venue operations board for today.',
+                            style: AppTextStyles.body.copyWith(
+                              color: Colors.white.withValues(alpha: 0.82),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.16),
+                        borderRadius:
+                            BorderRadius.circular(AppSizes.radiusPill),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.24),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            PhosphorIconsBold.buildings,
+                            size: 14,
+                            color: Colors.white,
+                          ),
+                          const SizedBox(width: 5),
+                          Text(
+                            isLoading ? '--' : '$activeVenueCount active',
+                            style: AppTextStyles.captionBold.copyWith(
+                              color: Colors.white,
+                              fontSize: 10,
+                              letterSpacing: 0.1,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: AppSizes.lg),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _HeroMetric(
+                        value: isLoading ? '--' : '${stats.pending}',
+                        label: 'Pending',
+                        icon: PhosphorIconsBold.clock,
+                      ),
+                    ),
+                    const SizedBox(width: AppSizes.sm),
+                    Expanded(
+                      child: _HeroMetric(
+                        value: isLoading ? '--' : '${stats.today}',
+                        label: 'Today',
+                        icon: PhosphorIconsBold.calendarCheck,
+                      ),
+                    ),
+                    const SizedBox(width: AppSizes.sm),
+                    Expanded(
+                      child: _HeroMetric(
+                        value: isLoading ? '--' : '${stats.thisWeek}',
+                        label: 'This week',
+                        icon: PhosphorIconsBold.sparkle,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: AppSizes.md),
+                Container(
+                  padding: const EdgeInsets.all(AppSizes.md),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.14),
+                    borderRadius: BorderRadius.circular(AppSizes.radiusLg),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.20),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 38,
+                        height: 38,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.18),
+                          shape: BoxShape.circle,
+                        ),
+                        alignment: Alignment.center,
+                        child: const Icon(
+                          PhosphorIconsBold.bellRinging,
+                          color: Colors.white,
+                          size: 19,
+                        ),
+                      ),
+                      const SizedBox(width: AppSizes.md),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              nextEvent == null
+                                  ? 'No upcoming service pressure'
+                                  : 'Next event ${_urgencyLabel(nextEvent.eventDate)}',
+                              style: AppTextStyles.bodyBold.copyWith(
+                                color: Colors.white,
+                                fontSize: 13.5,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              nextEvent == null
+                                  ? 'New requests and staffing gaps will appear here.'
+                                  : '${nextVenue ?? 'Venue'} - ${nextEvent.guestCount} guests - ${nextEvent.session}',
+                              style: AppTextStyles.caption.copyWith(
+                                color: Colors.white.withValues(alpha: 0.78),
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HeroMetric extends StatelessWidget {
+  const _HeroMetric({
+    required this.value,
+    required this.label,
+    required this.icon,
+  });
+
+  final String value;
+  final String label;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(AppSizes.md),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(AppSizes.radiusMd),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.20)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: Colors.white.withValues(alpha: 0.82), size: 17),
+          const SizedBox(height: AppSizes.sm),
+          Text(
+            value,
+            style: AppTextStyles.display.copyWith(
+              color: Colors.white,
+              fontSize: 24,
+            ),
+          ),
+          Text(
+            label,
+            style: AppTextStyles.captionBold.copyWith(
+              color: Colors.white.withValues(alpha: 0.78),
+              fontSize: 10,
+              letterSpacing: 0.1,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ),
     );
   }
 }
@@ -176,20 +432,6 @@ class _StatsRow extends StatelessWidget {
     );
   }
 
-  _Stats _computeStats(List<BanquetInboxEvent> events) {
-    final now = DateTime.now();
-    final weekEnd = DateTime(now.year, now.month, now.day)
-        .add(const Duration(days: 7));
-    var pending = 0, accepted = 0, thisWeek = 0;
-    for (final e in events) {
-      if (e.status == BanquetEventStatus.pending) pending++;
-      if (e.status == BanquetEventStatus.accepted) accepted++;
-      if (!e.eventDate.isBefore(now) && e.eventDate.isBefore(weekEnd)) {
-        thisWeek++;
-      }
-    }
-    return _Stats(pending: pending, accepted: accepted, thisWeek: thisWeek);
-  }
 }
 
 class _Stats {
@@ -197,10 +439,66 @@ class _Stats {
     required this.pending,
     required this.accepted,
     required this.thisWeek,
+    required this.today,
   });
   final int pending;
   final int accepted;
   final int thisWeek;
+  final int today;
+}
+
+_Stats _computeStats(List<BanquetInboxEvent> events) {
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+  final tomorrow = today.add(const Duration(days: 1));
+  final weekEnd = today.add(const Duration(days: 7));
+  var pending = 0, accepted = 0, thisWeek = 0, todayCount = 0;
+  for (final e in events) {
+    if (e.status == BanquetEventStatus.pending) pending++;
+    if (e.status == BanquetEventStatus.accepted) accepted++;
+    if (!e.eventDate.isBefore(today) && e.eventDate.isBefore(weekEnd)) {
+      thisWeek++;
+    }
+    if (!e.eventDate.isBefore(today) && e.eventDate.isBefore(tomorrow)) {
+      todayCount++;
+    }
+  }
+  return _Stats(
+    pending: pending,
+    accepted: accepted,
+    thisWeek: thisWeek,
+    today: todayCount,
+  );
+}
+
+BanquetInboxEvent? _nextUpcoming(List<BanquetInboxEvent> events) {
+  final today = DateTime.now();
+  final start = DateTime(today.year, today.month, today.day);
+  final upcoming = events
+      .where((e) => !e.eventDate.isBefore(start))
+      .toList(growable: false)
+    ..sort((a, b) => a.eventDate.compareTo(b.eventDate));
+  return upcoming.isEmpty ? null : upcoming.first;
+}
+
+String? _venueNameFor(List<BanquetVenue> venues, String venueId) {
+  for (final venue in venues) {
+    if (venue.id == venueId) return venue.name;
+  }
+  return null;
+}
+
+String _urgencyLabel(DateTime eventDate) {
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+  final target = DateTime(eventDate.year, eventDate.month, eventDate.day);
+  final days = target.difference(today).inDays;
+  if (days < 0) return '${-days}d ago';
+  if (days == 0) return 'today';
+  if (days == 1) return 'tomorrow';
+  if (days < 7) return 'in ${days}d';
+  if (days < 30) return 'in ${(days / 7).round()}w';
+  return 'in ${(days / 30).round()}mo';
 }
 
 class _StatCard extends StatelessWidget {
@@ -420,8 +718,13 @@ class _ActionTile extends StatelessWidget {
 // ───────────────────────── Recent bookings ─────────────────────────
 
 class _RecentBookings extends StatelessWidget {
-  const _RecentBookings({required this.inboxAsync});
+  const _RecentBookings({
+    required this.inboxAsync,
+    required this.venuesAsync,
+  });
+
   final AsyncValue<List<BanquetInboxEvent>> inboxAsync;
+  final AsyncValue<List<BanquetVenue>> venuesAsync;
 
   @override
   Widget build(BuildContext context) {
@@ -436,8 +739,10 @@ class _RecentBookings extends StatelessWidget {
         ],
       ),
       error: (e, _) => AppCard(
-        child: Text('Could not load recent bookings: $e',
-            style: AppTextStyles.caption),
+        child: AppErrorView(
+          error: e,
+          compact: true,
+        ),
       ),
       data: (rows) {
         // Show the three most recently received pending bookings —
@@ -454,6 +759,7 @@ class _RecentBookings extends StatelessWidget {
           return bc.compareTo(ac);
         });
         final preview = pool.take(3).toList(growable: false);
+        final venues = venuesAsync.valueOrNull ?? const <BanquetVenue>[];
         if (preview.isEmpty) {
           return AppCard(
             child: Row(
@@ -482,7 +788,10 @@ class _RecentBookings extends StatelessWidget {
         return Column(
           children: [
             for (final e in preview) ...[
-              _RecentTile(event: e),
+              _RecentTileV2(
+                event: e,
+                venueName: _venueNameFor(venues, e.banquetVenueId),
+              ),
               const SizedBox(height: AppSizes.sm),
             ],
           ],
@@ -493,8 +802,10 @@ class _RecentBookings extends StatelessWidget {
 }
 
 class _RecentTile extends StatelessWidget {
-  const _RecentTile({required this.event});
+  const _RecentTile({required this.event, this.venueName});
+
   final BanquetInboxEvent event;
+  final String? venueName;
 
   Color get _statusColor => switch (event.status) {
         BanquetEventStatus.pending => AppColors.warning,
@@ -564,6 +875,142 @@ class _RecentTile extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _RecentTileV2 extends StatelessWidget {
+  const _RecentTileV2({required this.event, this.venueName});
+
+  final BanquetInboxEvent event;
+  final String? venueName;
+
+  Color get _statusColor => switch (event.status) {
+        BanquetEventStatus.pending => AppColors.warning,
+        BanquetEventStatus.accepted => AppColors.success,
+        BanquetEventStatus.declined => AppColors.textMuted,
+        BanquetEventStatus.cancelled => AppColors.textMuted,
+        BanquetEventStatus.completed => AppColors.success,
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    final urgency = _urgencyLabel(event.eventDate);
+    return AppCard(
+      padding: EdgeInsets.zero,
+      onTap: () =>
+          context.push(AppRoutes.banquetBookingDetailFor(event.id)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.fromLTRB(
+              AppSizes.md,
+              AppSizes.md,
+              AppSizes.md,
+              AppSizes.sm,
+            ),
+            decoration: BoxDecoration(
+              color: _statusColor.withValues(alpha: 0.08),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(AppSizes.radiusLg),
+              ),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: CustomerLine(
+                    bookingId: event.id,
+                    name: event.customerName,
+                    phone: event.customerPhone,
+                    email: event.customerEmail,
+                    compact: true,
+                  ),
+                ),
+                _StatusPill(label: urgency, color: _statusColor),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              AppSizes.md,
+              AppSizes.sm,
+              AppSizes.md,
+              AppSizes.md,
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 42,
+                  height: 42,
+                  decoration: BoxDecoration(
+                    color: _statusColor.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(AppSizes.radiusSm),
+                  ),
+                  alignment: Alignment.center,
+                  child: Icon(
+                    PhosphorIconsDuotone.calendarBlank,
+                    color: _statusColor,
+                    size: 22,
+                  ),
+                ),
+                const SizedBox(width: AppSizes.md),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        Formatters.date(event.eventDate),
+                        style: AppTextStyles.bodyBold.copyWith(fontSize: 14),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        [
+                          if (venueName != null) venueName!,
+                          event.session,
+                          '${event.guestCount} guests',
+                        ].join(' - '),
+                        style: AppTextStyles.caption,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: AppSizes.sm),
+                _StatusPill(label: event.status.label, color: _statusColor),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StatusPill extends StatelessWidget {
+  const _StatusPill({required this.label, required this.color});
+
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(AppSizes.radiusPill),
+        border: Border.all(color: color.withValues(alpha: 0.24)),
+      ),
+      child: Text(
+        label,
+        style: AppTextStyles.captionBold.copyWith(
+          color: color,
+          fontSize: 10,
+          letterSpacing: 0.1,
+        ),
       ),
     );
   }

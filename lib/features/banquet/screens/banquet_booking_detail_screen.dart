@@ -19,7 +19,10 @@ import '../../../shared/providers/order_providers.dart';
 import '../../../shared/providers/repositories_providers.dart';
 import '../../../shared/providers/staffing_providers.dart';
 import '../../../shared/widgets/app_card.dart';
+import '../../../shared/widgets/app_error_view.dart';
 import '../../../shared/widgets/app_scaffold.dart';
+import '../../../shared/widgets/empty_state.dart';
+import '../../../shared/widgets/shimmer.dart';
 
 /// Full booking review screen for the banquet operator.
 ///
@@ -61,14 +64,13 @@ class BanquetBookingDetailScreen extends ConsumerWidget {
           await ref.read(managerEventDetailProvider(eventId).future);
         },
         child: detailAsync.when(
-          loading: () =>
-              const Center(child: CircularProgressIndicator()),
-          error: (e, _) => ListView(
-            padding: const EdgeInsets.all(AppSizes.pagePadding),
-            children: [
-              Text('Could not load booking: $e',
-                  style: AppTextStyles.caption),
-            ],
+          loading: () => const _BookingDetailLoading(),
+          error: (e, _) => AppErrorView(
+            error: e,
+            onRetry: () {
+              ref.invalidate(managerEventDetailProvider(eventId));
+              ref.invalidate(eventStaffProvider(eventId));
+            },
           ),
           data: (detail) {
             if (detail == null) return const _NotFoundView();
@@ -87,7 +89,10 @@ class BanquetBookingDetailScreen extends ConsumerWidget {
                       AppSizes.md,
                     ),
                     children: [
-                      _StatusBanner(detail: detail, hasManager: hasManager),
+                      _BookingSummaryCard(
+                        detail: detail,
+                        hasManager: hasManager,
+                      ),
                       const SizedBox(height: AppSizes.lg),
                       _SectionTitle('Timeline'),
                       _TimelineCard(
@@ -149,6 +154,67 @@ class BanquetBookingDetailScreen extends ConsumerWidget {
 /// line surfaces the customer name + (when present) the booking total
 /// and event date so the operator always sees what they're looking at,
 /// no matter where they've scrolled to.
+class _BookingDetailLoading extends StatelessWidget {
+  const _BookingDetailLoading();
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.all(AppSizes.pagePadding),
+      children: [
+        Container(
+          padding: const EdgeInsets.all(AppSizes.lg),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(AppSizes.radiusXl),
+            border: Border.all(color: AppColors.border),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  ShimmerBox(
+                    width: 48,
+                    height: 48,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  const SizedBox(width: AppSizes.md),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        ShimmerBox(width: 180, height: 18),
+                        SizedBox(height: 8),
+                        ShimmerBox(width: 240, height: 12),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: AppSizes.lg),
+              const Row(
+                children: [
+                  Expanded(child: ShimmerStatCard()),
+                  SizedBox(width: AppSizes.sm),
+                  Expanded(child: ShimmerStatCard()),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: AppSizes.lg),
+        for (var i = 0; i < 5; i++) ...[
+          const ShimmerBox(width: 130, height: 14),
+          const SizedBox(height: AppSizes.sm),
+          const ShimmerBookingCard(),
+          const SizedBox(height: AppSizes.lg),
+        ],
+      ],
+    );
+  }
+}
+
 class _BookingAppBarTitle extends StatelessWidget {
   const _BookingAppBarTitle({required this.detailAsync});
   final AsyncValue<ManagerEventDetail?> detailAsync;
@@ -677,6 +743,19 @@ class _ActionBar extends ConsumerWidget {
   final BanquetEventStatus? status;
   final bool hasManager;
 
+  Future<void> _requestStatusChange(
+    BuildContext context,
+    WidgetRef ref,
+    BanquetEventStatus next,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => _StatusConfirmDialog(status: next),
+    );
+    if (confirmed != true || !context.mounted) return;
+    await _setStatus(context, ref, next);
+  }
+
   Future<void> _setStatus(
     BuildContext context,
     WidgetRef ref,
@@ -726,7 +805,7 @@ class _ActionBar extends ConsumerWidget {
             children: [
               Expanded(
                 child: OutlinedButton.icon(
-                  onPressed: () => _setStatus(
+                  onPressed: () => _requestStatusChange(
                     context,
                     ref,
                     BanquetEventStatus.declined,
@@ -746,7 +825,7 @@ class _ActionBar extends ConsumerWidget {
               Expanded(
                 flex: 2,
                 child: FilledButton.icon(
-                  onPressed: () => _setStatus(
+                  onPressed: () => _requestStatusChange(
                     context,
                     ref,
                     BanquetEventStatus.accepted,
@@ -802,6 +881,61 @@ class _ActionBar extends ConsumerWidget {
 
 // ───────────────────────── Status + cards ─────────────────────────
 
+class _StatusConfirmDialog extends StatelessWidget {
+  const _StatusConfirmDialog({required this.status});
+
+  final BanquetEventStatus status;
+
+  @override
+  Widget build(BuildContext context) {
+    final isAccept = status == BanquetEventStatus.accepted;
+    final color = isAccept ? AppColors.success : AppColors.error;
+    final title = isAccept ? 'Accept this booking?' : 'Decline this booking?';
+    final body = isAccept
+        ? 'This confirms the venue booking. You can assign a manager after accepting.'
+        : 'This removes the booking from active review. Check the customer, date, guests, and notes before declining.';
+    final actionLabel = isAccept ? 'Accept booking' : 'Decline booking';
+
+    return AlertDialog(
+      title: Row(
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.12),
+              shape: BoxShape.circle,
+            ),
+            alignment: Alignment.center,
+            child: Icon(
+              isAccept ? PhosphorIconsBold.check : PhosphorIconsBold.x,
+              size: 18,
+              color: color,
+            ),
+          ),
+          const SizedBox(width: AppSizes.md),
+          Expanded(child: Text(title)),
+        ],
+      ),
+      content: Text(body),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(true),
+          style: FilledButton.styleFrom(
+            backgroundColor: color,
+            foregroundColor: Colors.white,
+          ),
+          child: Text(actionLabel),
+        ),
+      ],
+    );
+  }
+}
+
 class _SectionTitle extends StatelessWidget {
   const _SectionTitle(this.text);
   final String text;
@@ -829,6 +963,336 @@ class _SectionTitle extends StatelessWidget {
               color: AppColors.textSecondary,
               fontSize: 11,
               letterSpacing: 1.1,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BookingSummaryCard extends StatelessWidget {
+  const _BookingSummaryCard({
+    required this.detail,
+    required this.hasManager,
+  });
+
+  final ManagerEventDetail detail;
+  final bool hasManager;
+
+  ({Color color, String label, IconData icon}) _statusTheme() {
+    final s = detail.banquetStatus ?? BanquetEventStatus.pending;
+    return switch (s) {
+      BanquetEventStatus.pending => (
+          color: AppColors.warning,
+          label: 'Awaiting review',
+          icon: PhosphorIconsBold.clock,
+        ),
+      BanquetEventStatus.accepted => (
+          color: AppColors.success,
+          label: hasManager ? 'Accepted - staffed' : 'Accepted - needs manager',
+          icon: PhosphorIconsBold.check,
+        ),
+      BanquetEventStatus.declined => (
+          color: AppColors.textMuted,
+          label: 'Declined',
+          icon: PhosphorIconsBold.x,
+        ),
+      BanquetEventStatus.cancelled => (
+          color: AppColors.textMuted,
+          label: 'Cancelled',
+          icon: PhosphorIconsBold.prohibit,
+        ),
+      BanquetEventStatus.completed => (
+          color: AppColors.success,
+          label: 'Completed',
+          icon: PhosphorIconsBold.flag,
+        ),
+    };
+  }
+
+  String get _customerLabel {
+    final name = detail.customerName?.trim();
+    if (name != null && name.isNotEmpty) return name;
+    final phone = detail.customerPhone?.trim();
+    if (phone != null && phone.isNotEmpty) return phone;
+    final email = detail.customerEmail?.trim();
+    if (email != null && email.isNotEmpty) return email;
+    return detail.eventId.length >= 8
+        ? '#${detail.eventId.substring(0, 8)}'
+        : '#${detail.eventId}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = _statusTheme();
+    final dateText = detail.eventDate != null
+        ? Formatters.date(detail.eventDate!)
+        : 'Date TBD';
+    final timeRange = _timeRange(detail.startTime, detail.endTime);
+    final countdown = _countdownLabel(detail.eventDate);
+    final amountText = detail.total != null && detail.total! > 0
+        ? Formatters.currency(detail.total!)
+        : 'Total pending';
+    final paymentText = _payLabel(detail.paymentStatus);
+
+    return Container(
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(AppSizes.radiusXl),
+        boxShadow: [
+          BoxShadow(
+            color: t.color.withValues(alpha: 0.13),
+            blurRadius: 22,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    t.color.withValues(alpha: 0.22),
+                    AppColors.surface,
+                    AppColors.accentSoft.withValues(alpha: 0.78),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(AppSizes.lg),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: t.color,
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: t.color.withValues(alpha: 0.28),
+                            blurRadius: 12,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      alignment: Alignment.center,
+                      child: Icon(t.icon, color: Colors.white, size: 23),
+                    ),
+                    const SizedBox(width: AppSizes.md),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _customerLabel,
+                            style: AppTextStyles.heading2.copyWith(
+                              fontSize: 18,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            [
+                              dateText,
+                              if (timeRange != null) timeRange,
+                              if (detail.session != null) detail.session!,
+                            ].join(' - '),
+                            style: AppTextStyles.caption.copyWith(
+                              color: AppColors.textMuted,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (countdown != null) ...[
+                      const SizedBox(width: AppSizes.sm),
+                      _SummaryPill(label: countdown, color: t.color),
+                    ],
+                  ],
+                ),
+                const SizedBox(height: AppSizes.lg),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _SummaryMetric(
+                        label: 'Guests',
+                        value: detail.guestCount != null
+                            ? '${detail.guestCount}'
+                            : '--',
+                        icon: PhosphorIconsDuotone.users,
+                      ),
+                    ),
+                    const SizedBox(width: AppSizes.sm),
+                    Expanded(
+                      child: _SummaryMetric(
+                        label: 'Total',
+                        value: amountText,
+                        icon: PhosphorIconsDuotone.receipt,
+                        highlight: detail.total != null,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: AppSizes.sm),
+                Wrap(
+                  spacing: AppSizes.sm,
+                  runSpacing: AppSizes.sm,
+                  children: [
+                    _SummaryPill(label: t.label, color: t.color),
+                    _SummaryPill(
+                      label: 'Payment $paymentText',
+                      color: _payColor(detail.paymentStatus),
+                    ),
+                    if (detail.banquetVenueName != null)
+                      _SummaryPill(
+                        label: detail.banquetVenueName!,
+                        color: AppColors.info,
+                        icon: PhosphorIconsDuotone.buildings,
+                      ),
+                    if (detail.tierLabel != null)
+                      _SummaryPill(
+                        label: detail.tierLabel!,
+                        color: AppColors.accentDark,
+                        icon: PhosphorIconsDuotone.crown,
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String? _countdownLabel(DateTime? eventDate) {
+    if (eventDate == null) return null;
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final target = DateTime(eventDate.year, eventDate.month, eventDate.day);
+    final days = target.difference(today).inDays;
+    if (days < -1) return '${-days} days ago';
+    if (days == -1) return 'yesterday';
+    if (days == 0) return 'today';
+    if (days == 1) return 'tomorrow';
+    if (days < 7) return 'in $days days';
+    if (days < 14) return 'in 1 week';
+    if (days < 30) return 'in ${(days / 7).round()} weeks';
+    return 'in ${(days / 30).round()} months';
+  }
+}
+
+class _SummaryMetric extends StatelessWidget {
+  const _SummaryMetric({
+    required this.label,
+    required this.value,
+    required this.icon,
+    this.highlight = false,
+  });
+
+  final String label;
+  final String value;
+  final IconData icon;
+  final bool highlight;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = highlight ? AppColors.primary : AppColors.textPrimary;
+    return Container(
+      padding: const EdgeInsets.all(AppSizes.md),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.76),
+        borderRadius: BorderRadius.circular(AppSizes.radiusMd),
+        border: Border.all(color: AppColors.border.withValues(alpha: 0.7)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: AppColors.textMuted, size: 18),
+          const SizedBox(width: AppSizes.sm),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: AppTextStyles.captionBold.copyWith(
+                    color: AppColors.textMuted,
+                    fontSize: 10,
+                    letterSpacing: 0.1,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  value,
+                  style: AppTextStyles.bodyBold.copyWith(
+                    color: color,
+                    fontSize: highlight ? 15 : 14,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SummaryPill extends StatelessWidget {
+  const _SummaryPill({
+    required this.label,
+    required this.color,
+    this.icon,
+  });
+
+  final String label;
+  final Color color;
+  final IconData? icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 260),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(AppSizes.radiusPill),
+        border: Border.all(color: color.withValues(alpha: 0.26)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (icon != null) ...[
+            Icon(icon, size: 13, color: color),
+            const SizedBox(width: 5),
+          ],
+          Flexible(
+            child: Text(
+              label,
+              style: AppTextStyles.captionBold.copyWith(
+                color: color,
+                fontSize: 10,
+                letterSpacing: 0.1,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
           ),
         ],
@@ -1378,14 +1842,19 @@ class _RosterCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return staffAsync.when(
       loading: () => const AppCard(
-        child: Padding(
-          padding: EdgeInsets.symmetric(vertical: AppSizes.sm),
-          child: Center(child: CircularProgressIndicator()),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            ShimmerBox(width: 190, height: 14),
+            SizedBox(height: AppSizes.md),
+            ShimmerBox(width: double.infinity, height: 34),
+            SizedBox(height: AppSizes.sm),
+            ShimmerBox(width: double.infinity, height: 34),
+          ],
         ),
       ),
       error: (e, _) => AppCard(
-        child: Text('Could not load roster: $e',
-            style: AppTextStyles.caption),
+        child: AppErrorView(error: e, compact: true),
       ),
       data: (rows) {
         final managers = rows
@@ -1576,23 +2045,10 @@ class _NotFoundView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.all(AppSizes.pagePadding),
-      children: [
-        const SizedBox(height: AppSizes.xxxl),
-        const Icon(PhosphorIconsDuotone.warningCircle,
-            size: 48, color: AppColors.textMuted),
-        const SizedBox(height: AppSizes.md),
-        Text('Booking not found',
-            style: AppTextStyles.heading2,
-            textAlign: TextAlign.center),
-        const SizedBox(height: 4),
-        Text(
-          'This booking may have been cancelled or moved out of your inbox.',
-          style: AppTextStyles.caption,
-          textAlign: TextAlign.center,
-        ),
-      ],
+    return const EmptyState(
+      icon: PhosphorIconsDuotone.warningCircle,
+      title: 'Booking not found',
+      message: 'This booking may have been cancelled or moved out of your inbox.',
     );
   }
 }
@@ -1658,19 +2114,45 @@ class _AssignManagerSheet extends ConsumerWidget {
             const SizedBox(height: AppSizes.lg),
             Expanded(
               child: managers.when(
-                loading: () =>
-                    const Center(child: CircularProgressIndicator()),
-                error: (e, _) => Text('Could not load managers: $e',
-                    style: AppTextStyles.caption),
+                loading: () => ListView.separated(
+                  controller: scrollCtrl,
+                  itemCount: 5,
+                  separatorBuilder: (_, __) =>
+                      const SizedBox(height: AppSizes.sm),
+                  itemBuilder: (_, __) => AppCard(
+                    color: AppColors.surfaceAlt,
+                    border: Border.all(color: AppColors.border),
+                    radius: AppSizes.radiusSm,
+                    child: Row(
+                      children: [
+                        ShimmerBox(
+                          width: 40,
+                          height: 40,
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        const SizedBox(width: AppSizes.md),
+                        const Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              ShimmerBox(width: 130, height: 14),
+                              SizedBox(height: 8),
+                              ShimmerBox(width: 190, height: 11),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                error: (e, _) => AppErrorView(error: e, compact: true),
                 data: (rows) {
                   if (rows.isEmpty) {
-                    return Center(
-                      child: Text(
-                        'No managers available. An admin must promote a user '
-                        'to the manager role first.',
-                        textAlign: TextAlign.center,
-                        style: AppTextStyles.bodyMuted,
-                      ),
+                    return const EmptyState(
+                      icon: PhosphorIconsDuotone.userCircleMinus,
+                      title: 'No managers available',
+                      message:
+                          'An admin must promote a user to the manager role before this event can be staffed.',
                     );
                   }
                   return ListView.separated(

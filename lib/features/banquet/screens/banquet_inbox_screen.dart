@@ -13,6 +13,7 @@ import '../../../data/models/event_assignment.dart';
 import '../../../shared/providers/banquet_providers.dart';
 import '../../../shared/providers/staffing_providers.dart';
 import '../../../shared/widgets/app_card.dart';
+import '../../../shared/widgets/app_error_view.dart';
 import '../../../shared/widgets/app_scaffold.dart';
 import '../../../shared/widgets/customer_line.dart';
 import '../../../shared/widgets/shimmer.dart';
@@ -138,16 +139,9 @@ class _BanquetInboxScreenState extends ConsumerState<BanquetInboxScreen> {
             separatorBuilder: (_, __) => const SizedBox(height: AppSizes.md),
             itemBuilder: (_, __) => const ShimmerBookingCard(),
           ),
-          error: (e, _) => ListView(
-            children: [
-              const SizedBox(height: AppSizes.xxxl),
-              Center(
-                child: Text(
-                  'Could not load inbox: $e',
-                  style: AppTextStyles.caption,
-                ),
-              ),
-            ],
+          error: (e, _) => AppErrorView(
+            error: e,
+            onRetry: () => ref.invalidate(banquetInboxProvider),
           ),
           data: (all) {
             final filtered = all
@@ -181,7 +175,7 @@ class _BanquetInboxScreenState extends ConsumerState<BanquetInboxScreen> {
                           separatorBuilder: (_, __) =>
                               const SizedBox(height: AppSizes.md),
                           itemBuilder: (_, i) =>
-                              _InboxCard(event: filtered[i]),
+                              _InboxCardV2(event: filtered[i]),
                         ),
                 ),
               ],
@@ -660,5 +654,258 @@ class _ManagerRow extends ConsumerWidget {
       ),
     );
   }
+}
+
+class _InboxCardV2 extends ConsumerWidget {
+  const _InboxCardV2({required this.event});
+
+  final BanquetInboxEvent event;
+
+  Color _statusColor() => switch (event.status) {
+        BanquetEventStatus.pending => AppColors.warning,
+        BanquetEventStatus.accepted => AppColors.success,
+        BanquetEventStatus.declined => AppColors.textMuted,
+        BanquetEventStatus.cancelled => AppColors.textMuted,
+        BanquetEventStatus.completed => AppColors.success,
+      };
+
+  String _ctaHint() => switch (event.status) {
+        BanquetEventStatus.pending => 'Review booking',
+        BanquetEventStatus.accepted => 'View staffing',
+        _ => 'View details',
+      };
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final statusColor = _statusColor();
+    final venues = ref.watch(myBanquetVenuesProvider).valueOrNull ??
+        const <BanquetVenue>[];
+    final venueName = _venueNameFor(venues, event.banquetVenueId);
+    final urgency = _urgencyLabel(event.eventDate);
+    final timeText = _timeRange(event.startTime, event.endTime);
+
+    return AppCard(
+      padding: EdgeInsets.zero,
+      onTap: () =>
+          context.push(AppRoutes.banquetBookingDetailFor(event.id)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.fromLTRB(
+              AppSizes.lg,
+              AppSizes.md,
+              AppSizes.lg,
+              AppSizes.md,
+            ),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  statusColor.withValues(alpha: 0.13),
+                  statusColor.withValues(alpha: 0.05),
+                ],
+              ),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(AppSizes.radiusLg),
+              ),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: CustomerLine(
+                    bookingId: event.id,
+                    name: event.customerName,
+                    phone: event.customerPhone,
+                    email: event.customerEmail,
+                  ),
+                ),
+                _BookingPill(label: urgency, color: statusColor),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(AppSizes.lg),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            Formatters.date(event.eventDate),
+                            style: AppTextStyles.heading2.copyWith(
+                              fontSize: 18,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            [
+                              event.session,
+                              if (timeText != null) timeText,
+                            ].join(' - '),
+                            style: AppTextStyles.caption.copyWith(
+                              color: AppColors.textMuted,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    _BookingPill(
+                      label: event.status.label,
+                      color: statusColor,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: AppSizes.md),
+                Wrap(
+                  spacing: AppSizes.sm,
+                  runSpacing: AppSizes.sm,
+                  children: [
+                    _MetaChip(
+                      icon: PhosphorIconsDuotone.users,
+                      label: '${event.guestCount} guests',
+                    ),
+                    if (venueName != null)
+                      _MetaChip(
+                        icon: PhosphorIconsDuotone.buildings,
+                        label: venueName,
+                      ),
+                    if (event.location != null &&
+                        event.location!.trim().isNotEmpty)
+                      _MetaChip(
+                        icon: PhosphorIconsDuotone.mapPin,
+                        label: event.location!.trim(),
+                      ),
+                  ],
+                ),
+                if (event.status == BanquetEventStatus.accepted) ...[
+                  const SizedBox(height: AppSizes.md),
+                  _ManagerRow(eventId: event.id),
+                ],
+                const SizedBox(height: AppSizes.md),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        _ctaHint(),
+                        style: AppTextStyles.captionBold.copyWith(
+                          color: AppColors.primary,
+                          fontSize: 11,
+                          letterSpacing: 0.1,
+                        ),
+                      ),
+                    ),
+                    const Icon(
+                      PhosphorIconsBold.caretRight,
+                      size: 16,
+                      color: AppColors.primary,
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BookingPill extends StatelessWidget {
+  const _BookingPill({required this.label, required this.color});
+
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(AppSizes.radiusPill),
+        border: Border.all(color: color.withValues(alpha: 0.26)),
+      ),
+      child: Text(
+        label,
+        style: AppTextStyles.captionBold.copyWith(
+          color: color,
+          fontSize: 10,
+          letterSpacing: 0.1,
+        ),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+    );
+  }
+}
+
+class _MetaChip extends StatelessWidget {
+  const _MetaChip({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 260),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceAlt,
+        borderRadius: BorderRadius.circular(AppSizes.radiusPill),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: AppColors.textMuted),
+          const SizedBox(width: 5),
+          Flexible(
+            child: Text(
+              label,
+              style: AppTextStyles.caption.copyWith(
+                color: AppColors.textSecondary,
+                fontWeight: FontWeight.w600,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+String? _venueNameFor(List<BanquetVenue> venues, String venueId) {
+  for (final venue in venues) {
+    if (venue.id == venueId) return venue.name;
+  }
+  return null;
+}
+
+String? _timeRange(String? start, String? end) {
+  String trim(String s) => s.length >= 5 ? s.substring(0, 5) : s;
+  if (start != null && end != null) return '${trim(start)} - ${trim(end)}';
+  if (start != null) return trim(start);
+  return null;
+}
+
+String _urgencyLabel(DateTime eventDate) {
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+  final target = DateTime(eventDate.year, eventDate.month, eventDate.day);
+  final days = target.difference(today).inDays;
+  if (days < 0) return '${-days}d ago';
+  if (days == 0) return 'today';
+  if (days == 1) return 'tomorrow';
+  if (days < 7) return 'in ${days}d';
+  if (days < 30) return 'in ${(days / 7).round()}w';
+  return 'in ${(days / 30).round()}mo';
 }
 

@@ -34,6 +34,13 @@ abstract interface class BanquetRepository {
 
   Future<List<BanquetInventoryItem>> fetchInventory(String venueId);
 
+  Future<void> updateInventoryItem({
+    required String itemId,
+    required double unitPrice,
+    required bool perGuest,
+    required bool isActive,
+  });
+
   /// Manager profiles — used by the banquet operator to pick one for an
   /// accepted event. Admins can expand this to filter by "works for this
   /// banquet" later; for MVP every `role='manager'` profile is eligible.

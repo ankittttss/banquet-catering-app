@@ -9,7 +9,10 @@ import '../../../core/constants/app_text_styles.dart';
 import '../../../data/models/banquet_venue.dart';
 import '../../../shared/providers/banquet_providers.dart';
 import '../../../shared/widgets/app_card.dart';
+import '../../../shared/widgets/app_error_view.dart';
 import '../../../shared/widgets/app_scaffold.dart';
+import '../../../shared/widgets/empty_state.dart';
+import '../../../shared/widgets/shimmer.dart';
 import '../widgets/banquet_bottom_nav.dart';
 
 class BanquetVenuesScreen extends ConsumerWidget {
@@ -32,32 +35,18 @@ class BanquetVenuesScreen extends ConsumerWidget {
       ),
       bottomBar: const BanquetBottomNav(active: BanquetNavTab.venues),
       body: venues.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(
-          child: Text('Could not load venues: $e',
-              style: AppTextStyles.caption),
+        loading: () => const _VenueListLoading(),
+        error: (e, _) => AppErrorView(
+          error: e,
+          onRetry: () => ref.invalidate(myBanquetVenuesProvider),
         ),
         data: (rows) {
           if (rows.isEmpty) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(AppSizes.xl),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(PhosphorIconsDuotone.buildings,
-                        size: 56, color: AppColors.textMuted),
-                    const SizedBox(height: AppSizes.md),
-                    Text('No venues yet', style: AppTextStyles.heading3),
-                    const SizedBox(height: AppSizes.xs),
-                    Text(
-                      'An admin will provision venues under your account.',
-                      textAlign: TextAlign.center,
-                      style: AppTextStyles.bodyMuted,
-                    ),
-                  ],
-                ),
-              ),
+            return const EmptyState(
+              icon: PhosphorIconsDuotone.buildings,
+              title: 'No venues yet',
+              message:
+                  'An admin will provision venues under your account. Once added, capacity and availability will appear here.',
             );
           }
           return ListView.separated(
@@ -68,6 +57,43 @@ class BanquetVenuesScreen extends ConsumerWidget {
             itemBuilder: (_, i) => _VenueCard(venue: rows[i]),
           );
         },
+      ),
+    );
+  }
+}
+
+class _VenueListLoading extends StatelessWidget {
+  const _VenueListLoading();
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView.separated(
+      padding: const EdgeInsets.symmetric(vertical: AppSizes.md),
+      itemCount: 4,
+      separatorBuilder: (_, __) => const SizedBox(height: AppSizes.md),
+      itemBuilder: (_, __) => AppCard(
+        child: Row(
+          children: [
+            ShimmerBox(
+              width: 48,
+              height: 48,
+              borderRadius: BorderRadius.circular(AppSizes.radiusSm),
+            ),
+            const SizedBox(width: AppSizes.md),
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  ShimmerBox(width: 160, height: 16),
+                  SizedBox(height: 8),
+                  ShimmerBox(width: 220, height: 12),
+                  SizedBox(height: 12),
+                  ShimmerBox(width: 130, height: 22),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

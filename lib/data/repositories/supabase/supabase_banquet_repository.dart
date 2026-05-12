@@ -155,10 +155,23 @@ class SupabaseBanquetRepository implements BanquetRepository {
         .from('banquet_inventory')
         .select()
         .eq('venue_id', venueId)
-        .eq('is_active', true)
         .order('sort_order');
     return rows
         .map<BanquetInventoryItem>(BanquetInventoryItem.fromMap)
         .toList(growable: false);
+  }
+
+  @override
+  Future<void> updateInventoryItem({
+    required String itemId,
+    required double unitPrice,
+    required bool perGuest,
+    required bool isActive,
+  }) async {
+    await supabase.from('banquet_inventory').update({
+      'unit_price': unitPrice,
+      'per_guest': perGuest,
+      'is_active': isActive,
+    }).eq('id', itemId);
   }
 }
