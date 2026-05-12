@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
@@ -14,13 +15,18 @@ import '../../../data/models/order_vendor_lot.dart';
 import '../../../shared/providers/order_providers.dart';
 import '../../../shared/providers/staffing_providers.dart';
 import '../../../shared/widgets/app_card.dart';
+import '../../../shared/widgets/app_error_view.dart';
 import '../../../shared/widgets/app_scaffold.dart';
+import '../../../shared/widgets/shimmer.dart';
 
 /// Operational view of a single event the manager has been assigned to.
 ///
 /// Pulls one aggregated booking snapshot (event + venue + tier + order +
 /// vendor lots) plus the existing roster stream so the manager can see
-/// the full picture without bouncing between screens.
+/// the full picture without bouncing between screens. Polished to the
+/// same bar as the operator booking-review screen: subtitle AppBar,
+/// gradient status banner with countdown, status timeline, tap-to-copy
+/// customer info, emphasized bill total, and shimmer loading.
 class ManagerEventDetailScreen extends ConsumerWidget {
   const ManagerEventDetailScreen({super.key, required this.eventId});
 
@@ -33,7 +39,8 @@ class ManagerEventDetailScreen extends ConsumerWidget {
 
     return AppScaffold(
       appBar: AppBar(
-        title: const Text('Event details'),
+        toolbarHeight: 64,
+        title: _EventAppBarTitle(detailAsync: detailAsync),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded),
           onPressed: () => context.pop(),
@@ -48,19 +55,14 @@ class ManagerEventDetailScreen extends ConsumerWidget {
           await ref.read(managerEventDetailProvider(eventId).future);
         },
         child: detailAsync.when(
-          loading: () =>
-              const Center(child: CircularProgressIndicator()),
-          error: (e, _) => ListView(
-            padding: const EdgeInsets.all(AppSizes.pagePadding),
-            children: [
-              Text('Could not load event: $e',
-                  style: AppTextStyles.caption),
-            ],
+          loading: () => const _DetailLoading(),
+          error: (e, _) => AppErrorView(
+            error: e,
+            onRetry: () =>
+                ref.invalidate(managerEventDetailProvider(eventId)),
           ),
           data: (detail) {
-            if (detail == null) {
-              return const _NotFoundView();
-            }
+            if (detail == null) return const _NotFoundView();
             return ListView(
               padding: const EdgeInsets.fromLTRB(
                 AppSizes.pagePadding,
@@ -70,7 +72,10 @@ class ManagerEventDetailScreen extends ConsumerWidget {
               ),
               children: [
                 _StatusBanner(detail: detail),
-                const SizedBox(height: AppSizes.md),
+                const SizedBox(height: AppSizes.lg),
+                _SectionTitle('Timeline'),
+                _TimelineCard(detail: detail, staffAsync: staffAsync),
+                const SizedBox(height: AppSizes.lg),
                 _SectionTitle('Customer'),
                 _CustomerCard(detail: detail),
                 const SizedBox(height: AppSizes.lg),
@@ -105,7 +110,57 @@ class ManagerEventDetailScreen extends ConsumerWidget {
   }
 }
 
-// ───────────────────────── Section bits ─────────────────────────
+// ───────────────────────── AppBar title ─────────────────────────
+
+/// Two-line AppBar. Top line stays "Event details"; the subtitle
+/// surfaces the customer + date so the manager never loses context
+/// during a long scroll.
+class _EventAppBarTitle extends StatelessWidget {
+  const _EventAppBarTitle({required this.detailAsync});
+  final AsyncValue<ManagerEventDetail?> detailAsync;
+
+  @override
+  Widget build(BuildContext context) {
+    final detail = detailAsync.valueOrNull;
+    final parts = <String>[];
+    if (detail != null) {
+      final name = detail.customerName?.trim();
+      if (name != null && name.isNotEmpty) {
+        parts.add(name);
+      } else {
+        parts.add('#${detail.eventId.substring(0, 8)}');
+      }
+      if (detail.eventDate != null) {
+        parts.add(Formatters.date(detail.eventDate!));
+      }
+    }
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Event details',
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+        ),
+        if (parts.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 1),
+            child: Text(
+              parts.join(' · '),
+              style: AppTextStyles.caption.copyWith(
+                color: AppColors.textMuted,
+                fontSize: 11,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+// ───────────────────────── Section title (accent bar) ─────────────────────────
 
 class _SectionTitle extends StatelessWidget {
   const _SectionTitle(this.text);
@@ -115,17 +170,32 @@ class _SectionTitle extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(bottom: AppSizes.sm),
-      child: Text(
-        text.toUpperCase(),
-        style: AppTextStyles.captionBold.copyWith(
-          color: AppColors.textMuted,
-          fontSize: 11,
-          letterSpacing: 1.1,
-        ),
+      child: Row(
+        children: [
+          Container(
+            width: 3,
+            height: 14,
+            decoration: BoxDecoration(
+              color: AppColors.primary,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            text.toUpperCase(),
+            style: AppTextStyles.captionBold.copyWith(
+              color: AppColors.textSecondary,
+              fontSize: 11,
+              letterSpacing: 1.1,
+            ),
+          ),
+        ],
       ),
     );
   }
 }
+
+// ───────────────────────── Status banner ─────────────────────────
 
 class _StatusBanner extends StatelessWidget {
   const _StatusBanner({required this.detail});
@@ -133,38 +203,60 @@ class _StatusBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final color = AppColors.primary;
     final date = detail.eventDate;
     final dateText = date != null ? Formatters.date(date) : 'Date TBD';
     final timeRange = _timeRange(detail.startTime, detail.endTime);
+    final countdown = _countdown(date);
     return Container(
       padding: const EdgeInsets.all(AppSizes.lg),
       decoration: BoxDecoration(
-        color: AppColors.primarySoft,
-        borderRadius: BorderRadius.circular(AppSizes.radiusLg),
-        border: Border.all(
-          color: AppColors.primary.withValues(alpha: 0.18),
+        // Subtle gradient lift — gives the banner more visual weight
+        // than a flat tint and matches the operator booking-review
+        // screen's treatment.
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            color.withValues(alpha: 0.20),
+            color.withValues(alpha: 0.08),
+          ],
         ),
+        borderRadius: BorderRadius.circular(AppSizes.radiusLg),
+        border: Border.all(color: color.withValues(alpha: 0.28)),
       ),
       child: Row(
         children: [
           Container(
             width: 44,
             height: 44,
-            decoration: const BoxDecoration(
-              color: AppColors.primary,
+            decoration: BoxDecoration(
+              color: color,
               shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: color.withValues(alpha: 0.3),
+                  blurRadius: 10,
+                  offset: const Offset(0, 3),
+                ),
+              ],
             ),
             alignment: Alignment.center,
-            child: const Icon(PhosphorIconsBold.userGear,
-                color: Colors.white, size: 22),
+            child: const Icon(
+              PhosphorIconsBold.userGear,
+              color: Colors.white,
+              size: 22,
+            ),
           ),
           const SizedBox(width: AppSizes.md),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('You are managing this event',
-                    style: AppTextStyles.bodyBold),
+                Text(
+                  'You are managing this event',
+                  style: AppTextStyles.bodyBold,
+                ),
                 const SizedBox(height: 2),
                 Text(
                   '$dateText${timeRange != null ? ' · $timeRange' : ''}',
@@ -173,11 +265,228 @@ class _StatusBanner extends StatelessWidget {
               ],
             ),
           ),
+          if (countdown != null) ...[
+            const SizedBox(width: AppSizes.sm),
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.85),
+                borderRadius: BorderRadius.circular(AppSizes.radiusPill),
+                border: Border.all(color: color.withValues(alpha: 0.45)),
+              ),
+              child: Text(
+                countdown,
+                style: AppTextStyles.captionBold.copyWith(
+                  color: color,
+                  fontSize: 11,
+                  letterSpacing: 0.2,
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
   }
 }
+
+// ───────────────────────── Timeline ─────────────────────────
+
+/// Vertical step timeline showing the event's lifecycle from the
+/// manager's perspective: customer booking → assigned to me → event
+/// day. Same shape as the operator booking-review timeline.
+class _TimelineCard extends StatelessWidget {
+  const _TimelineCard({required this.detail, required this.staffAsync});
+  final ManagerEventDetail detail;
+  final AsyncValue<List<EventAssignment>> staffAsync;
+
+  @override
+  Widget build(BuildContext context) {
+    final myManagerAssignment = staffAsync.valueOrNull
+        ?.where((a) => a.roleOnEvent == EventAssignmentRole.manager)
+        .fold<EventAssignment?>(
+      null,
+      (acc, a) => acc == null || a.assignedAt.isBefore(acc.assignedAt)
+          ? a
+          : acc,
+    );
+    final boys = staffAsync.valueOrNull
+            ?.where((a) => a.roleOnEvent == EventAssignmentRole.serviceBoy)
+            .length ??
+        0;
+    final steps = <_TimelineStep>[
+      if (detail.orderCreatedAt != null)
+        _TimelineStep(
+          icon: PhosphorIconsBold.shoppingBag,
+          color: AppColors.textSecondary,
+          headline: 'Booking placed',
+          subline:
+              '${Formatters.date(detail.orderCreatedAt!)} · by customer',
+          done: true,
+        ),
+      if (myManagerAssignment != null)
+        _TimelineStep(
+          icon: PhosphorIconsBold.userGear,
+          color: AppColors.primary,
+          headline: 'Assigned to you',
+          subline: Formatters.date(myManagerAssignment.assignedAt),
+          done: true,
+        ),
+      _TimelineStep(
+        icon: PhosphorIconsBold.handshake,
+        color: boys > 0 ? AppColors.success : AppColors.warning,
+        headline: boys > 0
+            ? 'Service boys staffed'
+            : 'Staff service boys',
+        subline: boys > 0
+            ? '$boys ${boys == 1 ? 'service boy' : 'service boys'} on the roster'
+            : 'Use "Add boy" on the home screen to staff this event',
+        done: boys > 0,
+      ),
+      if (detail.eventDate != null)
+        _TimelineStep(
+          icon: PhosphorIconsBold.calendarBlank,
+          color: AppColors.accent,
+          headline: 'Event day',
+          subline: Formatters.date(detail.eventDate!),
+          done: detail.eventDate!.isBefore(DateTime.now()),
+          isFuture: !detail.eventDate!.isBefore(DateTime.now()),
+        ),
+    ];
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (var i = 0; i < steps.length; i++)
+            _TimelineRow(
+              step: steps[i],
+              isFirst: i == 0,
+              isLast: i == steps.length - 1,
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TimelineStep {
+  const _TimelineStep({
+    required this.icon,
+    required this.color,
+    required this.headline,
+    required this.subline,
+    required this.done,
+    this.isFuture = false,
+  });
+  final IconData icon;
+  final Color color;
+  final String headline;
+  final String subline;
+  final bool done;
+  final bool isFuture;
+}
+
+class _TimelineRow extends StatelessWidget {
+  const _TimelineRow({
+    required this.step,
+    required this.isFirst,
+    required this.isLast,
+  });
+  final _TimelineStep step;
+  final bool isFirst;
+  final bool isLast;
+
+  @override
+  Widget build(BuildContext context) {
+    final dotColor = step.done ? step.color : AppColors.border;
+    final headlineColor = step.done || step.isFuture
+        ? AppColors.textPrimary
+        : AppColors.textSecondary;
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SizedBox(
+            width: 28,
+            child: Column(
+              children: [
+                Container(
+                  width: 2,
+                  height: 6,
+                  color: isFirst ? Colors.transparent : AppColors.border,
+                ),
+                Container(
+                  width: 22,
+                  height: 22,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: step.done
+                        ? dotColor
+                        : (step.isFuture
+                            ? AppColors.surfaceAlt
+                            : AppColors.surface),
+                    border: Border.all(
+                      color: step.done ? dotColor : AppColors.border,
+                      width: step.done ? 0 : 1.5,
+                    ),
+                  ),
+                  alignment: Alignment.center,
+                  child: Icon(
+                    step.icon,
+                    size: 12,
+                    color: step.done
+                        ? Colors.white
+                        : (step.isFuture
+                            ? AppColors.textSecondary
+                            : AppColors.textMuted),
+                  ),
+                ),
+                Expanded(
+                  child: Container(
+                    width: 2,
+                    color: isLast ? Colors.transparent : AppColors.border,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: AppSizes.md),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    step.headline,
+                    style: AppTextStyles.bodyBold.copyWith(
+                      fontSize: 13.5,
+                      color: headlineColor,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    step.subline,
+                    style: AppTextStyles.caption.copyWith(
+                      color: AppColors.textMuted,
+                      fontSize: 11.5,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  SizedBox(height: isLast ? 0 : AppSizes.xs),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ───────────────────────── Customer card (tap-to-copy) ─────────────────────────
 
 class _CustomerCard extends StatelessWidget {
   const _CustomerCard({required this.detail});
@@ -188,6 +497,26 @@ class _CustomerCard extends StatelessWidget {
   String get _shortId => detail.eventId.length >= 8
       ? '#${detail.eventId.substring(0, 8)}'
       : '#${detail.eventId}';
+
+  Future<void> _copy(BuildContext context, String value, String label) async {
+    await Clipboard.setData(ClipboardData(text: value));
+    HapticFeedback.selectionClick();
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        duration: const Duration(seconds: 2),
+        behavior: SnackBarBehavior.floating,
+        content: Row(
+          children: [
+            const Icon(PhosphorIconsBold.check, color: Colors.white, size: 16),
+            const SizedBox(width: 8),
+            Expanded(child: Text('$label copied to clipboard')),
+          ],
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -211,6 +540,7 @@ class _CustomerCard extends StatelessWidget {
               icon: PhosphorIconsDuotone.phone,
               label: 'Phone',
               value: detail.customerPhone!,
+              onCopy: () => _copy(context, detail.customerPhone!, 'Phone'),
             ),
           if (_has(detail.customerEmail) &&
               (_has(detail.customerName) || _has(detail.customerPhone)))
@@ -218,17 +548,21 @@ class _CustomerCard extends StatelessWidget {
               icon: PhosphorIconsDuotone.envelope,
               label: 'Email',
               value: detail.customerEmail!,
+              onCopy: () => _copy(context, detail.customerEmail!, 'Email'),
             ),
           _DetailRow(
             icon: PhosphorIconsDuotone.identificationCard,
             label: 'Booking ID',
             value: _shortId,
+            onCopy: () => _copy(context, detail.eventId, 'Booking ID'),
           ),
         ],
       ),
     );
   }
 }
+
+// ───────────────────────── When & where ─────────────────────────
 
 class _WhenWhereCard extends StatelessWidget {
   const _WhenWhereCard({required this.detail});
@@ -278,6 +612,8 @@ class _WhenWhereCard extends StatelessWidget {
     );
   }
 }
+
+// ───────────────────────── Booking ─────────────────────────
 
 class _BookingCard extends StatelessWidget {
   const _BookingCard({required this.detail});
@@ -345,6 +681,8 @@ class _BookingCard extends StatelessWidget {
   }
 }
 
+// ───────────────────────── Bill summary ─────────────────────────
+
 class _BillCard extends StatelessWidget {
   const _BillCard({required this.detail});
   final ManagerEventDetail detail;
@@ -391,20 +729,59 @@ class _BillRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final style = (bold ? AppTextStyles.bodyBold : AppTextStyles.body)
-        .copyWith(fontSize: bold ? 15 : 13);
+    if (bold) {
+      // Total row gets primary-color emphasis so the eye lands on it.
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: AppColors.primarySoft,
+          borderRadius: BorderRadius.circular(AppSizes.radiusSm),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                label,
+                style: AppTextStyles.bodyBold.copyWith(
+                  fontSize: 14,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+            ),
+            Text(
+              Formatters.currency(amount),
+              style: AppTextStyles.display.copyWith(
+                fontSize: 20,
+                fontWeight: FontWeight.w800,
+                color: AppColors.primary,
+                letterSpacing: -0.3,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
         children: [
-          Expanded(child: Text(label, style: style)),
-          Text(Formatters.currency(amount),
-              style: style.copyWith(fontWeight: FontWeight.w700)),
+          Expanded(
+            child: Text(
+              label,
+              style: AppTextStyles.body.copyWith(fontSize: 13),
+            ),
+          ),
+          Text(
+            Formatters.currency(amount),
+            style: AppTextStyles.bodyBold.copyWith(fontSize: 13),
+          ),
         ],
       ),
     );
   }
 }
+
+// ───────────────────────── Vendor lot ─────────────────────────
 
 class _VendorLotCard extends StatelessWidget {
   const _VendorLotCard({required this.lot});
@@ -424,8 +801,11 @@ class _VendorLotCard extends StatelessWidget {
               borderRadius: BorderRadius.circular(AppSizes.radiusSm),
             ),
             alignment: Alignment.center,
-            child: const Icon(PhosphorIconsDuotone.storefront,
-                color: AppColors.accentDark, size: 20),
+            child: const Icon(
+              PhosphorIconsDuotone.storefront,
+              color: AppColors.accentDark,
+              size: 20,
+            ),
           ),
           const SizedBox(width: AppSizes.md),
           Expanded(
@@ -456,6 +836,8 @@ class _VendorLotCard extends StatelessWidget {
   }
 }
 
+// ───────────────────────── Roster ─────────────────────────
+
 class _RosterCard extends StatelessWidget {
   const _RosterCard({required this.staffAsync});
   final AsyncValue<List<EventAssignment>> staffAsync;
@@ -470,8 +852,10 @@ class _RosterCard extends StatelessWidget {
         ),
       ),
       error: (e, _) => AppCard(
-        child: Text('Could not load roster: $e',
-            style: AppTextStyles.caption),
+        child: Text(
+          'Could not load roster: $e',
+          style: AppTextStyles.caption,
+        ),
       ),
       data: (rows) {
         final managers = rows
@@ -484,12 +868,13 @@ class _RosterCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('${boys.length} service '
-                  '${boys.length == 1 ? 'boy' : 'boys'} '
-                  'and ${managers.length} '
-                  '${managers.length == 1 ? 'manager' : 'managers'} '
-                  'assigned',
-                  style: AppTextStyles.caption),
+              Text(
+                '${boys.length} service '
+                '${boys.length == 1 ? 'boy' : 'boys'} '
+                'and ${managers.length} '
+                '${managers.length == 1 ? 'manager' : 'managers'} assigned',
+                style: AppTextStyles.caption,
+              ),
               const SizedBox(height: AppSizes.sm),
               for (final a in [...managers, ...boys])
                 _RosterTile(assignment: a),
@@ -518,14 +903,14 @@ class _RosterTile extends StatelessWidget {
         children: [
           CircleAvatar(
             radius: 16,
-            backgroundColor: isManager
-                ? AppColors.primarySoft
-                : AppColors.surfaceAlt,
-            foregroundColor: isManager
-                ? AppColors.primary
-                : AppColors.textSecondary,
-            child: Text(initial,
-                style: AppTextStyles.captionBold.copyWith(fontSize: 12)),
+            backgroundColor:
+                isManager ? AppColors.primarySoft : AppColors.surfaceAlt,
+            foregroundColor:
+                isManager ? AppColors.primary : AppColors.textSecondary,
+            child: Text(
+              initial,
+              style: AppTextStyles.captionBold.copyWith(fontSize: 12),
+            ),
           ),
           const SizedBox(width: AppSizes.md),
           Expanded(
@@ -546,6 +931,8 @@ class _RosterTile extends StatelessWidget {
   }
 }
 
+// ───────────────────────── DetailRow (tap-to-copy aware) ─────────────────────────
+
 class _DetailRow extends StatelessWidget {
   const _DetailRow({
     required this.icon,
@@ -553,16 +940,18 @@ class _DetailRow extends StatelessWidget {
     required this.value,
     this.multiline = false,
     this.valueChip,
+    this.onCopy,
   });
   final IconData icon;
   final String label;
   final String value;
   final bool multiline;
   final Widget? valueChip;
+  final VoidCallback? onCopy;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
+    final row = Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -573,9 +962,11 @@ class _DetailRow extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(label,
-                    style: AppTextStyles.caption
-                        .copyWith(color: AppColors.textMuted)),
+                Text(
+                  label,
+                  style: AppTextStyles.caption
+                      .copyWith(color: AppColors.textMuted),
+                ),
                 const SizedBox(height: 2),
                 if (valueChip != null)
                   valueChip!
@@ -591,8 +982,22 @@ class _DetailRow extends StatelessWidget {
               ],
             ),
           ),
+          if (onCopy != null) ...[
+            const SizedBox(width: AppSizes.sm),
+            Icon(
+              PhosphorIconsBold.copy,
+              size: 16,
+              color: AppColors.textMuted.withValues(alpha: 0.7),
+            ),
+          ],
         ],
       ),
+    );
+    if (onCopy == null) return row;
+    return InkWell(
+      onTap: onCopy,
+      borderRadius: BorderRadius.circular(AppSizes.radiusSm),
+      child: row,
     );
   }
 }
@@ -605,8 +1010,7 @@ class _StatusChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding:
-          const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(AppSizes.radiusPill),
@@ -624,6 +1028,35 @@ class _StatusChip extends StatelessWidget {
   }
 }
 
+// ───────────────────────── Loading / not-found ─────────────────────────
+
+class _DetailLoading extends StatelessWidget {
+  const _DetailLoading();
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(
+        AppSizes.pagePadding,
+        AppSizes.md,
+        AppSizes.pagePadding,
+        AppSizes.xl,
+      ),
+      children: const [
+        ShimmerBox(height: 78),
+        SizedBox(height: AppSizes.lg),
+        ShimmerBox(width: 90, height: 14),
+        SizedBox(height: 8),
+        ShimmerBookingCard(),
+        SizedBox(height: AppSizes.lg),
+        ShimmerBox(width: 90, height: 14),
+        SizedBox(height: 8),
+        ShimmerBookingCard(),
+      ],
+    );
+  }
+}
+
 class _NotFoundView extends StatelessWidget {
   const _NotFoundView();
 
@@ -633,12 +1066,17 @@ class _NotFoundView extends StatelessWidget {
       padding: const EdgeInsets.all(AppSizes.pagePadding),
       children: [
         const SizedBox(height: AppSizes.xxxl),
-        const Icon(PhosphorIconsDuotone.warningCircle,
-            size: 48, color: AppColors.textMuted),
+        const Icon(
+          PhosphorIconsDuotone.warningCircle,
+          size: 48,
+          color: AppColors.textMuted,
+        ),
         const SizedBox(height: AppSizes.md),
-        Text('Event not found',
-            style: AppTextStyles.heading2,
-            textAlign: TextAlign.center),
+        Text(
+          'Event not found',
+          style: AppTextStyles.heading2,
+          textAlign: TextAlign.center,
+        ),
         const SizedBox(height: 4),
         Text(
           'This event may have been cancelled or you no longer have access.',
@@ -657,6 +1095,22 @@ String? _timeRange(String? start, String? end) {
   if (start != null && end != null) return '${trim(start)} – ${trim(end)}';
   if (start != null) return trim(start);
   return null;
+}
+
+String? _countdown(DateTime? eventDate) {
+  if (eventDate == null) return null;
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+  final target = DateTime(eventDate.year, eventDate.month, eventDate.day);
+  final days = target.difference(today).inDays;
+  if (days < -1) return '${-days} days ago';
+  if (days == -1) return 'yesterday';
+  if (days == 0) return 'today';
+  if (days == 1) return 'tomorrow';
+  if (days < 7) return 'in $days days';
+  if (days < 14) return 'in 1 week';
+  if (days < 30) return 'in ${(days / 7).round()} weeks';
+  return 'in ${(days / 30).round()} months';
 }
 
 Color _orderStatusColor(OrderStatus? s) {

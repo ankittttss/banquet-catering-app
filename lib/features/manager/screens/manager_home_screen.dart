@@ -13,12 +13,19 @@ import '../../../core/supabase/supabase_client.dart' as sb;
 import '../../../core/utils/formatters.dart';
 import '../../../data/models/event_assignment.dart';
 import '../../../data/models/user_profile.dart';
+import '../../../shared/providers/auth_providers.dart';
 import '../../../shared/providers/repositories_providers.dart';
 import '../../../shared/providers/staffing_providers.dart';
 import '../../../shared/widgets/app_card.dart';
+import '../../../shared/widgets/app_error_view.dart';
 import '../../../shared/widgets/app_scaffold.dart';
 import '../../../shared/widgets/customer_line.dart';
+import '../../../shared/widgets/shimmer.dart';
 
+/// Manager dashboard — the manager's mental model is "what am I running
+/// and when?", so we lead with stats + a time-grouped list of events.
+/// New-assignment toasts are still wired so a freshly assigned event
+/// pings the manager while they're on the screen.
 class ManagerHomeScreen extends ConsumerWidget {
   const ManagerHomeScreen({super.key});
 
@@ -43,8 +50,8 @@ class ManagerHomeScreen extends ConsumerWidget {
         if (nextCount > prevCount) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text(
-                  'New event assigned to you — check your list.'),
+              content:
+                  Text('New event assigned to you — check your list.'),
               behavior: SnackBarBehavior.floating,
             ),
           );
@@ -53,7 +60,9 @@ class ManagerHomeScreen extends ConsumerWidget {
     );
 
     final assignments = ref.watch(myAssignmentsProvider);
+    final profile = ref.watch(currentProfileProvider).valueOrNull;
     return AppScaffold(
+      padded: false,
       appBar: AppBar(
         title: const Text('Manager'),
         actions: [
@@ -69,45 +78,41 @@ class ManagerHomeScreen extends ConsumerWidget {
       ),
       body: RefreshIndicator(
         color: AppColors.primary,
-        onRefresh: () async => ref.invalidate(myAssignmentsProvider),
+        onRefresh: () async {
+          ref.invalidate(myAssignmentsProvider);
+          ref.invalidate(eventStaffProvider);
+          await ref.read(myAssignmentsProvider.future);
+        },
         child: assignments.when(
-          loading: () =>
-              const Center(child: CircularProgressIndicator()),
-          error: (e, _) => ListView(
-            children: [
-              const SizedBox(height: AppSizes.xl),
-              Text('Could not load your events: $e',
-                  style: AppTextStyles.caption, textAlign: TextAlign.center),
-            ],
+          loading: () => const _ManagerLoading(),
+          error: (e, _) => AppErrorView(
+            error: e,
+            onRetry: () => ref.invalidate(myAssignmentsProvider),
           ),
           data: (rows) {
             final managed = rows
                 .where((r) => r.roleOnEvent == EventAssignmentRole.manager)
-                .toList();
+                .toList(growable: false);
             return ListView(
-              padding: const EdgeInsets.only(bottom: AppSizes.xl),
+              padding: const EdgeInsets.fromLTRB(
+                AppSizes.pagePadding,
+                AppSizes.md,
+                AppSizes.pagePadding,
+                AppSizes.xxl,
+              ),
               children: [
-                const SizedBox(height: AppSizes.sm),
-                Text('Your events', style: AppTextStyles.display),
-                const SizedBox(height: AppSizes.xs),
-                Text(
-                  managed.isEmpty
-                      ? 'You have no events assigned yet.'
-                      : 'You are managing ${managed.length} event${managed.length == 1 ? '' : 's'}.',
-                  style: AppTextStyles.bodyMuted,
-                ),
+                _Greeting(profile: profile),
                 const SizedBox(height: AppSizes.lg),
+                _StatsRow(events: managed),
+                const SizedBox(height: AppSizes.xl),
                 if (managed.isEmpty)
                   const _EmptyEventsHint()
                 else
-                  for (final a in managed) ...[
-                    _EventCard(assignment: a),
-                    const SizedBox(height: AppSizes.md),
-                  ],
+                  _GroupedEvents(events: managed),
               ]
                   .animate(interval: 60.ms)
-                  .fadeIn(duration: 300.ms)
-                  .slideY(begin: 0.06, end: 0),
+                  .fadeIn(duration: 280.ms)
+                  .slideY(begin: 0.05, end: 0),
             );
           },
         ),
@@ -115,6 +120,329 @@ class ManagerHomeScreen extends ConsumerWidget {
     );
   }
 }
+
+// ───────────────────────── Greeting ─────────────────────────
+
+class _Greeting extends StatelessWidget {
+  const _Greeting({required this.profile});
+  final UserProfile? profile;
+
+  String get _timeOfDayGreeting {
+    final hour = DateTime.now().hour;
+    if (hour < 12) return 'Good morning';
+    if (hour < 17) return 'Good afternoon';
+    return 'Good evening';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final name = profile?.name;
+    final headline = name != null && name.trim().isNotEmpty
+        ? '$_timeOfDayGreeting, $name'
+        : _timeOfDayGreeting;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(headline, style: AppTextStyles.display),
+        const SizedBox(height: 2),
+        Text(
+          'Here is what you are running.',
+          style: AppTextStyles.bodyMuted,
+        ),
+      ],
+    );
+  }
+}
+
+// ───────────────────────── Stats row ─────────────────────────
+
+class _StatsRow extends StatelessWidget {
+  const _StatsRow({required this.events});
+  final List<EventAssignment> events;
+
+  @override
+  Widget build(BuildContext context) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final endOfWeek = today.add(const Duration(days: 7));
+    var todayCount = 0;
+    var weekCount = 0;
+    for (final e in events) {
+      final d = e.eventDate;
+      if (d == null) continue;
+      final dd = DateTime(d.year, d.month, d.day);
+      if (dd == today) todayCount++;
+      if (!dd.isBefore(today) && dd.isBefore(endOfWeek)) weekCount++;
+    }
+    return Row(
+      children: [
+        Expanded(
+          child: _StatCard(
+            label: 'Today',
+            value: todayCount,
+            icon: PhosphorIconsDuotone.sun,
+            color: AppColors.primary,
+          ),
+        ),
+        const SizedBox(width: AppSizes.sm),
+        Expanded(
+          child: _StatCard(
+            label: 'This week',
+            value: weekCount,
+            icon: PhosphorIconsDuotone.calendar,
+            color: AppColors.warning,
+          ),
+        ),
+        const SizedBox(width: AppSizes.sm),
+        Expanded(
+          child: _StatCard(
+            label: 'All assigned',
+            value: events.length,
+            icon: PhosphorIconsDuotone.userCircleGear,
+            color: AppColors.success,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _StatCard extends StatelessWidget {
+  const _StatCard({
+    required this.label,
+    required this.value,
+    required this.icon,
+    required this.color,
+  });
+  final String label;
+  final int value;
+  final IconData icon;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(AppSizes.md),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppSizes.radiusMd),
+        border: Border.all(color: AppColors.border),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(AppSizes.radiusSm),
+            ),
+            child: Icon(icon, color: color, size: 18),
+          ),
+          const SizedBox(height: AppSizes.sm),
+          Text(
+            '$value',
+            style: AppTextStyles.display.copyWith(
+              fontSize: 26,
+              fontWeight: FontWeight.w800,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            style: AppTextStyles.caption.copyWith(
+              fontSize: 11,
+              color: AppColors.textMuted,
+              fontWeight: FontWeight.w600,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ───────────────────────── Grouped event list ─────────────────────────
+
+/// Buckets the manager's events into Today / Tomorrow / This week /
+/// Next week / Later / Past. Unlike the operator inbox (where the
+/// operator just wants to see what just landed), the manager's mental
+/// model is "what am I running, and when?" — so the date-based view
+/// here fits.
+class _GroupedEvents extends StatelessWidget {
+  const _GroupedEvents({required this.events});
+  final List<EventAssignment> events;
+
+  static List<MapEntry<String, List<EventAssignment>>> _bucket(
+    List<EventAssignment> events,
+  ) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final tomorrow = today.add(const Duration(days: 1));
+    final endOfThisWeek = today.add(const Duration(days: 7));
+    final endOfNextWeek = today.add(const Duration(days: 14));
+
+    final buckets = <String, List<EventAssignment>>{
+      'Today': [],
+      'Tomorrow': [],
+      'This week': [],
+      'Next week': [],
+      'Later': [],
+      'Past': [],
+    };
+    for (final a in events) {
+      final d = a.eventDate;
+      if (d == null) {
+        buckets['Later']!.add(a);
+        continue;
+      }
+      final dd = DateTime(d.year, d.month, d.day);
+      if (dd.isBefore(today)) {
+        buckets['Past']!.add(a);
+      } else if (dd == today) {
+        buckets['Today']!.add(a);
+      } else if (dd == tomorrow) {
+        buckets['Tomorrow']!.add(a);
+      } else if (dd.isBefore(endOfThisWeek)) {
+        buckets['This week']!.add(a);
+      } else if (dd.isBefore(endOfNextWeek)) {
+        buckets['Next week']!.add(a);
+      } else {
+        buckets['Later']!.add(a);
+      }
+    }
+    for (final list in buckets.values) {
+      list.sort((a, b) {
+        if (a.eventDate == null) return 1;
+        if (b.eventDate == null) return -1;
+        return a.eventDate!.compareTo(b.eventDate!);
+      });
+    }
+    return buckets.entries
+        .where((entry) => entry.value.isNotEmpty)
+        .toList(growable: false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final groups = _bucket(events);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (var gi = 0; gi < groups.length; gi++) ...[
+          _GroupHeader(
+            label: groups[gi].key,
+            count: groups[gi].value.length,
+          ),
+          const SizedBox(height: 8),
+          for (var i = 0; i < groups[gi].value.length; i++) ...[
+            _EventCard(assignment: groups[gi].value[i]),
+            if (i != groups[gi].value.length - 1)
+              const SizedBox(height: AppSizes.md),
+          ],
+          if (gi != groups.length - 1) const SizedBox(height: AppSizes.lg),
+        ],
+      ],
+    );
+  }
+}
+
+class _GroupHeader extends StatelessWidget {
+  const _GroupHeader({required this.label, required this.count});
+  final String label;
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    final isUrgent = label == 'Today' || label == 'Tomorrow';
+    final color = isUrgent ? AppColors.primary : AppColors.textSecondary;
+    return Row(
+      children: [
+        Container(
+          width: 3,
+          height: 14,
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(2),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Text(
+          label.toUpperCase(),
+          style: AppTextStyles.captionBold.copyWith(
+            color: color,
+            fontSize: 11,
+            letterSpacing: 1.1,
+          ),
+        ),
+        const SizedBox(width: 6),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(AppSizes.radiusPill),
+          ),
+          child: Text(
+            '$count',
+            style: AppTextStyles.captionBold.copyWith(
+              color: color,
+              fontSize: 10,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ───────────────────────── Loading state ─────────────────────────
+
+class _ManagerLoading extends StatelessWidget {
+  const _ManagerLoading();
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(
+        AppSizes.pagePadding,
+        AppSizes.md,
+        AppSizes.pagePadding,
+        AppSizes.xxl,
+      ),
+      children: const [
+        ShimmerBox(width: 220, height: 28),
+        SizedBox(height: 4),
+        ShimmerBox(width: 180, height: 14),
+        SizedBox(height: AppSizes.lg),
+        Row(
+          children: [
+            Expanded(child: ShimmerStatCard()),
+            SizedBox(width: AppSizes.sm),
+            Expanded(child: ShimmerStatCard()),
+            SizedBox(width: AppSizes.sm),
+            Expanded(child: ShimmerStatCard()),
+          ],
+        ),
+        SizedBox(height: AppSizes.xl),
+        ShimmerBookingCard(),
+        SizedBox(height: AppSizes.md),
+        ShimmerBookingCard(),
+      ],
+    );
+  }
+}
+
+// ───────────────────────── Empty state ─────────────────────────
 
 class _EmptyEventsHint extends StatelessWidget {
   const _EmptyEventsHint();
@@ -124,8 +452,11 @@ class _EmptyEventsHint extends StatelessWidget {
     return AppCard(
       child: Row(
         children: [
-          const Icon(PhosphorIconsDuotone.calendarBlank,
-              size: 40, color: AppColors.textMuted),
+          const Icon(
+            PhosphorIconsDuotone.calendarBlank,
+            size: 40,
+            color: AppColors.textMuted,
+          ),
           const SizedBox(width: AppSizes.md),
           Expanded(
             child: Column(
@@ -146,6 +477,8 @@ class _EmptyEventsHint extends StatelessWidget {
   }
 }
 
+// ───────────────────────── Event card ─────────────────────────
+
 class _EventCard extends ConsumerWidget {
   const _EventCard({required this.assignment});
   final EventAssignment assignment;
@@ -165,8 +498,6 @@ class _EventCard extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Customer first — manager's primary "which booking is this?"
-          // signal. Falls back to phone / email / short event id.
           Row(
             children: [
               Expanded(
@@ -177,8 +508,11 @@ class _EventCard extends ConsumerWidget {
                   email: assignment.customerEmail,
                 ),
               ),
-              const Icon(PhosphorIconsBold.userGear,
-                  size: 18, color: AppColors.primary),
+              const Icon(
+                PhosphorIconsBold.userGear,
+                size: 18,
+                color: AppColors.primary,
+              ),
             ],
           ),
           const SizedBox(height: 6),
@@ -195,12 +529,18 @@ class _EventCard extends ConsumerWidget {
             const SizedBox(height: AppSizes.xs),
             Row(
               children: [
-                const Icon(PhosphorIconsDuotone.mapPin,
-                    size: 16, color: AppColors.textMuted),
+                const Icon(
+                  PhosphorIconsDuotone.mapPin,
+                  size: 16,
+                  color: AppColors.textMuted,
+                ),
                 const SizedBox(width: 4),
                 Expanded(
-                  child: Text(assignment.eventLocation!,
-                      style: AppTextStyles.caption, maxLines: 2),
+                  child: Text(
+                    assignment.eventLocation!,
+                    style: AppTextStyles.caption,
+                    maxLines: 2,
+                  ),
                 ),
               ],
             ),
@@ -208,8 +548,11 @@ class _EventCard extends ConsumerWidget {
           const SizedBox(height: AppSizes.sm),
           Row(
             children: [
-              const Icon(PhosphorIconsDuotone.users,
-                  size: 16, color: AppColors.textMuted),
+              const Icon(
+                PhosphorIconsDuotone.users,
+                size: 16,
+                color: AppColors.textMuted,
+              ),
               const SizedBox(width: 4),
               Text(
                 '$serviceBoyCount service '
@@ -227,7 +570,9 @@ class _EventCard extends ConsumerWidget {
                     AppRoutes.managerEventDetailFor(assignment.eventId),
                   ),
                   icon: const Icon(
-                      PhosphorIconsBold.arrowRight, size: 16),
+                    PhosphorIconsBold.arrowRight,
+                    size: 16,
+                  ),
                   label: const Text('View details'),
                 ),
               ),
@@ -252,6 +597,8 @@ class _EventCard extends ConsumerWidget {
     );
   }
 }
+
+// ───────────────────────── Add-service-boy sheet ─────────────────────────
 
 class _AddServiceBoySheet extends ConsumerWidget {
   const _AddServiceBoySheet({required this.eventId});
@@ -302,8 +649,7 @@ class _AddServiceBoySheet extends ConsumerWidget {
       builder: (_, scrollCtrl) => Container(
         decoration: const BoxDecoration(
           color: AppColors.surface,
-          borderRadius:
-              BorderRadius.vertical(top: Radius.circular(20)),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
         ),
         padding: const EdgeInsets.all(AppSizes.pagePadding),
         child: Column(
@@ -320,8 +666,10 @@ class _AddServiceBoySheet extends ConsumerWidget {
               child: reports.when(
                 loading: () =>
                     const Center(child: CircularProgressIndicator()),
-                error: (e, _) => Text('Could not load reports: $e',
-                    style: AppTextStyles.caption),
+                error: (e, _) => Text(
+                  'Could not load reports: $e',
+                  style: AppTextStyles.caption,
+                ),
                 data: (rows) {
                   final available = rows
                       .where((p) => !alreadyAssigned.contains(p.id))
@@ -391,18 +739,24 @@ class _ReportTile extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(profile.name ?? 'Service boy',
-                      style: AppTextStyles.bodyBold),
+                  Text(
+                    profile.name ?? 'Service boy',
+                    style: AppTextStyles.bodyBold,
+                  ),
                   if (profile.email != null)
-                    Text(profile.email!,
-                        style: AppTextStyles.caption,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis),
+                    Text(
+                      profile.email!,
+                      style: AppTextStyles.caption,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                 ],
               ),
             ),
-            const Icon(PhosphorIconsBold.plus,
-                color: AppColors.primary),
+            const Icon(
+              PhosphorIconsBold.plus,
+              color: AppColors.primary,
+            ),
           ],
         ),
       ),
