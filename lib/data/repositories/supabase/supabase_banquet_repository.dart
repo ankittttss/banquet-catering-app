@@ -28,11 +28,13 @@ class SupabaseBanquetRepository implements BanquetRepository {
 
   @override
   Future<List<BanquetInboxEvent>> fetchInbox() async {
+    // Newest received first — operators want to see what just landed,
+    // not what's happening earliest on the calendar.
     final rows = await supabase
         .from('events')
         .select()
         .not('banquet_venue_id', 'is', null)
-        .order('event_date', ascending: true);
+        .order('created_at', ascending: false);
     final events = rows
         .map<BanquetInboxEvent>(BanquetInboxEvent.fromMap)
         .toList(growable: false);
@@ -96,7 +98,7 @@ class SupabaseBanquetRepository implements BanquetRepository {
       final stream = supabase
           .from('events')
           .stream(primaryKey: ['id'])
-          .order('event_date', ascending: true);
+          .order('created_at', ascending: false);
       await for (final rows in stream) {
         final events = rows
             .where((r) => r['banquet_venue_id'] != null)
@@ -119,6 +121,20 @@ class SupabaseBanquetRepository implements BanquetRepository {
       'banquet_status': status.dbValue,
       if (notes != null) 'banquet_notes': notes,
     }).eq('id', eventId);
+  }
+
+  @override
+  Future<void> updateEventNotes({
+    required String eventId,
+    required String notes,
+  }) async {
+    // Empty string explicitly clears the note (vs. leaving it null in
+    // the partial update — a Postgres update of "" is what the
+    // operator-update RLS policy was written to allow).
+    await supabase
+        .from('events')
+        .update({'banquet_notes': notes})
+        .eq('id', eventId);
   }
 
   @override

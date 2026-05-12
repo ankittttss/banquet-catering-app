@@ -25,6 +25,13 @@ abstract interface class BanquetRepository {
     String? notes,
   });
 
+  /// Operator-only note attached to a booking. Pass an empty string to
+  /// clear it. Status is left untouched.
+  Future<void> updateEventNotes({
+    required String eventId,
+    required String notes,
+  });
+
   Future<List<BanquetInventoryItem>> fetchInventory(String venueId);
 
   /// Manager profiles — used by the banquet operator to pick one for an

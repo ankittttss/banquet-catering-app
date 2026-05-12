@@ -11,6 +11,7 @@ import '../../../data/models/banquet_venue.dart';
 import '../../../shared/providers/banquet_providers.dart';
 import '../../../shared/widgets/app_card.dart';
 import '../../../shared/widgets/app_scaffold.dart';
+import '../widgets/banquet_bottom_nav.dart';
 
 /// Equipment + supplies the banquet sells on top of food cost
 /// (water bottles, setup packages, premium service staff, etc.).
@@ -32,12 +33,15 @@ class _BanquetInventoryScreenState
     final venues = ref.watch(myBanquetVenuesProvider);
     return AppScaffold(
       appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(PhosphorIconsBold.arrowLeft),
-          onPressed: () => context.pop(),
-        ),
+        leading: context.canPop()
+            ? IconButton(
+                icon: const Icon(PhosphorIconsBold.arrowLeft),
+                onPressed: () => context.pop(),
+              )
+            : null,
         title: const Text('Equipment & inventory'),
       ),
+      bottomBar: const BanquetBottomNav(active: BanquetNavTab.inventory),
       body: venues.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(

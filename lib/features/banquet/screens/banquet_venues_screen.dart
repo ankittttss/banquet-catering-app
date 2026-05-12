@@ -10,6 +10,7 @@ import '../../../data/models/banquet_venue.dart';
 import '../../../shared/providers/banquet_providers.dart';
 import '../../../shared/widgets/app_card.dart';
 import '../../../shared/widgets/app_scaffold.dart';
+import '../widgets/banquet_bottom_nav.dart';
 
 class BanquetVenuesScreen extends ConsumerWidget {
   const BanquetVenuesScreen({super.key});
@@ -19,12 +20,17 @@ class BanquetVenuesScreen extends ConsumerWidget {
     final venues = ref.watch(myBanquetVenuesProvider);
     return AppScaffold(
       appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(PhosphorIconsBold.arrowLeft),
-          onPressed: () => context.pop(),
-        ),
+        // Hide the back arrow when arrived via bottom-nav (no prior
+        // route to pop). Operator already has the tab to switch away.
+        leading: context.canPop()
+            ? IconButton(
+                icon: const Icon(PhosphorIconsBold.arrowLeft),
+                onPressed: () => context.pop(),
+              )
+            : null,
         title: const Text('My venues'),
       ),
+      bottomBar: const BanquetBottomNav(active: BanquetNavTab.venues),
       body: venues.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(

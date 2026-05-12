@@ -27,6 +27,14 @@ class StubBanquetRepository implements BanquetRepository {
   }
 
   @override
+  Future<void> updateEventNotes({
+    required String eventId,
+    required String notes,
+  }) async {
+    // No-op in stub mode.
+  }
+
+  @override
   Future<List<BanquetInventoryItem>> fetchInventory(String venueId) async =>
       const [];
 
