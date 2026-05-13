@@ -63,6 +63,11 @@ class BanquetInboxEvent {
     this.notes,
     this.startTime,
     this.endTime,
+    this.createdAt,
+    this.userId,
+    this.customerName,
+    this.customerPhone,
+    this.customerEmail,
   });
 
   final String id;
@@ -76,6 +81,18 @@ class BanquetInboxEvent {
   final String? startTime;
   final String? endTime;
 
+  /// When the customer placed the booking. Drives the inbox sort
+  /// ("newest received first") and powers any "X ago" relative time
+  /// labels at the surface level.
+  final DateTime? createdAt;
+
+  /// Owning customer (auth user id). Used to find the customer profile
+  /// in a follow-up batch fetch when the joined query can't include it.
+  final String? userId;
+  final String? customerName;
+  final String? customerPhone;
+  final String? customerEmail;
+
   factory BanquetInboxEvent.fromMap(Map<String, dynamic> map) =>
       BanquetInboxEvent(
         id: map['id'] as String,
@@ -88,6 +105,35 @@ class BanquetInboxEvent {
         notes: map['banquet_notes'] as String?,
         startTime: map['start_time'] as String?,
         endTime: map['end_time'] as String?,
+        createdAt: map['created_at'] is String
+            ? DateTime.tryParse(map['created_at'] as String)
+            : null,
+        userId: map['user_id'] as String?,
+      );
+
+  /// Returns a copy with denormalised customer fields filled in. Used
+  /// after the follow-up profile batch fetch in the repository.
+  BanquetInboxEvent withCustomer({
+    String? name,
+    String? phone,
+    String? email,
+  }) =>
+      BanquetInboxEvent(
+        id: id,
+        banquetVenueId: banquetVenueId,
+        eventDate: eventDate,
+        session: session,
+        guestCount: guestCount,
+        status: status,
+        location: location,
+        notes: notes,
+        startTime: startTime,
+        endTime: endTime,
+        createdAt: createdAt,
+        userId: userId,
+        customerName: name ?? customerName,
+        customerPhone: phone ?? customerPhone,
+        customerEmail: email ?? customerEmail,
       );
 }
 

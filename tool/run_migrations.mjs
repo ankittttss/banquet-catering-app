@@ -23,6 +23,7 @@ const MIGRATIONS = [
   'supabase/seed_more_restaurants.sql',
   'supabase/menu_images.sql',
   'supabase/phase27_event_detail_rls.sql',
+  'supabase/phase28_customer_visibility.sql',
 ];
 
 function resolveConnectionString() {

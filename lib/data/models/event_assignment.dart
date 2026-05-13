@@ -29,7 +29,11 @@ class EventAssignment {
     this.eventLocation,
     this.eventSession,
     this.eventGuestCount,
+    this.eventUserId,
     this.profileName,
+    this.customerName,
+    this.customerPhone,
+    this.customerEmail,
   });
 
   final String id;
@@ -47,7 +51,16 @@ class EventAssignment {
   final String? eventLocation;
   final String? eventSession;
   final int? eventGuestCount;
+
+  /// Customer (auth user id) who placed the booking. Filled from the
+  /// embedded `events.user_id` so the manager card can show "who is
+  /// this booking from?". Customer name/phone/email come from a
+  /// follow-up profile batch fetch in the repository.
+  final String? eventUserId;
   final String? profileName;
+  final String? customerName;
+  final String? customerPhone;
+  final String? customerEmail;
 
   bool get isCheckedIn => checkedInAt != null && checkedOutAt == null;
 
@@ -74,9 +87,38 @@ class EventAssignment {
       eventSession: event is Map ? event['session'] as String? : null,
       eventGuestCount:
           event is Map ? (event['guest_count'] as num?)?.toInt() : null,
+      eventUserId: event is Map ? event['user_id'] as String? : null,
       profileName: profile is Map ? profile['name'] as String? : null,
     );
   }
+
+  /// Returns a copy with denormalised customer fields filled in (used
+  /// after the staffing repo's follow-up profile batch fetch).
+  EventAssignment withCustomer({
+    String? name,
+    String? phone,
+    String? email,
+  }) =>
+      EventAssignment(
+        id: id,
+        eventId: eventId,
+        profileId: profileId,
+        roleOnEvent: roleOnEvent,
+        assignedAt: assignedAt,
+        assignedBy: assignedBy,
+        checkedInAt: checkedInAt,
+        checkedOutAt: checkedOutAt,
+        notes: notes,
+        eventDate: eventDate,
+        eventLocation: eventLocation,
+        eventSession: eventSession,
+        eventGuestCount: eventGuestCount,
+        eventUserId: eventUserId,
+        profileName: profileName,
+        customerName: name ?? customerName,
+        customerPhone: phone ?? customerPhone,
+        customerEmail: email ?? customerEmail,
+      );
 
   static DateTime? _parse(Object? raw) =>
       raw is String && raw.isNotEmpty ? DateTime.tryParse(raw) : null;

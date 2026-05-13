@@ -13,29 +13,107 @@ import '../../../data/models/event_assignment.dart';
 import '../../../shared/providers/banquet_providers.dart';
 import '../../../shared/providers/staffing_providers.dart';
 import '../../../shared/widgets/app_card.dart';
+import '../../../shared/widgets/app_error_view.dart';
 import '../../../shared/widgets/app_scaffold.dart';
+import '../../../shared/widgets/customer_line.dart';
+import '../../../shared/widgets/shimmer.dart';
+import '../widgets/banquet_bottom_nav.dart';
 
-class BanquetInboxScreen extends ConsumerWidget {
+/// Filter buckets surfaced as chips at the top of the inbox.
+enum _InboxFilter { all, pending, accepted, declined }
+
+extension _InboxFilterLabel on _InboxFilter {
+  String get label => switch (this) {
+        _InboxFilter.all => 'All',
+        _InboxFilter.pending => 'Pending',
+        _InboxFilter.accepted => 'Accepted',
+        _InboxFilter.declined => 'Declined',
+      };
+}
+
+class BanquetInboxScreen extends ConsumerStatefulWidget {
   const BanquetInboxScreen({super.key, this.initialFilter});
 
-  /// Optional filter keyword — "accepted" shows only accepted events
-  /// (used by the "Assign managers" tile as a staffing shortcut).
+  /// Optional deep-link filter keyword. `accepted` lands the user on the
+  /// "Accepted" chip pre-selected so the Assign-managers shortcut feels
+  /// like a dedicated staffing surface.
   final String? initialFilter;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<BanquetInboxScreen> createState() =>
+      _BanquetInboxScreenState();
+}
+
+class _BanquetInboxScreenState extends ConsumerState<BanquetInboxScreen> {
+  late _InboxFilter _filter;
+  final TextEditingController _searchCtrl = TextEditingController();
+  String _query = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _filter = switch (widget.initialFilter) {
+      'accepted' => _InboxFilter.accepted,
+      'pending' => _InboxFilter.pending,
+      'declined' => _InboxFilter.declined,
+      _ => _InboxFilter.all,
+    };
+    _searchCtrl.addListener(() {
+      final next = _searchCtrl.text.trim().toLowerCase();
+      if (next != _query) setState(() => _query = next);
+    });
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  bool _matchesFilter(BanquetInboxEvent e) => switch (_filter) {
+        _InboxFilter.all => true,
+        _InboxFilter.pending => e.status == BanquetEventStatus.pending,
+        _InboxFilter.accepted => e.status == BanquetEventStatus.accepted,
+        _InboxFilter.declined => e.status == BanquetEventStatus.declined,
+      };
+
+  /// Substring-match the search query against any obvious identifier on
+  /// the booking. Empty query passes through everything.
+  bool _matchesQuery(BanquetInboxEvent e) {
+    if (_query.isEmpty) return true;
+    final haystack = [
+      e.customerName,
+      e.customerPhone,
+      e.customerEmail,
+      e.id,
+      e.location,
+      e.session,
+    ].whereType<String>().join(' ').toLowerCase();
+    return haystack.contains(_query);
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final inbox = ref.watch(banquetInboxProvider);
-    final title = initialFilter == 'accepted'
-        ? 'Staff your events'
-        : 'Incoming bookings';
+    final isStaffingShortcut = widget.initialFilter == 'accepted';
+    final title =
+        isStaffingShortcut ? 'Staff your events' : 'Incoming bookings';
     return AppScaffold(
+      padded: false,
       appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(PhosphorIconsBold.arrowLeft),
-          onPressed: () => context.pop(),
-        ),
+        // Only show the back arrow when there's actually somewhere to
+        // pop to — when the operator lands on the inbox via the bottom
+        // nav (`context.go`) the stack is empty and a back arrow would
+        // be confusing.
+        leading: context.canPop()
+            ? IconButton(
+                icon: const Icon(PhosphorIconsBold.arrowLeft),
+                onPressed: () => context.pop(),
+              )
+            : null,
         title: Text(title),
       ),
+      bottomBar: const BanquetBottomNav(active: BanquetNavTab.bookings),
       body: RefreshIndicator(
         color: AppColors.primary,
         onRefresh: () async {
@@ -47,54 +125,332 @@ class BanquetInboxScreen extends ConsumerWidget {
           await ref.read(banquetInboxProvider.future);
         },
         child: inbox.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(
-          child: Text('Could not load inbox: $e',
-              style: AppTextStyles.caption),
+          // Shimmer card list while the first fetch is in flight — the
+          // page reveals its real shape immediately instead of jumping
+          // in once the data arrives.
+          loading: () => ListView.separated(
+            padding: const EdgeInsets.fromLTRB(
+              AppSizes.pagePadding,
+              AppSizes.md,
+              AppSizes.pagePadding,
+              AppSizes.xl,
+            ),
+            itemCount: 5,
+            separatorBuilder: (_, __) => const SizedBox(height: AppSizes.md),
+            itemBuilder: (_, __) => const ShimmerBookingCard(),
+          ),
+          error: (e, _) => AppErrorView(
+            error: e,
+            onRetry: () => ref.invalidate(banquetInboxProvider),
+          ),
+          data: (all) {
+            final filtered = all
+                .where(_matchesFilter)
+                .where(_matchesQuery)
+                .toList(growable: false);
+            return Column(
+              children: [
+                _InboxToolbar(
+                  events: all,
+                  selected: _filter,
+                  onChanged: (f) => setState(() => _filter = f),
+                  filteredCount: filtered.length,
+                  searchCtrl: _searchCtrl,
+                  hasQuery: _query.isNotEmpty,
+                ),
+                Expanded(
+                  child: filtered.isEmpty
+                      ? _InboxEmptyState(
+                          filter: _filter,
+                          query: _query,
+                        )
+                      : ListView.separated(
+                          padding: const EdgeInsets.fromLTRB(
+                            AppSizes.pagePadding,
+                            AppSizes.md,
+                            AppSizes.pagePadding,
+                            AppSizes.xl,
+                          ),
+                          itemCount: filtered.length,
+                          separatorBuilder: (_, __) =>
+                              const SizedBox(height: AppSizes.md),
+                          itemBuilder: (_, i) =>
+                              _InboxCardV2(event: filtered[i]),
+                        ),
+                ),
+              ],
+            );
+          },
         ),
-        data: (all) {
-          final events = initialFilter == 'accepted'
-              ? all
-                  .where((e) => e.status == BanquetEventStatus.accepted)
-                  .toList()
-              : all;
-          if (events.isEmpty) {
-            final emptyTitle = initialFilter == 'accepted'
-                ? 'No accepted events yet'
-                : 'No incoming bookings';
-            final emptySub = initialFilter == 'accepted'
-                ? 'Accept an incoming booking first, then return here to staff a manager.'
-                : 'New event requests routed to your venues will appear here in real time.';
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(AppSizes.xl),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(PhosphorIconsDuotone.calendarBlank,
-                        size: 56, color: AppColors.textMuted),
-                    const SizedBox(height: AppSizes.md),
-                    Text(emptyTitle, style: AppTextStyles.heading3),
-                    const SizedBox(height: AppSizes.xs),
-                    Text(
-                      emptySub,
-                      textAlign: TextAlign.center,
-                      style: AppTextStyles.bodyMuted,
-                    ),
-                  ],
+      ),
+    );
+  }
+}
+
+// ───────────────────────── Toolbar (count + chips) ─────────────────────────
+
+class _InboxToolbar extends StatelessWidget {
+  const _InboxToolbar({
+    required this.events,
+    required this.selected,
+    required this.onChanged,
+    required this.filteredCount,
+    required this.searchCtrl,
+    required this.hasQuery,
+  });
+
+  final List<BanquetInboxEvent> events;
+  final _InboxFilter selected;
+  final ValueChanged<_InboxFilter> onChanged;
+  final int filteredCount;
+  final TextEditingController searchCtrl;
+  final bool hasQuery;
+
+  int _countFor(_InboxFilter f) => switch (f) {
+        _InboxFilter.all => events.length,
+        _InboxFilter.pending =>
+          events.where((e) => e.status == BanquetEventStatus.pending).length,
+        _InboxFilter.accepted =>
+          events.where((e) => e.status == BanquetEventStatus.accepted).length,
+        _InboxFilter.declined =>
+          events.where((e) => e.status == BanquetEventStatus.declined).length,
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    final headline = filteredCount == 0
+        ? (hasQuery ? 'No matches' : 'Nothing to show')
+        : '$filteredCount ${selected.label.toLowerCase()} '
+            '${filteredCount == 1 ? 'booking' : 'bookings'}';
+    return Container(
+      padding: const EdgeInsets.fromLTRB(
+        AppSizes.pagePadding,
+        AppSizes.sm,
+        AppSizes.pagePadding,
+        AppSizes.sm,
+      ),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        border: Border(
+          bottom: BorderSide(
+            color: AppColors.border.withValues(alpha: 0.6),
+          ),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // ── Search field ──
+          TextField(
+            controller: searchCtrl,
+            textInputAction: TextInputAction.search,
+            style: AppTextStyles.body.copyWith(fontSize: 14),
+            decoration: InputDecoration(
+              isDense: true,
+              hintText: 'Search by name, phone, email or ID',
+              hintStyle: AppTextStyles.body.copyWith(
+                color: AppColors.textMuted,
+                fontSize: 14,
+              ),
+              prefixIcon: const Icon(
+                PhosphorIconsBold.magnifyingGlass,
+                size: 18,
+                color: AppColors.textMuted,
+              ),
+              prefixIconConstraints: const BoxConstraints(
+                minWidth: 36,
+                minHeight: 36,
+              ),
+              suffixIcon: hasQuery
+                  ? IconButton(
+                      icon: const Icon(
+                        PhosphorIconsBold.x,
+                        size: 16,
+                        color: AppColors.textMuted,
+                      ),
+                      onPressed: () => searchCtrl.clear(),
+                      splashRadius: 18,
+                    )
+                  : null,
+              filled: true,
+              fillColor: AppColors.surfaceAlt,
+              contentPadding: const EdgeInsets.symmetric(vertical: 10),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(AppSizes.radiusMd),
+                borderSide: BorderSide.none,
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(AppSizes.radiusMd),
+                borderSide: BorderSide.none,
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(AppSizes.radiusMd),
+                borderSide: BorderSide(
+                  color: AppColors.primary.withValues(alpha: 0.5),
+                  width: 1.2,
                 ),
               ),
-            );
-          }
-          return ListView.separated(
-            padding: const EdgeInsets.symmetric(vertical: AppSizes.md),
-            itemCount: events.length,
-            separatorBuilder: (_, __) =>
-                const SizedBox(height: AppSizes.md),
-            itemBuilder: (_, i) => _InboxCard(event: events[i]),
-          );
-        },
+            ),
+          ),
+          const SizedBox(height: AppSizes.sm),
+          Text(
+            headline,
+            style: AppTextStyles.bodyBold.copyWith(
+              color: AppColors.textPrimary,
+              fontSize: 14,
+            ),
+          ),
+          const SizedBox(height: AppSizes.sm),
+          SizedBox(
+            height: 32,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: _InboxFilter.values.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 6),
+              itemBuilder: (_, i) {
+                final f = _InboxFilter.values[i];
+                return _FilterChip(
+                  label: f.label,
+                  count: _countFor(f),
+                  selected: f == selected,
+                  onTap: () => onChanged(f),
+                );
+              },
+            ),
+          ),
+        ],
       ),
+    );
+  }
+}
+
+class _FilterChip extends StatelessWidget {
+  const _FilterChip({
+    required this.label,
+    required this.count,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final int count;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(AppSizes.radiusPill),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: selected ? AppColors.textPrimary : AppColors.surface,
+          borderRadius: BorderRadius.circular(AppSizes.radiusPill),
+          border: Border.all(
+            color: selected ? AppColors.textPrimary : AppColors.border,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              label,
+              style: AppTextStyles.bodyBold.copyWith(
+                color: selected ? Colors.white : AppColors.textPrimary,
+                fontSize: 12,
+              ),
+            ),
+            const SizedBox(width: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 6,
+                vertical: 1,
+              ),
+              decoration: BoxDecoration(
+                color: selected
+                    ? Colors.white.withValues(alpha: 0.18)
+                    : AppColors.border.withValues(alpha: 0.6),
+                borderRadius: BorderRadius.circular(AppSizes.radiusPill),
+              ),
+              child: Text(
+                '$count',
+                style: AppTextStyles.captionBold.copyWith(
+                  color: selected ? Colors.white : AppColors.textSecondary,
+                  fontSize: 10,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ───────────────────────── Empty state ─────────────────────────
+
+class _InboxEmptyState extends StatelessWidget {
+  const _InboxEmptyState({required this.filter, required this.query});
+  final _InboxFilter filter;
+  final String query;
+
+  @override
+  Widget build(BuildContext context) {
+    // When a search query is active, the "no results" message has to
+    // explain what's filtered out instead of describing the filter
+    // bucket's natural empty state.
+    final (title, sub) = query.isNotEmpty
+        ? (
+            'No matches for "$query"',
+            'Try a different name, phone, email or booking ID — or clear the search to see all bookings.',
+          )
+        : switch (filter) {
+            _InboxFilter.pending => (
+                'No bookings awaiting review',
+                'New event requests routed to your venues will appear here in real time.',
+              ),
+            _InboxFilter.accepted => (
+                'No accepted events yet',
+                'Accept an incoming booking first, then return here to staff a manager.',
+              ),
+            _InboxFilter.declined => (
+                'No declined bookings',
+                'Bookings you decline will be archived under this view.',
+              ),
+            _InboxFilter.all => (
+                'No incoming bookings',
+                'New event requests routed to your venues will appear here in real time.',
+              ),
+          };
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSizes.xl),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(18),
+              decoration: BoxDecoration(
+                color: AppColors.surfaceAlt,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                PhosphorIconsDuotone.calendarBlank,
+                size: 40,
+                color: AppColors.textMuted,
+              ),
+            ),
+            const SizedBox(height: AppSizes.md),
+            Text(title, style: AppTextStyles.heading3),
+            const SizedBox(height: AppSizes.xs),
+            Text(
+              sub,
+              textAlign: TextAlign.center,
+              style: AppTextStyles.bodyMuted,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -129,12 +485,17 @@ class _InboxCard extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Customer first — operator's primary "which booking is this?"
+          // signal. Falls back to phone / email / short id when name
+          // isn't available.
           Row(
             children: [
               Expanded(
-                child: Text(
-                  Formatters.date(event.eventDate),
-                  style: AppTextStyles.heading2,
+                child: CustomerLine(
+                  bookingId: event.id,
+                  name: event.customerName,
+                  phone: event.customerPhone,
+                  email: event.customerEmail,
                 ),
               ),
               Container(
@@ -153,6 +514,11 @@ class _InboxCard extends ConsumerWidget {
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            Formatters.date(event.eventDate),
+            style: AppTextStyles.heading2,
           ),
           const SizedBox(height: 4),
           Text(
@@ -288,5 +654,258 @@ class _ManagerRow extends ConsumerWidget {
       ),
     );
   }
+}
+
+class _InboxCardV2 extends ConsumerWidget {
+  const _InboxCardV2({required this.event});
+
+  final BanquetInboxEvent event;
+
+  Color _statusColor() => switch (event.status) {
+        BanquetEventStatus.pending => AppColors.warning,
+        BanquetEventStatus.accepted => AppColors.success,
+        BanquetEventStatus.declined => AppColors.textMuted,
+        BanquetEventStatus.cancelled => AppColors.textMuted,
+        BanquetEventStatus.completed => AppColors.success,
+      };
+
+  String _ctaHint() => switch (event.status) {
+        BanquetEventStatus.pending => 'Review booking',
+        BanquetEventStatus.accepted => 'View staffing',
+        _ => 'View details',
+      };
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final statusColor = _statusColor();
+    final venues = ref.watch(myBanquetVenuesProvider).valueOrNull ??
+        const <BanquetVenue>[];
+    final venueName = _venueNameFor(venues, event.banquetVenueId);
+    final urgency = _urgencyLabel(event.eventDate);
+    final timeText = _timeRange(event.startTime, event.endTime);
+
+    return AppCard(
+      padding: EdgeInsets.zero,
+      onTap: () =>
+          context.push(AppRoutes.banquetBookingDetailFor(event.id)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.fromLTRB(
+              AppSizes.lg,
+              AppSizes.md,
+              AppSizes.lg,
+              AppSizes.md,
+            ),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  statusColor.withValues(alpha: 0.13),
+                  statusColor.withValues(alpha: 0.05),
+                ],
+              ),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(AppSizes.radiusLg),
+              ),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: CustomerLine(
+                    bookingId: event.id,
+                    name: event.customerName,
+                    phone: event.customerPhone,
+                    email: event.customerEmail,
+                  ),
+                ),
+                _BookingPill(label: urgency, color: statusColor),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(AppSizes.lg),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            Formatters.date(event.eventDate),
+                            style: AppTextStyles.heading2.copyWith(
+                              fontSize: 18,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            [
+                              event.session,
+                              if (timeText != null) timeText,
+                            ].join(' - '),
+                            style: AppTextStyles.caption.copyWith(
+                              color: AppColors.textMuted,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    _BookingPill(
+                      label: event.status.label,
+                      color: statusColor,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: AppSizes.md),
+                Wrap(
+                  spacing: AppSizes.sm,
+                  runSpacing: AppSizes.sm,
+                  children: [
+                    _MetaChip(
+                      icon: PhosphorIconsDuotone.users,
+                      label: '${event.guestCount} guests',
+                    ),
+                    if (venueName != null)
+                      _MetaChip(
+                        icon: PhosphorIconsDuotone.buildings,
+                        label: venueName,
+                      ),
+                    if (event.location != null &&
+                        event.location!.trim().isNotEmpty)
+                      _MetaChip(
+                        icon: PhosphorIconsDuotone.mapPin,
+                        label: event.location!.trim(),
+                      ),
+                  ],
+                ),
+                if (event.status == BanquetEventStatus.accepted) ...[
+                  const SizedBox(height: AppSizes.md),
+                  _ManagerRow(eventId: event.id),
+                ],
+                const SizedBox(height: AppSizes.md),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        _ctaHint(),
+                        style: AppTextStyles.captionBold.copyWith(
+                          color: AppColors.primary,
+                          fontSize: 11,
+                          letterSpacing: 0.1,
+                        ),
+                      ),
+                    ),
+                    const Icon(
+                      PhosphorIconsBold.caretRight,
+                      size: 16,
+                      color: AppColors.primary,
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BookingPill extends StatelessWidget {
+  const _BookingPill({required this.label, required this.color});
+
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(AppSizes.radiusPill),
+        border: Border.all(color: color.withValues(alpha: 0.26)),
+      ),
+      child: Text(
+        label,
+        style: AppTextStyles.captionBold.copyWith(
+          color: color,
+          fontSize: 10,
+          letterSpacing: 0.1,
+        ),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+    );
+  }
+}
+
+class _MetaChip extends StatelessWidget {
+  const _MetaChip({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 260),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceAlt,
+        borderRadius: BorderRadius.circular(AppSizes.radiusPill),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: AppColors.textMuted),
+          const SizedBox(width: 5),
+          Flexible(
+            child: Text(
+              label,
+              style: AppTextStyles.caption.copyWith(
+                color: AppColors.textSecondary,
+                fontWeight: FontWeight.w600,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+String? _venueNameFor(List<BanquetVenue> venues, String venueId) {
+  for (final venue in venues) {
+    if (venue.id == venueId) return venue.name;
+  }
+  return null;
+}
+
+String? _timeRange(String? start, String? end) {
+  String trim(String s) => s.length >= 5 ? s.substring(0, 5) : s;
+  if (start != null && end != null) return '${trim(start)} - ${trim(end)}';
+  if (start != null) return trim(start);
+  return null;
+}
+
+String _urgencyLabel(DateTime eventDate) {
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+  final target = DateTime(eventDate.year, eventDate.month, eventDate.day);
+  final days = target.difference(today).inDays;
+  if (days < 0) return '${-days}d ago';
+  if (days == 0) return 'today';
+  if (days == 1) return 'tomorrow';
+  if (days < 7) return 'in ${days}d';
+  if (days < 30) return 'in ${(days / 7).round()}w';
+  return 'in ${(days / 30).round()}mo';
 }
 

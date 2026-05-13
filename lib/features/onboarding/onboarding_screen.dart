@@ -204,8 +204,12 @@ class _SlideView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+    // SingleChildScrollView lets the slide content scroll on tight
+    // viewports (the hero image is a 1:1 aspect-ratio square plus a
+    // multi-line title + subtitle — easily exceeds the PageView's
+    // allotted height on smaller screens, causing a ~30px overflow).
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
