@@ -179,7 +179,13 @@ class SupabaseOrderRepository implements OrderRepository {
           'banquet_charge, delivery_charge, buffet_setup, service_boy_cost, '
           'service_boy_count, water_bottle_cost, platform_fee, gst, '
           'created_at, '
-          'order_vendor_lots(*, restaurants(name))'
+          'order_vendor_lots('
+          '*, '
+          'restaurants(name), '
+          'order_items(qty, qty_per_guest, price_at_order, '
+          '  menu_items(name, is_veg)'
+          ')'
+          ')'
           ')',
         )
         .eq('id', eventId)

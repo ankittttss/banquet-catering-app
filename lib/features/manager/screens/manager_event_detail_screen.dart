@@ -505,100 +505,6 @@ class _SummaryPill extends StatelessWidget {
   }
 }
 
-class _StatusBanner extends StatelessWidget {
-  const _StatusBanner({required this.detail});
-  final ManagerEventDetail detail;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = AppColors.primary;
-    final date = detail.eventDate;
-    final dateText = date != null ? Formatters.date(date) : 'Date TBD';
-    final timeRange = _timeRange(detail.startTime, detail.endTime);
-    final countdown = _countdown(date);
-    return Container(
-      padding: const EdgeInsets.all(AppSizes.lg),
-      decoration: BoxDecoration(
-        // Subtle gradient lift — gives the banner more visual weight
-        // than a flat tint and matches the operator booking-review
-        // screen's treatment.
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            color.withValues(alpha: 0.20),
-            color.withValues(alpha: 0.08),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(AppSizes.radiusLg),
-        border: Border.all(color: color.withValues(alpha: 0.28)),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: color,
-              shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(
-                  color: color.withValues(alpha: 0.3),
-                  blurRadius: 10,
-                  offset: const Offset(0, 3),
-                ),
-              ],
-            ),
-            alignment: Alignment.center,
-            child: const Icon(
-              PhosphorIconsBold.userGear,
-              color: Colors.white,
-              size: 22,
-            ),
-          ),
-          const SizedBox(width: AppSizes.md),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'You are managing this event',
-                  style: AppTextStyles.bodyBold,
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  '$dateText${timeRange != null ? ' · $timeRange' : ''}',
-                  style: AppTextStyles.caption,
-                ),
-              ],
-            ),
-          ),
-          if (countdown != null) ...[
-            const SizedBox(width: AppSizes.sm),
-            Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.85),
-                borderRadius: BorderRadius.circular(AppSizes.radiusPill),
-                border: Border.all(color: color.withValues(alpha: 0.45)),
-              ),
-              child: Text(
-                countdown,
-                style: AppTextStyles.captionBold.copyWith(
-                  color: color,
-                  fontSize: 11,
-                  letterSpacing: 0.2,
-                ),
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
 // ───────────────────────── Timeline ─────────────────────────
 
 /// Vertical step timeline showing the event's lifecycle from the
@@ -1091,52 +997,165 @@ class _BillRow extends StatelessWidget {
 
 // ───────────────────────── Vendor lot ─────────────────────────
 
-class _VendorLotCard extends StatelessWidget {
+class _VendorLotCard extends StatefulWidget {
   const _VendorLotCard({required this.lot});
   final OrderVendorLot lot;
 
   @override
+  State<_VendorLotCard> createState() => _VendorLotCardState();
+}
+
+class _VendorLotCardState extends State<_VendorLotCard> {
+  bool _expanded = false;
+
+  @override
   Widget build(BuildContext context) {
+    final lot = widget.lot;
+    final hasItems = lot.items.isNotEmpty;
     return AppCard(
       padding: const EdgeInsets.all(AppSizes.md),
-      child: Row(
+      onTap: hasItems ? () => setState(() => _expanded = !_expanded) : null,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 38,
-            height: 38,
-            decoration: BoxDecoration(
-              color: AppColors.accentSoft,
-              borderRadius: BorderRadius.circular(AppSizes.radiusSm),
-            ),
-            alignment: Alignment.center,
-            child: const Icon(
-              PhosphorIconsDuotone.storefront,
-              color: AppColors.accentDark,
-              size: 20,
-            ),
-          ),
-          const SizedBox(width: AppSizes.md),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  lot.restaurantName ?? 'Restaurant',
-                  style: AppTextStyles.bodyBold,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+          Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: AppColors.accentSoft,
+                  borderRadius: BorderRadius.circular(AppSizes.radiusSm),
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  Formatters.currency(lot.subtotal),
-                  style: AppTextStyles.caption,
+                alignment: Alignment.center,
+                child: const Icon(
+                  PhosphorIconsDuotone.storefront,
+                  color: AppColors.accentDark,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: AppSizes.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      lot.restaurantName ?? 'Restaurant',
+                      style: AppTextStyles.bodyBold,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      hasItems
+                          ? '${Formatters.currency(lot.subtotal)}'
+                              ' · ${lot.items.length} '
+                              '${lot.items.length == 1 ? 'item' : 'items'}'
+                          : Formatters.currency(lot.subtotal),
+                      style: AppTextStyles.caption,
+                    ),
+                  ],
+                ),
+              ),
+              _StatusChip(
+                label: lot.status.label,
+                color: _lotStatusColor(lot.status),
+              ),
+              if (hasItems) ...[
+                const SizedBox(width: AppSizes.sm),
+                AnimatedRotation(
+                  turns: _expanded ? 0.5 : 0,
+                  duration: const Duration(milliseconds: 180),
+                  child: const Icon(
+                    PhosphorIconsBold.caretDown,
+                    size: 16,
+                    color: AppColors.textMuted,
+                  ),
                 ),
               ],
+            ],
+          ),
+          AnimatedSize(
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOutCubic,
+            alignment: Alignment.topCenter,
+            child: !_expanded || !hasItems
+                ? const SizedBox.shrink()
+                : Padding(
+                    padding: const EdgeInsets.only(top: AppSizes.sm),
+                    child: Column(
+                      children: [
+                        const Divider(height: 1, color: AppColors.divider),
+                        const SizedBox(height: AppSizes.xs),
+                        for (final item in lot.items)
+                          _VendorItemLine(item: item),
+                      ],
+                    ),
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Single menu line inside an expanded vendor lot — small veg/non-veg
+/// dot, name, per-guest qty, and the snapshot unit price.
+class _VendorItemLine extends StatelessWidget {
+  const _VendorItemLine({required this.item});
+  final VendorLotItem item;
+
+  @override
+  Widget build(BuildContext context) {
+    final qty = (item.qtyPerGuest ?? item.qty).toString();
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Row(
+        children: [
+          if (item.isVeg != null)
+            Container(
+              width: 10,
+              height: 10,
+              margin: const EdgeInsets.only(right: 8, top: 2),
+              decoration: BoxDecoration(
+                shape: BoxShape.rectangle,
+                borderRadius: BorderRadius.circular(2),
+                border: Border.all(
+                  color:
+                      item.isVeg! ? AppColors.success : AppColors.error,
+                  width: 1.4,
+                ),
+              ),
+              alignment: Alignment.center,
+              child: Container(
+                width: 4,
+                height: 4,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: item.isVeg! ? AppColors.success : AppColors.error,
+                ),
+              ),
+            ),
+          Expanded(
+            child: Text(
+              item.name ?? 'Menu item',
+              style: AppTextStyles.body.copyWith(fontSize: 13),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
           ),
-          _StatusChip(
-            label: lot.status.label,
-            color: _lotStatusColor(lot.status),
+          const SizedBox(width: AppSizes.sm),
+          Text(
+            '× $qty / guest',
+            style: AppTextStyles.caption.copyWith(
+              fontSize: 11,
+              color: AppColors.textMuted,
+            ),
+          ),
+          const SizedBox(width: AppSizes.sm),
+          Text(
+            Formatters.currency(item.priceAtOrder),
+            style: AppTextStyles.bodyBold.copyWith(fontSize: 13),
           ),
         ],
       ),

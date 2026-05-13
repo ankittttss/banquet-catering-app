@@ -24,6 +24,7 @@ const MIGRATIONS = [
   'supabase/menu_images.sql',
   'supabase/phase27_event_detail_rls.sql',
   'supabase/phase28_customer_visibility.sql',
+  'supabase/phase29_order_items_visibility.sql',
 ];
 
 function resolveConnectionString() {
