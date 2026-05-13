@@ -1301,198 +1301,6 @@ class _SummaryPill extends StatelessWidget {
   }
 }
 
-class _StatusBanner extends StatelessWidget {
-  const _StatusBanner({required this.detail, required this.hasManager});
-  final ManagerEventDetail detail;
-  final bool hasManager;
-
-  ({Color color, String headline, IconData icon}) _theme() {
-    final s = detail.banquetStatus ?? BanquetEventStatus.pending;
-    return switch (s) {
-      BanquetEventStatus.pending => (
-          color: AppColors.warning,
-          headline: 'Awaiting your review',
-          icon: PhosphorIconsBold.clock,
-        ),
-      BanquetEventStatus.accepted => (
-          color: AppColors.success,
-          headline:
-              hasManager ? 'Accepted · manager assigned' : 'Accepted · needs manager',
-          icon: PhosphorIconsBold.check,
-        ),
-      BanquetEventStatus.declined => (
-          color: AppColors.textMuted,
-          headline: 'Declined',
-          icon: PhosphorIconsBold.x,
-        ),
-      BanquetEventStatus.cancelled => (
-          color: AppColors.textMuted,
-          headline: 'Cancelled',
-          icon: PhosphorIconsBold.prohibit,
-        ),
-      BanquetEventStatus.completed => (
-          color: AppColors.success,
-          headline: 'Completed',
-          icon: PhosphorIconsBold.flag,
-        ),
-    };
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final t = _theme();
-    final date = detail.eventDate;
-    final dateText = date != null ? Formatters.date(date) : 'Date TBD';
-    final timeRange = _timeRange(detail.startTime, detail.endTime);
-    final countdown = _countdown(date);
-    final bookedAgo = _relativeBookedAt(detail.orderCreatedAt);
-    return Container(
-      padding: const EdgeInsets.all(AppSizes.lg),
-      decoration: BoxDecoration(
-        // Subtle gradient instead of flat tint — gives the banner more
-        // visual depth and makes the status read as the page's hero.
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            t.color.withValues(alpha: 0.18),
-            t.color.withValues(alpha: 0.08),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(AppSizes.radiusLg),
-        border: Border.all(color: t.color.withValues(alpha: 0.28)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: t.color,
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: t.color.withValues(alpha: 0.3),
-                      blurRadius: 10,
-                      offset: const Offset(0, 3),
-                    ),
-                  ],
-                ),
-                alignment: Alignment.center,
-                child: Icon(t.icon, color: Colors.white, size: 22),
-              ),
-              const SizedBox(width: AppSizes.md),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(t.headline, style: AppTextStyles.bodyBold),
-                    const SizedBox(height: 2),
-                    Text(
-                      '$dateText${timeRange != null ? ' · $timeRange' : ''}',
-                      style: AppTextStyles.caption,
-                    ),
-                  ],
-                ),
-              ),
-              if (countdown != null) ...[
-                const SizedBox(width: AppSizes.sm),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 5,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.85),
-                    borderRadius:
-                        BorderRadius.circular(AppSizes.radiusPill),
-                    border: Border.all(
-                      color: t.color.withValues(alpha: 0.45),
-                    ),
-                  ),
-                  child: Text(
-                    countdown,
-                    style: AppTextStyles.captionBold.copyWith(
-                      color: t.color,
-                      fontSize: 11,
-                      letterSpacing: 0.2,
-                    ),
-                  ),
-                ),
-              ],
-            ],
-          ),
-          if (bookedAgo != null) ...[
-            const SizedBox(height: AppSizes.sm),
-            Padding(
-              padding: const EdgeInsets.only(left: 56),
-              child: Row(
-                children: [
-                  Icon(
-                    PhosphorIconsDuotone.clockCounterClockwise,
-                    size: 13,
-                    color: AppColors.textMuted,
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    'Booked $bookedAgo',
-                    style: AppTextStyles.caption.copyWith(
-                      fontSize: 11,
-                      color: AppColors.textMuted,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  /// Human-friendly time-until-event countdown shown as a small pill on
-  /// the right of the status row. Returns null when there's no event
-  /// date or when the event has already passed (countdowns are only
-  /// useful for triage on upcoming bookings).
-  String? _countdown(DateTime? eventDate) {
-    if (eventDate == null) return null;
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final target = DateTime(eventDate.year, eventDate.month, eventDate.day);
-    final days = target.difference(today).inDays;
-    if (days < -1) return '${-days} days ago';
-    if (days == -1) return 'yesterday';
-    if (days == 0) return 'today';
-    if (days == 1) return 'tomorrow';
-    if (days < 7) return 'in $days days';
-    if (days < 14) return 'in 1 week';
-    if (days < 30) return 'in ${(days / 7).round()} weeks';
-    return 'in ${(days / 30).round()} months';
-  }
-
-  /// Human-friendly "X ago" for the order's created_at — gives the
-  /// operator a quick sense of how stale a pending booking is.
-  String? _relativeBookedAt(DateTime? at) {
-    if (at == null) return null;
-    final delta = DateTime.now().difference(at);
-    if (delta.inMinutes < 1) return 'just now';
-    if (delta.inMinutes < 60) {
-      return '${delta.inMinutes} ${delta.inMinutes == 1 ? 'minute' : 'minutes'} ago';
-    }
-    if (delta.inHours < 24) {
-      return '${delta.inHours} ${delta.inHours == 1 ? 'hour' : 'hours'} ago';
-    }
-    if (delta.inDays < 30) {
-      return '${delta.inDays} ${delta.inDays == 1 ? 'day' : 'days'} ago';
-    }
-    final months = (delta.inDays / 30).round();
-    return '$months ${months == 1 ? 'month' : 'months'} ago';
-  }
-}
-
 class _CustomerCard extends StatelessWidget {
   const _CustomerCard({required this.detail});
   final ManagerEventDetail detail;
@@ -1786,47 +1594,165 @@ class _BillRow extends StatelessWidget {
   }
 }
 
-class _VendorLotCard extends StatelessWidget {
+class _VendorLotCard extends StatefulWidget {
   const _VendorLotCard({required this.lot});
   final OrderVendorLot lot;
 
   @override
+  State<_VendorLotCard> createState() => _VendorLotCardState();
+}
+
+class _VendorLotCardState extends State<_VendorLotCard> {
+  bool _expanded = false;
+
+  @override
   Widget build(BuildContext context) {
+    final lot = widget.lot;
+    final hasItems = lot.items.isNotEmpty;
     return AppCard(
       padding: const EdgeInsets.all(AppSizes.md),
+      onTap: hasItems ? () => setState(() => _expanded = !_expanded) : null,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: AppColors.accentSoft,
+                  borderRadius: BorderRadius.circular(AppSizes.radiusSm),
+                ),
+                alignment: Alignment.center,
+                child: const Icon(
+                  PhosphorIconsDuotone.storefront,
+                  color: AppColors.accentDark,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: AppSizes.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      lot.restaurantName ?? 'Restaurant',
+                      style: AppTextStyles.bodyBold,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      hasItems
+                          ? '${Formatters.currency(lot.subtotal)}'
+                              ' · ${lot.items.length} '
+                              '${lot.items.length == 1 ? 'item' : 'items'}'
+                          : Formatters.currency(lot.subtotal),
+                      style: AppTextStyles.caption,
+                    ),
+                  ],
+                ),
+              ),
+              _StatusChip(
+                label: lot.status.label,
+                color: _lotStatusColor(lot.status),
+              ),
+              if (hasItems) ...[
+                const SizedBox(width: AppSizes.sm),
+                AnimatedRotation(
+                  turns: _expanded ? 0.5 : 0,
+                  duration: const Duration(milliseconds: 180),
+                  child: const Icon(
+                    PhosphorIconsBold.caretDown,
+                    size: 16,
+                    color: AppColors.textMuted,
+                  ),
+                ),
+              ],
+            ],
+          ),
+          AnimatedSize(
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOutCubic,
+            alignment: Alignment.topCenter,
+            child: !_expanded || !hasItems
+                ? const SizedBox.shrink()
+                : Padding(
+                    padding: const EdgeInsets.only(top: AppSizes.sm),
+                    child: Column(
+                      children: [
+                        const Divider(height: 1, color: AppColors.divider),
+                        const SizedBox(height: AppSizes.xs),
+                        for (final item in lot.items)
+                          _VendorItemLine(item: item),
+                      ],
+                    ),
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Single menu line inside an expanded vendor lot — small veg/non-veg
+/// dot, name, per-guest qty, and the snapshot unit price.
+class _VendorItemLine extends StatelessWidget {
+  const _VendorItemLine({required this.item});
+  final VendorLotItem item;
+
+  @override
+  Widget build(BuildContext context) {
+    final qty = (item.qtyPerGuest ?? item.qty).toString();
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
       child: Row(
         children: [
-          Container(
-            width: 38,
-            height: 38,
-            decoration: BoxDecoration(
-              color: AppColors.accentSoft,
-              borderRadius: BorderRadius.circular(AppSizes.radiusSm),
-            ),
-            alignment: Alignment.center,
-            child: const Icon(PhosphorIconsDuotone.storefront,
-                color: AppColors.accentDark, size: 20),
-          ),
-          const SizedBox(width: AppSizes.md),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  lot.restaurantName ?? 'Restaurant',
-                  style: AppTextStyles.bodyBold,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+          if (item.isVeg != null)
+            Container(
+              width: 10,
+              height: 10,
+              margin: const EdgeInsets.only(right: 8, top: 2),
+              decoration: BoxDecoration(
+                shape: BoxShape.rectangle,
+                borderRadius: BorderRadius.circular(2),
+                border: Border.all(
+                  color:
+                      item.isVeg! ? AppColors.success : AppColors.error,
+                  width: 1.4,
                 ),
-                const SizedBox(height: 2),
-                Text(Formatters.currency(lot.subtotal),
-                    style: AppTextStyles.caption),
-              ],
+              ),
+              alignment: Alignment.center,
+              child: Container(
+                width: 4,
+                height: 4,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: item.isVeg! ? AppColors.success : AppColors.error,
+                ),
+              ),
+            ),
+          Expanded(
+            child: Text(
+              item.name ?? 'Menu item',
+              style: AppTextStyles.body.copyWith(fontSize: 13),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
           ),
-          _StatusChip(
-            label: lot.status.label,
-            color: _lotStatusColor(lot.status),
+          const SizedBox(width: AppSizes.sm),
+          Text(
+            '× $qty / guest',
+            style: AppTextStyles.caption.copyWith(
+              fontSize: 11,
+              color: AppColors.textMuted,
+            ),
+          ),
+          const SizedBox(width: AppSizes.sm),
+          Text(
+            Formatters.currency(item.priceAtOrder),
+            style: AppTextStyles.bodyBold.copyWith(fontSize: 13),
           ),
         ],
       ),
