@@ -11,6 +11,14 @@ enum PropertyType {
   final String dbValue;
   final String label;
   final String iconName;
+
+  static PropertyType? fromDbValue(String? v) {
+    if (v == null) return null;
+    for (final p in values) {
+      if (p.dbValue == v) return p;
+    }
+    return null;
+  }
 }
 
 /// Customer-supplied details about a private property they want to host at.
@@ -59,5 +67,20 @@ class PrivatePropertyDraft {
         addressLine1: addressLine1 ?? this.addressLine1,
         landmark: landmark ?? this.landmark,
         cityPincode: cityPincode ?? this.cityPincode,
+      );
+
+  Map<String, dynamic> toJson() => {
+        if (type != null) 'type': type!.dbValue,
+        if (addressLine1 != null) 'addressLine1': addressLine1,
+        if (landmark != null) 'landmark': landmark,
+        if (cityPincode != null) 'cityPincode': cityPincode,
+      };
+
+  factory PrivatePropertyDraft.fromJson(Map<String, dynamic> json) =>
+      PrivatePropertyDraft(
+        type: PropertyType.fromDbValue(json['type'] as String?),
+        addressLine1: json['addressLine1'] as String?,
+        landmark: json['landmark'] as String?,
+        cityPincode: json['cityPincode'] as String?,
       );
 }

@@ -12,7 +12,10 @@ import '../../../core/constants/app_sizes.dart';
 import '../../../core/constants/app_text_styles.dart';
 import '../../../core/router/app_routes.dart';
 import '../../../core/utils/formatters.dart';
+import '../../../data/models/manager_event_detail.dart';
 import '../../../data/models/order.dart';
+import '../../../data/models/order_vendor_lot.dart';
+import '../../../data/models/restaurant.dart';
 import '../../../shared/providers/menu_providers.dart';
 import '../../../shared/providers/order_providers.dart';
 import '../../../shared/providers/review_providers.dart';
@@ -1363,12 +1366,16 @@ class _EventBadge extends StatelessWidget {
 
 // ───────────────────────── Order summary block ─────────────────────────
 
-class _OrderSummaryBlock extends StatelessWidget {
+class _OrderSummaryBlock extends ConsumerWidget {
   const _OrderSummaryBlock({required this.order});
   final OrderSummary order;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final detailAsync = ref.watch(managerEventDetailProvider(order.eventId));
+    final restaurants =
+        ref.watch(restaurantsProvider).valueOrNull ?? const <Restaurant>[];
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
       child: Column(
@@ -1376,97 +1383,348 @@ class _OrderSummaryBlock extends StatelessWidget {
         children: [
           const _SectionLabel('Order summary'),
           const SizedBox(height: 14),
-          Row(
-            children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: _TP.goldLight,
-                  borderRadius: BorderRadius.circular(14),
+          detailAsync.when(
+            loading: () => const Padding(
+              padding: EdgeInsets.symmetric(vertical: 24),
+              child: Center(
+                child: SizedBox(
+                  height: 24,
+                  width: 24,
+                  child: CircularProgressIndicator(strokeWidth: 2),
                 ),
-                alignment: Alignment.center,
-                child: const Text('🍛', style: TextStyle(fontSize: 22)),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      order.location ?? 'Restaurant',
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        color: _TP.black,
-                      ),
-                    ),
-                    const SizedBox(height: 1),
-                    Text(
-                      _subLine(order),
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: _TP.g40,
-                      ),
-                    ),
-                  ],
+            ),
+            error: (_, __) =>
+                _FallbackSummary(order: order, restaurants: restaurants),
+            data: (detail) => detail == null
+                ? _FallbackSummary(order: order, restaurants: restaurants)
+                : _DetailedSummary(
+                    order: order,
+                    detail: detail,
+                    restaurants: restaurants,
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Renders when we can't load the full event detail (RLS, offline, etc.).
+/// Shows a minimal header + total so the screen never goes blank.
+class _FallbackSummary extends StatelessWidget {
+  const _FallbackSummary({required this.order, required this.restaurants});
+  final OrderSummary order;
+  final List<Restaurant> restaurants;
+
+  Restaurant? _restaurant() {
+    if (order.restaurantId == null) return null;
+    for (final r in restaurants) {
+      if (r.id == order.restaurantId) return r;
+    }
+    return null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final r = _restaurant();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _RestaurantHeader(
+          name: r?.name ?? 'Dawat Kitchen',
+          emoji: r?.heroEmoji ?? '🍛',
+          subtitle: 'Event order',
+        ),
+        const SizedBox(height: 14),
+        const Divider(color: _TP.g8, height: 1),
+        const SizedBox(height: 10),
+        _BillRow(label: 'Total amount', value: Formatters.currency(order.total)),
+        _TotalPaidRow(order: order),
+      ],
+    );
+  }
+}
+
+class _DetailedSummary extends StatelessWidget {
+  const _DetailedSummary({
+    required this.order,
+    required this.detail,
+    required this.restaurants,
+  });
+  final OrderSummary order;
+  final ManagerEventDetail detail;
+  final List<Restaurant> restaurants;
+
+  Restaurant? _restaurantById(String id) {
+    for (final r in restaurants) {
+      if (r.id == id) return r;
+    }
+    return null;
+  }
+
+  /// Total item count across every kitchen in this booking.
+  int _itemCount() {
+    var n = 0;
+    for (final lot in detail.vendorLots) {
+      n += lot.items.length;
+    }
+    return n;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final lots = detail.vendorLots;
+    final isMulti = lots.length > 1;
+    final guests = detail.guestCount ?? 1;
+
+    // Primary header — single kitchen shows its name; multi-vendor shows
+    // the event-level summary so neither restaurant gets implicit priority.
+    final headerName = isMulti
+        ? 'Event order'
+        : (lots.isNotEmpty
+            ? (lots.first.restaurantName ??
+                _restaurantById(lots.first.restaurantId)?.name ??
+                'Dawat Kitchen')
+            : 'Dawat Kitchen');
+    final headerEmoji = isMulti
+        ? '🍽️'
+        : (lots.isNotEmpty
+            ? (_restaurantById(lots.first.restaurantId)?.heroEmoji ?? '🍛')
+            : '🍛');
+    final itemCount = _itemCount();
+    final headerSubtitle = itemCount > 0
+        ? (isMulti
+            ? '${lots.length} kitchens · $itemCount items'
+            : '$itemCount items')
+        : 'Event order';
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _RestaurantHeader(
+          name: headerName,
+          emoji: headerEmoji,
+          subtitle: headerSubtitle,
+        ),
+        if (lots.isNotEmpty) ...[
+          const SizedBox(height: 14),
+          for (var i = 0; i < lots.length; i++) ...[
+            _VendorLotBlock(
+              lot: lots[i],
+              restaurant: _restaurantById(lots[i].restaurantId),
+              guestCount: guests,
+              showHeader: isMulti,
+            ),
+            if (i < lots.length - 1) const SizedBox(height: 12),
+          ],
+        ],
+        const SizedBox(height: 16),
+        _BillDetailsBlock(detail: detail, order: order),
+        _TotalPaidRow(order: order),
+      ],
+    );
+  }
+}
+
+class _RestaurantHeader extends StatelessWidget {
+  const _RestaurantHeader({
+    required this.name,
+    required this.emoji,
+    required this.subtitle,
+  });
+  final String name;
+  final String emoji;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: _TP.goldLight,
+            borderRadius: BorderRadius.circular(14),
+          ),
+          alignment: Alignment.center,
+          child: Text(emoji, style: const TextStyle(fontSize: 22)),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  color: _TP.black,
+                ),
+              ),
+              const SizedBox(height: 1),
+              Text(
+                subtitle,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: _TP.g40,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 14),
-          Container(
-            decoration: const BoxDecoration(
-              border: Border(top: BorderSide(color: _TP.g8)),
-            ),
-            padding: const EdgeInsets.only(top: 10),
-            child: Column(
+        ),
+      ],
+    );
+  }
+}
+
+class _VendorLotBlock extends StatelessWidget {
+  const _VendorLotBlock({
+    required this.lot,
+    required this.restaurant,
+    required this.guestCount,
+    required this.showHeader,
+  });
+  final OrderVendorLot lot;
+  final Restaurant? restaurant;
+  final int guestCount;
+  final bool showHeader;
+
+  @override
+  Widget build(BuildContext context) {
+    final name = lot.restaurantName ?? restaurant?.name ?? 'Kitchen';
+    final emoji = restaurant?.heroEmoji ?? '🍛';
+
+    return Container(
+      decoration: BoxDecoration(
+        color: _TP.cream,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: _TP.g8, width: 1.5),
+      ),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (showHeader) ...[
+            Row(
               children: [
-                _SummaryLine(
-                  label: 'Items & restaurant charges',
-                  value: Formatters.currency(order.total),
+                Container(
+                  width: 28,
+                  height: 28,
+                  decoration: BoxDecoration(
+                    color: _TP.goldLight,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(emoji, style: const TextStyle(fontSize: 14)),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: _TP.black,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  Formatters.currency(lot.subtotal),
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: _TP.g60,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            const Divider(color: _TP.g8, height: 1),
+            const SizedBox(height: 4),
+          ],
+          if (lot.items.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 8),
+              child: Text(
+                'Item details not available',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: _TP.g40,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+            )
+          else
+            for (final item in lot.items)
+              _ItemRow(item: item, guestCount: guestCount),
+        ],
+      ),
+    );
+  }
+}
+
+class _ItemRow extends StatelessWidget {
+  const _ItemRow({required this.item, required this.guestCount});
+  final VendorLotItem item;
+  final int guestCount;
+
+  @override
+  Widget build(BuildContext context) {
+    final per = item.qtyPerGuest;
+    final qtyLabel = per != null
+        ? '${_fmt(per)} × $guestCount guests'
+        : '${item.qty}';
+    final lineTotal = item.lineTotal(guestCount);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _VegDot(isVeg: item.isVeg),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  item.name ?? 'Item',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: _TP.black,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '$qtyLabel · ${Formatters.currency(item.priceAtOrder)} ea',
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: _TP.g40,
+                  ),
                 ),
               ],
             ),
           ),
-          Container(
-            margin: const EdgeInsets.only(top: 12),
-            padding: const EdgeInsets.only(top: 12),
-            decoration: const BoxDecoration(
-              border: Border(
-                top: BorderSide(
-                  color: _TP.g15,
-                  width: 1.5,
-                  style: BorderStyle.solid,
-                ),
-              ),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  'Total paid',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    color: _TP.black,
-                  ),
-                ),
-                Row(
-                  children: [
-                    Text(
-                      Formatters.currency(order.total),
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w800,
-                        color: _TP.black,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    _PaymentPill(status: order.paymentStatus),
-                  ],
-                ),
-              ],
+          const SizedBox(width: 8),
+          Text(
+            Formatters.currency(lineTotal),
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: _TP.black,
             ),
           ),
         ],
@@ -1474,23 +1732,111 @@ class _OrderSummaryBlock extends StatelessWidget {
     );
   }
 
-  String _subLine(OrderSummary o) {
-    if (o.etaMinutesMin != null && o.etaMinutesMax != null) {
-      return '${o.etaMinutesMin}–${o.etaMinutesMax} min · Event order';
-    }
-    return 'Event order';
+  static String _fmt(double v) =>
+      v == v.roundToDouble() ? v.toInt().toString() : v.toStringAsFixed(2);
+}
+
+class _VegDot extends StatelessWidget {
+  const _VegDot({required this.isVeg});
+  final bool? isVeg;
+
+  @override
+  Widget build(BuildContext context) {
+    if (isVeg == null) return const SizedBox(width: 12);
+    final color = isVeg! ? _TP.green : _TP.red;
+    return Container(
+      margin: const EdgeInsets.only(top: 4),
+      width: 12,
+      height: 12,
+      decoration: BoxDecoration(
+        border: Border.all(color: color, width: 1.5),
+        borderRadius: BorderRadius.circular(2),
+      ),
+      alignment: Alignment.center,
+      child: Container(
+        width: 5,
+        height: 5,
+        decoration: BoxDecoration(
+          color: color,
+          shape: BoxShape.circle,
+        ),
+      ),
+    );
   }
 }
 
-class _SummaryLine extends StatelessWidget {
-  const _SummaryLine({required this.label, required this.value});
+class _BillDetailsBlock extends StatelessWidget {
+  const _BillDetailsBlock({required this.detail, required this.order});
+  final ManagerEventDetail detail;
+  final OrderSummary order;
+
+  @override
+  Widget build(BuildContext context) {
+    // food_cost is the canonical "items total" when present; fall back to
+    // the sum of vendor-lot subtotals so the customer never sees a blank
+    // line on legacy orders.
+    final food = detail.foodCost ??
+        detail.vendorLots.fold<double>(0, (s, l) => s + l.subtotal);
+    final boyCount = detail.serviceBoyCount ?? 1;
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+      decoration: BoxDecoration(
+        color: _TP.cream,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: _TP.g8, width: 1.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const _SectionLabel('Bill details'),
+          const SizedBox(height: 8),
+          _BillRow(label: 'Item total', value: Formatters.currency(food)),
+          if ((detail.banquetCharge ?? 0) > 0)
+            _BillRow(
+                label: 'Banquet charge',
+                value: Formatters.currency(detail.banquetCharge!)),
+          if ((detail.deliveryCharge ?? 0) > 0)
+            _BillRow(
+                label: 'Delivery',
+                value: Formatters.currency(detail.deliveryCharge!)),
+          if ((detail.buffetSetup ?? 0) > 0)
+            _BillRow(
+                label: 'Buffet setup',
+                value: Formatters.currency(detail.buffetSetup!)),
+          if ((detail.serviceBoyCost ?? 0) > 0)
+            _BillRow(
+                label: boyCount > 1
+                    ? 'Service boys (×$boyCount)'
+                    : 'Service boy',
+                value: Formatters.currency(detail.serviceBoyCost!)),
+          if ((detail.waterBottleCost ?? 0) > 0)
+            _BillRow(
+                label: 'Water bottles',
+                value: Formatters.currency(detail.waterBottleCost!)),
+          if ((detail.platformFee ?? 0) > 0)
+            _BillRow(
+                label: 'Platform fee',
+                value: Formatters.currency(detail.platformFee!)),
+          if ((detail.gst ?? 0) > 0)
+            _BillRow(
+                label: 'GST & taxes',
+                value: Formatters.currency(detail.gst!)),
+        ],
+      ),
+    );
+  }
+}
+
+class _BillRow extends StatelessWidget {
+  const _BillRow({required this.label, required this.value});
   final String label;
   final String value;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
+      padding: const EdgeInsets.symmetric(vertical: 5),
       child: Row(
         children: [
           Expanded(
@@ -1507,9 +1853,54 @@ class _SummaryLine extends StatelessWidget {
             value,
             style: const TextStyle(
               fontSize: 13,
-              fontWeight: FontWeight.w600,
+              fontWeight: FontWeight.w700,
               color: _TP.black,
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TotalPaidRow extends StatelessWidget {
+  const _TotalPaidRow({required this.order});
+  final OrderSummary order;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.only(top: 12),
+      decoration: const BoxDecoration(
+        border: Border(
+          top: BorderSide(color: _TP.g15, width: 1.5),
+        ),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          const Text(
+            'Total paid',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: _TP.black,
+            ),
+          ),
+          Row(
+            children: [
+              Text(
+                Formatters.currency(order.total),
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  color: _TP.black,
+                ),
+              ),
+              const SizedBox(width: 8),
+              _PaymentPill(status: order.paymentStatus),
+            ],
           ),
         ],
       ),

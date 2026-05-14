@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 /// A single place result from Photon geocoding.
@@ -24,6 +25,9 @@ class GeocodeResult {
 ///
 /// Photon has no API key and no hard rate limit for reasonable use, but we
 /// still bias results toward India and debounce queries at the call site.
+/// On Android we also fall back to Nominatim if Photon ever returns an
+/// empty list — some free CDN edges are flaky from Indian carriers and
+/// having a second source gets the user moving.
 class PhotonGeocoder {
   PhotonGeocoder({http.Client? client})
       : _client = client ?? http.Client();
@@ -31,6 +35,14 @@ class PhotonGeocoder {
   final http.Client _client;
 
   static const _base = 'https://photon.komoot.io';
+
+  // Free OSM services frown on missing UAs and some carriers' edges
+  // mis-route requests with the default Dart/x.y.z agent. A descriptive
+  // header keeps the requests well-behaved.
+  static const Map<String, String> _headers = {
+    'User-Agent': 'Dawat/1.0 (dawat-app; contact: support@dawat.app)',
+    'Accept': 'application/json',
+  };
 
   /// Autocomplete-style forward search. [lat]/[lng] bias results near a point.
   Future<List<GeocodeResult>> search(
@@ -42,7 +54,27 @@ class PhotonGeocoder {
   }) async {
     final q = query.trim();
     if (q.length < 2) return const [];
+    try {
+      final photon = await _searchPhoton(q, lat, lng, limit, lang);
+      if (photon.isNotEmpty) return photon;
+    } catch (e, st) {
+      debugPrint('Photon search failed: $e\n$st');
+    }
+    try {
+      return await _searchNominatim(q, limit);
+    } catch (e, st) {
+      debugPrint('Nominatim search failed: $e\n$st');
+      return const [];
+    }
+  }
 
+  Future<List<GeocodeResult>> _searchPhoton(
+    String q,
+    double? lat,
+    double? lng,
+    int limit,
+    String lang,
+  ) async {
     final params = <String, String>{
       'q': q,
       'limit': '$limit',
@@ -52,9 +84,11 @@ class PhotonGeocoder {
       params['lat'] = '$lat';
       params['lon'] = '$lng';
     }
-
-    final uri = Uri.parse('$_base/api/').replace(queryParameters: params);
-    final res = await _client.get(uri).timeout(const Duration(seconds: 6));
+    final uri =
+        Uri.parse('$_base/api/').replace(queryParameters: params);
+    final res = await _client
+        .get(uri, headers: _headers)
+        .timeout(const Duration(seconds: 6));
     if (res.statusCode != 200) return const [];
     final data = jsonDecode(res.body) as Map<String, dynamic>;
     final features = (data['features'] as List?) ?? const [];
@@ -62,6 +96,72 @@ class PhotonGeocoder {
         .whereType<Map<String, dynamic>>()
         .map(_parseFeature)
         .toList(growable: false);
+  }
+
+  Future<List<GeocodeResult>> _searchNominatim(
+    String q,
+    int limit,
+  ) async {
+    final uri = Uri.https(
+      'nominatim.openstreetmap.org',
+      '/search',
+      {
+        'q': q,
+        'format': 'json',
+        'addressdetails': '1',
+        'limit': '$limit',
+        'countrycodes': 'in',
+      },
+    );
+    final res = await _client
+        .get(uri, headers: _headers)
+        .timeout(const Duration(seconds: 6));
+    if (res.statusCode != 200) return const [];
+    final raw = jsonDecode(res.body) as List<dynamic>;
+    return raw.whereType<Map<String, dynamic>>().map((m) {
+      final addr =
+          (m['address'] as Map?)?.cast<String, dynamic>() ?? const {};
+      final lat = double.tryParse('${m['lat']}') ?? 0;
+      final lon = double.tryParse('${m['lon']}') ?? 0;
+      final name = _firstNonEmpty([
+        addr['amenity'] as String?,
+        addr['road'] as String?,
+        addr['neighbourhood'] as String?,
+        addr['suburb'] as String?,
+      ]) ?? (m['display_name'] as String? ?? '').split(',').first.trim();
+      final city = _firstNonEmpty([
+        addr['city'] as String?,
+        addr['town'] as String?,
+        addr['village'] as String?,
+        addr['county'] as String?,
+      ]) ?? '';
+      final state = addr['state'] as String? ?? '';
+      final country = addr['country'] as String? ?? '';
+      final full = [name, city, state, country]
+          .where((s) => s.isNotEmpty)
+          .toSet()
+          .join(', ');
+      final short = [name, city]
+          .where((s) => s.isNotEmpty)
+          .toSet()
+          .join(', ');
+      return GeocodeResult(
+        name: name,
+        displayAddress: full.isEmpty
+            ? (m['display_name'] as String? ?? '')
+            : full,
+        latitude: lat,
+        longitude: lon,
+        shortLabel: short.isEmpty ? name : short,
+      );
+    }).toList(growable: false);
+  }
+
+  String? _firstNonEmpty(Iterable<String?> values) {
+    for (final v in values) {
+      if (v != null && v.isNotEmpty) return v;
+    }
+    return null;
   }
 
   /// Reverse geocode: turn coordinates into a best-guess place name.
@@ -75,7 +175,9 @@ class PhotonGeocoder {
       'lon': '$longitude',
       'lang': lang,
     });
-    final res = await _client.get(uri).timeout(const Duration(seconds: 6));
+    final res = await _client
+        .get(uri, headers: _headers)
+        .timeout(const Duration(seconds: 6));
     if (res.statusCode != 200) return null;
     final data = jsonDecode(res.body) as Map<String, dynamic>;
     final features = (data['features'] as List?) ?? const [];

@@ -76,4 +76,18 @@ class ReccePick {
         day: day ?? this.day,
         slotLabel: slotLabel ?? this.slotLabel,
       );
+
+  Map<String, dynamic> toJson() => {
+        if (chefId != null) 'chefId': chefId,
+        if (day != null) 'day': day!.toIso8601String(),
+        if (slotLabel != null) 'slotLabel': slotLabel,
+      };
+
+  factory ReccePick.fromJson(Map<String, dynamic> json) => ReccePick(
+        chefId: json['chefId'] as String?,
+        day: json['day'] != null
+            ? DateTime.tryParse(json['day'] as String)
+            : null,
+        slotLabel: json['slotLabel'] as String?,
+      );
 }

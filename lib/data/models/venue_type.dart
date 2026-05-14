@@ -6,4 +6,12 @@ enum VenueType {
   const VenueType(this.dbValue, this.label);
   final String dbValue;
   final String label;
+
+  static VenueType? fromDbValue(String? v) {
+    if (v == null) return null;
+    for (final t in values) {
+      if (t.dbValue == v) return t;
+    }
+    return null;
+  }
 }

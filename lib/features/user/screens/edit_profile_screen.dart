@@ -9,6 +9,9 @@ import '../../../core/router/app_routes.dart';
 import '../../../core/supabase/supabase_client.dart' as sb;
 import '../../../data/models/user_profile.dart';
 import '../../../shared/providers/auth_providers.dart';
+import '../../../shared/providers/repositories_providers.dart';
+import '../../../shared/widgets/safe_net_image.dart';
+import '../widgets/photo_picker_sheet.dart';
 
 // ───────────────────────── Palette (matches HTML mock) ─────────────────────────
 
@@ -80,6 +83,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
   bool _saving = false;
   bool _justSaved = false;
   bool _hydrated = false;
+  bool _uploadingPhoto = false;
 
   @override
   void dispose() {
@@ -301,6 +305,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
   // ─── Avatar ───
   Widget _avatarSection(UserProfile profile) {
     final initial = _initial(profile);
+    final hasPhoto = profile.avatarUrl != null && profile.avatarUrl!.isNotEmpty;
     return Container(
       color: _P.w,
       padding: const EdgeInsets.fromLTRB(20, 28, 20, 20),
@@ -327,16 +332,34 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                     ),
                   ],
                 ),
-                alignment: Alignment.center,
-                child: Text(
-                  initial,
-                  style: GoogleFonts.outfit(
-                    fontSize: 40,
-                    fontWeight: FontWeight.w800,
-                    color: _P.w,
+                clipBehavior: Clip.antiAlias,
+                child: hasPhoto
+                    ? SafeNetImage(
+                        url: profile.avatarUrl!,
+                        errorBuilder: (_) => _initialAvatar(initial),
+                        placeholder: (_) => _initialAvatar(initial),
+                      )
+                    : _initialAvatar(initial),
+              ),
+              if (_uploadingPhoto)
+                Positioned.fill(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(28),
+                      color: Colors.black.withValues(alpha: 0.35),
+                    ),
+                    child: const Center(
+                      child: SizedBox(
+                        width: 28,
+                        height: 28,
+                        child: CircularProgressIndicator(
+                          color: _P.w,
+                          strokeWidth: 2.5,
+                        ),
+                      ),
+                    ),
                   ),
                 ),
-              ),
               Positioned(
                 bottom: -4,
                 right: -4,
@@ -347,7 +370,9 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                     side: const BorderSide(color: _P.w, width: 3),
                   ),
                   child: InkWell(
-                    onTap: _showPhotoPickerStub,
+                    onTap: _uploadingPhoto
+                        ? null
+                        : () => _onChangePhoto(profile),
                     borderRadius: BorderRadius.circular(10),
                     child: const SizedBox(
                       width: 32,
@@ -362,7 +387,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
           ),
           const SizedBox(height: 14),
           Text(
-            'Tap to change photo',
+            hasPhoto ? 'Tap to change photo' : 'Tap to add a photo',
             style: GoogleFonts.outfit(
               fontSize: 12,
               fontWeight: FontWeight.w600,
@@ -374,6 +399,18 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
     );
   }
 
+  Widget _initialAvatar(String initial) => Container(
+        alignment: Alignment.center,
+        child: Text(
+          initial,
+          style: GoogleFonts.outfit(
+            fontSize: 40,
+            fontWeight: FontWeight.w800,
+            color: _P.w,
+          ),
+        ),
+      );
+
   String _initial(UserProfile p) {
     final name = p.name?.trim();
     if (name != null && name.isNotEmpty) return name[0].toUpperCase();
@@ -382,11 +419,60 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
     return 'U';
   }
 
-  void _showPhotoPickerStub() {
+  Future<void> _onChangePhoto(UserProfile profile) async {
     HapticFeedback.selectionClick();
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Photo upload — coming soon')),
-    );
+    final hasExisting =
+        profile.avatarUrl != null && profile.avatarUrl!.isNotEmpty;
+    final result = await showPhotoPickerSheet(context, hasExisting: hasExisting);
+    if (!mounted) return;
+
+    switch (result) {
+      case PhotoPickedBytes(:final bytes):
+        await _uploadPhoto(profile.id, bytes);
+      case PhotoRemoved():
+        await _removePhoto(profile.id);
+      case PhotoPickerError(:final message):
+        _showToast('Couldn\'t pick photo: $message');
+      case PhotoPickerCancelled():
+        // No-op.
+        break;
+    }
+  }
+
+  Future<void> _uploadPhoto(String userId, Uint8List bytes) async {
+    setState(() => _uploadingPhoto = true);
+    try {
+      final repo = ref.read(profileRepositoryProvider);
+      await repo.uploadAvatar(userId: userId, bytes: bytes);
+      ref.invalidate(currentProfileProvider);
+      if (!mounted) return;
+      _showToast('Photo updated');
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Upload failed: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _uploadingPhoto = false);
+    }
+  }
+
+  Future<void> _removePhoto(String userId) async {
+    setState(() => _uploadingPhoto = true);
+    try {
+      final repo = ref.read(profileRepositoryProvider);
+      await repo.clearAvatar(userId);
+      ref.invalidate(currentProfileProvider);
+      if (!mounted) return;
+      _showToast('Photo removed');
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Remove failed: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _uploadingPhoto = false);
+    }
   }
 
   // ─── Basic info ───

@@ -14,6 +14,8 @@ import '../../../data/models/charges_config.dart';
 import '../../../data/models/checkout_totals.dart';
 import '../../../data/models/event_draft.dart';
 import '../../../data/models/restaurant.dart';
+import '../../../data/models/venue_type.dart';
+import '../../../shared/providers/addon_providers.dart';
 import '../../../shared/providers/cart_providers.dart';
 import '../../../shared/providers/charges_providers.dart';
 import '../../../shared/providers/event_providers.dart';
@@ -117,6 +119,7 @@ class _CartBody extends ConsumerWidget {
           error: (_, __) => const SizedBox.shrink(),
           data: (cfg) {
             final includeServiceTax = ref.watch(includeServiceTaxProvider);
+            final addonsTotal = ref.watch(addonsTotalProvider);
             final totals = _totalsFor(
               cart,
               cfg,
@@ -124,6 +127,8 @@ class _CartBody extends ConsumerWidget {
               event.guestCount,
               event.effectiveServiceBoyCount,
               includeServiceTax,
+              event.venueType,
+              addonsTotal,
             );
             return Positioned(
               left: 0,
@@ -144,6 +149,8 @@ class _CartBody extends ConsumerWidget {
     int guestCount,
     int serviceBoyCount,
     bool includeServiceTax,
+    VenueType? venueType,
+    double addonsTotal,
   ) {
     final uniq = cart.map((c) => c.item.restaurantId).toSet();
     final delivery = <String, double>{};
@@ -163,6 +170,8 @@ class _CartBody extends ConsumerWidget {
       guestCount: guestCount,
       serviceBoyCount: serviceBoyCount,
       includeServiceTax: includeServiceTax,
+      venueType: venueType,
+      addonsTotal: addonsTotal,
     );
   }
 }
@@ -508,6 +517,7 @@ class _BillDetails extends ConsumerWidget {
           .deliveryCharge;
     }
     final includeServiceTax = ref.watch(includeServiceTaxProvider);
+    final addonsTotal = ref.watch(addonsTotalProvider);
     final totals = CheckoutTotals.compute(
       cart: cart,
       charges: charges,
@@ -515,6 +525,8 @@ class _BillDetails extends ConsumerWidget {
       guestCount: event.guestCount,
       serviceBoyCount: event.effectiveServiceBoyCount,
       includeServiceTax: includeServiceTax,
+      venueType: event.venueType,
+      addonsTotal: addonsTotal,
     );
     // Always-on amount so the tile can show "you save ₹X" when skipped.
     final serviceTaxIfIncluded =
@@ -547,6 +559,9 @@ class _BillDetails extends ConsumerWidget {
           if (totals.waterBottleCost > 0)
             _BillRow(
                 'Water bottles', Formatters.currency(totals.waterBottleCost)),
+          if (totals.setupEquipment > 0)
+            _BillRow('Setup & equipment',
+                Formatters.currency(totals.setupEquipment)),
           _ServiceBoyRow(
             count: totals.serviceBoyCount,
             unitCost: totals.serviceBoyUnitCost,
