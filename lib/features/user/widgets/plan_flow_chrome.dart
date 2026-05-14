@@ -185,17 +185,23 @@ class PlanFlowFooter extends StatelessWidget {
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
+                  // Pin alignment so the label/icon centers match even
+                  // when the parent's intrinsic height shifts (default
+                  // Row centers fine on most pixel ratios but the gap
+                  // can look off on devices with non-integer DPI).
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
                     Text(
                       buttonLabel,
                       style: AppTextStyles.buttonLabel.copyWith(
                         color: Colors.white,
                         fontSize: 15,
+                        height: 1.0,
                       ),
                     ),
                     if (trailingIcon != null) ...[
                       const SizedBox(width: 6),
-                      Icon(trailingIcon, color: Colors.white, size: 22),
+                      Icon(trailingIcon, color: Colors.white, size: 20),
                     ],
                   ],
                 ),

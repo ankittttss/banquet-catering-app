@@ -37,6 +37,20 @@ android {
             signingConfig = signingConfigs.getByName("debug")
         }
     }
+
+    // Rename the APK output to `Dawat-<versionName>(-<flavor>).apk` so the
+    // file in build/app/outputs/flutter-apk/ is identifiable without
+    // peeking inside. versionName comes from pubspec.yaml via the Flutter
+    // Gradle plugin (e.g. 1.0.0).
+    applicationVariants.all {
+        val variant = this
+        outputs.all {
+            val output =
+                this as com.android.build.gradle.internal.api.BaseVariantOutputImpl
+            val suffix = if (variant.buildType.name == "release") "" else "-${variant.buildType.name}"
+            output.outputFileName = "Dawat-${variant.versionName}${suffix}.apk"
+        }
+    }
 }
 
 flutter {

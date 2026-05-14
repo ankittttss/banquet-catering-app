@@ -1,4 +1,20 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- INTERNET is needed for Supabase + image CDN + address geocoding. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+
+    <!-- Location runtime permissions — used by LocationService to detect
+         the customer's current address and on the property screen's "Use
+         map" affordance. Both fine + coarse so Android shows the precise
+         vs approximate toggle on Android 12+. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+
+    <!-- Camera + photo picker — used by the "Take photo" option on the
+         profile avatar sheet. image_picker handles the runtime grant. -->
+    <uses-permission android:name="android.permission.CAMERA"/>
+    <uses-feature android:name="android.hardware.camera" android:required="false"/>
+
     <application
         android:label="Dawat"
         android:name="${applicationName}"

@@ -65,10 +65,14 @@ class EventDetailsScreen extends ConsumerStatefulWidget {
 
 class _EventDetailsScreenState extends ConsumerState<EventDetailsScreen> {
   String? _categorySlug;
+  late final TextEditingController _nameCtrl;
 
   @override
   void initState() {
     super.initState();
+    _nameCtrl = TextEditingController(
+      text: ref.read(eventDraftProvider).eventName ?? '',
+    );
     WidgetsBinding.instance.addPostFrameCallback((_) {
       // Pre-fill location from default saved address if empty.
       final draft = ref.read(eventDraftProvider);
@@ -79,6 +83,12 @@ class _EventDetailsScreenState extends ConsumerState<EventDetailsScreen> {
         }
       }
     });
+  }
+
+  @override
+  void dispose() {
+    _nameCtrl.dispose();
+    super.dispose();
   }
 
   Future<void> _pickDate() async {
@@ -175,6 +185,15 @@ class _EventDetailsScreenState extends ConsumerState<EventDetailsScreen> {
         padding: const EdgeInsets.only(bottom: AppSizes.lg),
         children: [
           _Section(
+            title: 'Event name',
+            child: _EventNameField(
+              controller: _nameCtrl,
+              onChanged: (v) => ref
+                  .read(eventDraftProvider.notifier)
+                  .setEventName(v),
+            ),
+          ),
+          _Section(
             title: 'Event type',
             child: _CategoryGrid(
               categories: cats,
@@ -234,15 +253,22 @@ class _EventDetailsScreenState extends ConsumerState<EventDetailsScreen> {
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   Text(
                     'Continue',
-                    style: AppTextStyles.buttonLabel
-                        .copyWith(color: Colors.white, fontSize: 15),
+                    style: AppTextStyles.buttonLabel.copyWith(
+                      color: Colors.white,
+                      fontSize: 15,
+                      height: 1.0,
+                    ),
                   ),
-                  const SizedBox(width: 4),
-                  const Icon(Icons.arrow_forward_rounded,
-                      color: Colors.white, size: 18),
+                  const SizedBox(width: 6),
+                  const Icon(
+                    Icons.chevron_right_rounded,
+                    color: Colors.white,
+                    size: 20,
+                  ),
                 ],
               ),
             ),
@@ -590,6 +616,103 @@ class _TierCard extends StatelessWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+// ───────────────────────── Event name field ─────────────────────────
+
+class _EventNameField extends StatefulWidget {
+  const _EventNameField({
+    required this.controller,
+    required this.onChanged,
+  });
+
+  final TextEditingController controller;
+  final ValueChanged<String> onChanged;
+
+  @override
+  State<_EventNameField> createState() => _EventNameFieldState();
+}
+
+class _EventNameFieldState extends State<_EventNameField> {
+  @override
+  void initState() {
+    super.initState();
+    // Rebuild as the user types so the trailing × clear button can
+    // appear / disappear based on whether the field has content.
+    widget.controller.addListener(_onControllerChanged);
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_onControllerChanged);
+    super.dispose();
+  }
+
+  void _onControllerChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: widget.controller,
+      onChanged: widget.onChanged,
+      textCapitalization: TextCapitalization.words,
+      style: AppTextStyles.bodyBold.copyWith(fontSize: 15),
+      decoration: InputDecoration(
+        hintText: "e.g. Aanya's Sangeet",
+        hintStyle: AppTextStyles.body
+            .copyWith(color: AppColors.textMuted, fontSize: 15),
+        helperText:
+            'Shows up on the home draft card and in operator inboxes',
+        helperStyle: AppTextStyles.caption,
+        filled: true,
+        fillColor: AppColors.surfaceAlt,
+        prefixIcon: const Icon(
+          Icons.edit_note_rounded,
+          color: AppColors.textMuted,
+          size: 22,
+        ),
+        suffixIcon: widget.controller.text.isEmpty
+            ? null
+            : IconButton(
+                tooltip: 'Clear',
+                icon: const Icon(
+                  Icons.close_rounded,
+                  color: AppColors.textMuted,
+                  size: 18,
+                ),
+                onPressed: () {
+                  widget.controller.clear();
+                  widget.onChanged('');
+                },
+              ),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: AppSizes.md,
+          vertical: AppSizes.md,
+        ),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppSizes.radiusSm),
+          borderSide: BorderSide(
+            color: AppColors.border.withValues(alpha: 0.5),
+          ),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppSizes.radiusSm),
+          borderSide: BorderSide(
+            color: AppColors.border.withValues(alpha: 0.5),
+          ),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppSizes.radiusSm),
+          borderSide: const BorderSide(
+            color: AppColors.primary,
+            width: 1.4,
+          ),
         ),
       ),
     );

@@ -138,38 +138,41 @@ class _Actions extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Stacked layout so the buttons read clearly on every device width.
+    // The 50/50 row used to squeeze "Share" into a third of the screen
+    // on phones like the OnePlus Nord (~411 dp wide), making the icon
+    // and label feel cramped. A vertical stack keeps the primary CTA
+    // dominant and gives Share full breathing room.
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: () => _share(context),
-                icon: const Icon(PhosphorIconsBold.share, size: 18),
-                label: const Text('Share'),
-                style: OutlinedButton.styleFrom(
-                  minimumSize:
-                      const Size.fromHeight(AppSizes.buttonHeight),
-                ),
-              ),
-            ),
-            const SizedBox(width: AppSizes.sm),
-            Expanded(
-              flex: 2,
-              child: PrimaryButton(
-                label: 'View my events',
-                icon: PhosphorIconsBold.calendarCheck,
-                onPressed: () => context.go(AppRoutes.myEvents),
-              ),
-            ),
-          ],
+        PrimaryButton(
+          label: 'View my events',
+          icon: PhosphorIconsBold.calendarCheck,
+          onPressed: () => context.go(AppRoutes.myEvents),
         ),
         const SizedBox(height: AppSizes.sm),
+        OutlinedButton.icon(
+          onPressed: () => _share(context),
+          icon: const Icon(PhosphorIconsBold.share, size: 18),
+          label: const Text('Share booking'),
+          style: OutlinedButton.styleFrom(
+            minimumSize: const Size.fromHeight(AppSizes.buttonHeight),
+            side: const BorderSide(color: AppColors.border),
+            foregroundColor: AppColors.textPrimary,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppSizes.radiusMd),
+            ),
+          ),
+        ),
+        const SizedBox(height: AppSizes.xs),
         TextButton(
           onPressed: () => context.go(AppRoutes.userHome),
-          child: Text('Back to home',
-              style: AppTextStyles.bodyBold
-                  .copyWith(color: AppColors.textSecondary)),
+          child: Text(
+            'Back to home',
+            style: AppTextStyles.bodyBold
+                .copyWith(color: AppColors.textSecondary),
+          ),
         ),
       ],
     ).animate().fadeIn(delay: 720.ms).slideY(begin: 0.1, end: 0);

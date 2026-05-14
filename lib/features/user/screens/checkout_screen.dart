@@ -15,6 +15,8 @@ import '../../../data/models/checkout_totals.dart';
 import '../../../data/models/event_draft.dart';
 import '../../../data/models/restaurant.dart';
 import '../../../data/models/user_address.dart';
+import '../../../data/models/venue_type.dart';
+import '../../../shared/providers/addon_providers.dart';
 import '../../../shared/providers/address_providers.dart';
 import '../../../shared/providers/auth_providers.dart';
 import '../../../shared/providers/cart_providers.dart';
@@ -145,6 +147,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
         error: (e, _) => AppErrorView(error: e),
         data: (cfg) {
           final includeServiceTax = ref.watch(includeServiceTaxProvider);
+          final addonsTotal = ref.watch(addonsTotalProvider);
           final totals = _totalsFor(
             cart,
             cfg,
@@ -152,6 +155,8 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
             event.guestCount,
             event.effectiveServiceBoyCount,
             includeServiceTax,
+            event.venueType,
+            addonsTotal,
           );
           return Stack(
             children: [
@@ -244,6 +249,8 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     int guestCount,
     int serviceBoyCount,
     bool includeServiceTax,
+    VenueType? venueType,
+    double addonsTotal,
   ) {
     final uniq = cart.map((c) => c.item.restaurantId).toSet();
     final delivery = <String, double>{};
@@ -263,6 +270,8 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       guestCount: guestCount,
       serviceBoyCount: serviceBoyCount,
       includeServiceTax: includeServiceTax,
+      venueType: venueType,
+      addonsTotal: addonsTotal,
     );
   }
 }
@@ -607,6 +616,9 @@ class _BillSummary extends StatelessWidget {
           if (totals.waterBottleCost > 0)
             _BillRow(
                 'Water bottles', Formatters.currency(totals.waterBottleCost)),
+          if (totals.setupEquipment > 0)
+            _BillRow('Setup & equipment',
+                Formatters.currency(totals.setupEquipment)),
           _CheckoutServiceBoyRow(
             count: totals.serviceBoyCount,
             unitCost: totals.serviceBoyUnitCost,

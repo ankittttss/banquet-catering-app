@@ -13,6 +13,7 @@ import '../../../data/models/user_profile.dart';
 import '../../../shared/providers/auth_providers.dart';
 import '../../../shared/providers/notification_providers.dart';
 import '../../../shared/widgets/app_scaffold.dart';
+import '../../../shared/widgets/safe_net_image.dart';
 import '../../../shared/widgets/user_bottom_nav.dart';
 
 class ProfileScreen extends ConsumerWidget {
@@ -176,20 +177,7 @@ class _Header extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Container(
-            width: 60,
-            height: 60,
-            decoration: const BoxDecoration(
-              color: AppColors.primarySoft,
-              shape: BoxShape.circle,
-            ),
-            alignment: Alignment.center,
-            child: Text(
-              _initials(),
-              style: AppTextStyles.display
-                  .copyWith(fontSize: 22, color: AppColors.primary),
-            ),
-          ),
+          _ProfileAvatar(profile: profile, initials: _initials()),
           const SizedBox(width: AppSizes.md),
           Expanded(
             child: Column(
@@ -210,6 +198,45 @@ class _Header extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _ProfileAvatar extends StatelessWidget {
+  const _ProfileAvatar({required this.profile, required this.initials});
+  final UserProfile profile;
+  final String initials;
+
+  @override
+  Widget build(BuildContext context) {
+    final hasPhoto =
+        profile.avatarUrl != null && profile.avatarUrl!.isNotEmpty;
+
+    Widget placeholder() => Container(
+          color: AppColors.primarySoft,
+          alignment: Alignment.center,
+          child: Text(
+            initials,
+            style: AppTextStyles.display
+                .copyWith(fontSize: 22, color: AppColors.primary),
+          ),
+        );
+
+    return Container(
+      width: 60,
+      height: 60,
+      decoration: const BoxDecoration(
+        color: AppColors.primarySoft,
+        shape: BoxShape.circle,
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: hasPhoto
+          ? SafeNetImage(
+              url: profile.avatarUrl!,
+              errorBuilder: (_) => placeholder(),
+              placeholder: (_) => placeholder(),
+            )
+          : placeholder(),
     );
   }
 }

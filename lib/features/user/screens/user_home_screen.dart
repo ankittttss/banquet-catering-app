@@ -14,10 +14,12 @@ import '../../../data/models/event_category.dart';
 import '../../../data/models/event_draft.dart';
 import '../../../data/models/restaurant.dart';
 import '../../../shared/providers/address_providers.dart';
+import '../../../shared/providers/auth_providers.dart';
 import '../../../shared/providers/event_providers.dart';
 import '../../../shared/providers/favorites_providers.dart';
 import '../../../shared/providers/home_providers.dart';
 import '../../../shared/providers/menu_providers.dart';
+import '../../../shared/providers/notification_providers.dart';
 import '../../../shared/widgets/app_scaffold.dart';
 import '../../../shared/widgets/empty_state.dart';
 import '../../../shared/widgets/safe_net_image.dart';
@@ -80,9 +82,10 @@ class _UserHomeScreenState extends ConsumerState<UserHomeScreen> {
             const _SectionHeader(title: "What's the occasion?"),
             const SliverToBoxAdapter(child: _EventCategoriesGrid()),
             const SliverToBoxAdapter(child: SizedBox(height: AppSizes.md)),
-            const _SectionHeader(
+            _SectionHeader(
               title: 'Curated for events',
               trailing: 'See all',
+              onTrailingTap: () => context.push(AppRoutes.search),
             ),
             const SliverToBoxAdapter(child: _CollectionsScroll()),
             const SliverToBoxAdapter(child: SizedBox(height: AppSizes.md)),
@@ -174,7 +177,85 @@ class _LocationHeader extends ConsumerWidget {
               ),
             ),
           ),
-          _AvatarButton(onTap: () => context.push(AppRoutes.profile)),
+          const _NotificationBell(),
+          const SizedBox(width: AppSizes.sm),
+          _AvatarButton(
+            avatarUrl: ref.watch(currentProfileProvider).valueOrNull?.avatarUrl,
+            fallbackLabel:
+                ref.watch(currentProfileProvider).valueOrNull?.name,
+            onTap: () => context.push(AppRoutes.profile),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _NotificationBell extends ConsumerWidget {
+  const _NotificationBell();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final count = ref.watch(unreadNotificationCountProvider);
+    final hasUnread = count > 0;
+    return InkWell(
+      onTap: () {
+        HapticFeedback.selectionClick();
+        context.push(AppRoutes.notifications);
+      },
+      borderRadius: BorderRadius.circular(100),
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: AppColors.surfaceAlt,
+              border: Border.all(color: AppColors.border),
+            ),
+            alignment: Alignment.center,
+            child: Icon(
+              hasUnread
+                  ? Icons.notifications_rounded
+                  : Icons.notifications_outlined,
+              color: hasUnread ? AppColors.primary : AppColors.textSecondary,
+              size: 22,
+            ),
+          ),
+          if (hasUnread)
+            Positioned(
+              top: -2,
+              right: -2,
+              child: Container(
+                constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                decoration: BoxDecoration(
+                  color: AppColors.primary,
+                  borderRadius: BorderRadius.circular(9),
+                  border: Border.all(color: AppColors.surface, width: 2),
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  count > 99 ? '99+' : '$count',
+                  style: const TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white,
+                    height: 1.1,
+                  ),
+                ),
+              ),
+            )
+                .animate()
+                .scale(
+                  begin: const Offset(0.6, 0.6),
+                  end: const Offset(1, 1),
+                  duration: 220.ms,
+                  curve: Curves.easeOutBack,
+                )
+                .fadeIn(duration: 180.ms),
         ],
       ),
     );
@@ -182,11 +263,40 @@ class _LocationHeader extends ConsumerWidget {
 }
 
 class _AvatarButton extends StatelessWidget {
-  const _AvatarButton({required this.onTap});
+  const _AvatarButton({
+    required this.onTap,
+    this.avatarUrl,
+    this.fallbackLabel,
+  });
   final VoidCallback onTap;
+  final String? avatarUrl;
+  final String? fallbackLabel;
+
+  String _initial() {
+    final n = fallbackLabel?.trim() ?? '';
+    if (n.isNotEmpty) return n[0].toUpperCase();
+    return '';
+  }
 
   @override
   Widget build(BuildContext context) {
+    final hasPhoto = avatarUrl != null && avatarUrl!.isNotEmpty;
+    Widget child;
+    if (hasPhoto) {
+      child = ClipOval(
+        child: SizedBox(
+          width: 42,
+          height: 42,
+          child: SafeNetImage(
+            url: avatarUrl!,
+            errorBuilder: (_) => _placeholder(),
+            placeholder: (_) => _placeholder(),
+          ),
+        ),
+      );
+    } else {
+      child = _placeholder();
+    }
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(100),
@@ -198,9 +308,28 @@ class _AvatarButton extends StatelessWidget {
           color: AppColors.surfaceAlt,
           border: Border.all(color: AppColors.border),
         ),
+        clipBehavior: Clip.antiAlias,
         alignment: Alignment.center,
-        child: const Icon(Icons.person_outline_rounded,
-            color: AppColors.textSecondary, size: 22),
+        child: child,
+      ),
+    );
+  }
+
+  Widget _placeholder() {
+    final initial = _initial();
+    if (initial.isEmpty) {
+      return const Icon(Icons.person_outline_rounded,
+          color: AppColors.textSecondary, size: 22);
+    }
+    return Container(
+      color: AppColors.primarySoft,
+      alignment: Alignment.center,
+      child: Text(
+        initial,
+        style: AppTextStyles.bodyBold.copyWith(
+          color: AppColors.primary,
+          fontSize: 16,
+        ),
       ),
     );
   }
@@ -262,24 +391,367 @@ class _SearchBar extends StatelessWidget {
             ),
           ),
           const SizedBox(width: AppSizes.sm),
-          InkWell(
-            onTap: () {
-              HapticFeedback.selectionClick();
-              // Hook up full filter sheet in phase 2.
-            },
-            borderRadius: BorderRadius.circular(AppSizes.radiusMd),
-            child: Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                color: AppColors.primary,
-                borderRadius: BorderRadius.circular(AppSizes.radiusMd),
-              ),
-              child: const Icon(Icons.tune_rounded,
-                  color: Colors.white, size: 22),
-            ),
-          ),
+          _FilterButton(),
         ],
+      ),
+    );
+  }
+}
+
+// ───────────────────────── Filter button + sheet ─────────────────────────
+
+class _FilterButton extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final selected = ref.watch(homeSortProvider);
+    final hasFilter = selected != HomeSort.relevance;
+    return InkWell(
+      onTap: () {
+        HapticFeedback.selectionClick();
+        _showFilterSheet(context, ref);
+      },
+      borderRadius: BorderRadius.circular(AppSizes.radiusMd),
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: AppColors.primary,
+              borderRadius: BorderRadius.circular(AppSizes.radiusMd),
+            ),
+            child: const Icon(Icons.tune_rounded,
+                color: Colors.white, size: 22),
+          ),
+          if (hasFilter)
+            Positioned(
+              top: -2,
+              right: -2,
+              child: Container(
+                width: 12,
+                height: 12,
+                decoration: BoxDecoration(
+                  color: AppColors.accent,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white, width: 2),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  void _showFilterSheet(BuildContext context, WidgetRef ref) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      // Cap at 85% so the sheet never owns the whole screen.
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.85,
+      ),
+      builder: (_) => const _FilterSheet(),
+    );
+  }
+}
+
+class _FilterSheet extends ConsumerWidget {
+  const _FilterSheet();
+
+  static const _purple = Color(0xFF7C3AED);
+  static const _purpleLt = Color(0xFFF3E8FF);
+  static const _green = Color(0xFF1BA672);
+  static const _greenLt = Color(0xFFEAFAF1);
+  static const _orange = Color(0xFFE97A2B);
+  static const _orangeLt = Color(0xFFFFF4EB);
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final selected = ref.watch(homeSortProvider);
+    final hasFilter = selected != HomeSort.relevance;
+
+    return SafeArea(
+      top: false,
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.only(bottom: AppSizes.md),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                margin: const EdgeInsets.only(top: 10, bottom: 6),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.border,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 14, 12, 8),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Filters',
+                          style: AppTextStyles.heading1.copyWith(fontSize: 24),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          'Personalize what you see',
+                          style: AppTextStyles.bodyMuted
+                              .copyWith(fontSize: 12),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (hasFilter)
+                    TextButton.icon(
+                      onPressed: () {
+                        HapticFeedback.selectionClick();
+                        ref.read(homeSortProvider.notifier).state =
+                            HomeSort.relevance;
+                        Navigator.of(context).pop();
+                      },
+                      style: TextButton.styleFrom(
+                        foregroundColor: AppColors.primary,
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 6),
+                      ),
+                      icon: const Icon(Icons.refresh_rounded, size: 16),
+                      label: Text(
+                        'Clear all',
+                        style: AppTextStyles.bodyBold
+                            .copyWith(color: AppColors.primary, fontSize: 13),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 4),
+            const _FilterSectionLabel('Sort by'),
+            _FilterGroup(
+              options: const [
+                _FilterOptionData(
+                  sort: HomeSort.relevance,
+                  icon: Icons.auto_awesome_rounded,
+                  iconBg: _purpleLt,
+                  iconColor: _purple,
+                  description: "What's right for you",
+                ),
+                _FilterOptionData(
+                  sort: HomeSort.rating,
+                  icon: Icons.star_rounded,
+                  iconBg: Color(0xFFFFF8E7),
+                  iconColor: Color(0xFFC4922A),
+                  description: 'Top-rated kitchens',
+                ),
+                _FilterOptionData(
+                  sort: HomeSort.fastest,
+                  icon: Icons.bolt_rounded,
+                  iconBg: Color(0xFFFFF1F2),
+                  iconColor: Color(0xFFE23744),
+                  description: 'Quickest delivery first',
+                ),
+                _FilterOptionData(
+                  sort: HomeSort.budget,
+                  icon: Icons.payments_rounded,
+                  iconBg: _greenLt,
+                  iconColor: _green,
+                  description: 'Lowest price per plate',
+                ),
+              ],
+            ),
+            const SizedBox(height: AppSizes.md),
+            const _FilterSectionLabel('Quick filters'),
+            _FilterGroup(
+              options: const [
+                _FilterOptionData(
+                  sort: HomeSort.veg,
+                  icon: Icons.eco_rounded,
+                  iconBg: _greenLt,
+                  iconColor: _green,
+                  description: 'Only vegetarian kitchens',
+                ),
+                _FilterOptionData(
+                  sort: HomeSort.offers,
+                  icon: Icons.local_offer_rounded,
+                  iconBg: _orangeLt,
+                  iconColor: _orange,
+                  description: 'Deals & discounts',
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _FilterSectionLabel extends StatelessWidget {
+  const _FilterSectionLabel(this.label);
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 6, 24, 8),
+      child: Text(
+        label.toUpperCase(),
+        style: AppTextStyles.caption.copyWith(
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.8,
+          color: AppColors.textMuted,
+        ),
+      ),
+    );
+  }
+}
+
+class _FilterOptionData {
+  const _FilterOptionData({
+    required this.sort,
+    required this.icon,
+    required this.iconBg,
+    required this.iconColor,
+    required this.description,
+  });
+  final HomeSort sort;
+  final IconData icon;
+  final Color iconBg;
+  final Color iconColor;
+  final String description;
+}
+
+class _FilterGroup extends ConsumerWidget {
+  const _FilterGroup({required this.options});
+  final List<_FilterOptionData> options;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: AppSizes.pagePadding),
+      child: Container(
+        decoration: BoxDecoration(
+          color: AppColors.surfaceAlt,
+          borderRadius: BorderRadius.circular(AppSizes.radiusMd),
+          border: Border.all(color: AppColors.border.withValues(alpha: 0.6)),
+        ),
+        child: Column(
+          children: [
+            for (var i = 0; i < options.length; i++) ...[
+              _FilterOptionRow(data: options[i]),
+              if (i < options.length - 1)
+                Padding(
+                  padding: const EdgeInsets.only(left: 68),
+                  child: Divider(
+                    height: 1,
+                    color: AppColors.border.withValues(alpha: 0.4),
+                  ),
+                ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _FilterOptionRow extends ConsumerWidget {
+  const _FilterOptionRow({required this.data});
+  final _FilterOptionData data;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final on = ref.watch(homeSortProvider) == data.sort;
+    return Material(
+      color: on
+          ? data.iconColor.withValues(alpha: 0.06)
+          : Colors.transparent,
+      borderRadius: BorderRadius.circular(AppSizes.radiusMd),
+      child: InkWell(
+        onTap: () {
+          HapticFeedback.selectionClick();
+          ref.read(homeSortProvider.notifier).state = data.sort;
+          Navigator.of(context).pop();
+        },
+        borderRadius: BorderRadius.circular(AppSizes.radiusMd),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+          child: Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: data.iconBg,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                alignment: Alignment.center,
+                child: Icon(data.icon, size: 18, color: data.iconColor),
+              ),
+              const SizedBox(width: AppSizes.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      data.sort.label,
+                      style: AppTextStyles.body.copyWith(
+                        fontSize: 14,
+                        color: on
+                            ? AppColors.textPrimary
+                            : AppColors.textPrimary,
+                        fontWeight: on ? FontWeight.w700 : FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      data.description,
+                      style: AppTextStyles.caption.copyWith(
+                        fontSize: 11,
+                        color: AppColors.textMuted,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                width: 22,
+                height: 22,
+                decoration: BoxDecoration(
+                  color: on ? data.iconColor : Colors.transparent,
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: on
+                        ? data.iconColor
+                        : AppColors.border,
+                    width: 1.5,
+                  ),
+                ),
+                alignment: Alignment.center,
+                child: on
+                    ? const Icon(Icons.check_rounded,
+                        size: 14, color: Colors.white)
+                    : null,
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -547,6 +1019,10 @@ class _DraftProgress {
   }
 
   static String _composeTitle(EventDraft d) {
+    // Custom name takes priority — e.g. "Aanya's Sangeet" — and falls
+    // back to a composed label only when the user hasn't named it yet.
+    final custom = d.eventName?.trim();
+    if (custom != null && custom.isNotEmpty) return custom;
     final session = d.session;
     if (session != null) return '$session for ${d.guestCount}';
     return 'Your event for ${d.guestCount}';
@@ -687,9 +1163,15 @@ class _HeroBanner extends StatelessWidget {
 // ───────────────────────── Section header ─────────────────────────
 
 class _SectionHeader extends StatelessWidget {
-  const _SectionHeader({super.key, required this.title, this.trailing});
+  const _SectionHeader({
+    super.key,
+    required this.title,
+    this.trailing,
+    this.onTrailingTap,
+  });
   final String title;
   final String? trailing;
+  final VoidCallback? onTrailingTap;
 
   @override
   Widget build(BuildContext context) {
@@ -706,10 +1188,33 @@ class _SectionHeader extends StatelessWidget {
           children: [
             Text(title, style: AppTextStyles.heading1),
             if (trailing != null)
-              Text(
-                trailing!,
-                style: AppTextStyles.bodyBold
-                    .copyWith(color: AppColors.primary, fontSize: 13),
+              InkWell(
+                onTap: onTrailingTap == null
+                    ? null
+                    : () {
+                        HapticFeedback.selectionClick();
+                        onTrailingTap!();
+                      },
+                borderRadius: BorderRadius.circular(AppSizes.radiusSm),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: AppSizes.xs, vertical: AppSizes.xs),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        trailing!,
+                        style: AppTextStyles.bodyBold
+                            .copyWith(color: AppColors.primary, fontSize: 13),
+                      ),
+                      if (onTrailingTap != null) ...[
+                        const SizedBox(width: 2),
+                        const Icon(Icons.arrow_forward_rounded,
+                            size: 14, color: AppColors.primary),
+                      ],
+                    ],
+                  ),
+                ),
               ),
           ],
         ),
@@ -738,9 +1243,12 @@ class _EventCategoriesGrid extends ConsumerWidget {
           itemCount: cats.length,
           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: 4,
-            mainAxisSpacing: AppSizes.sm,
+            mainAxisSpacing: AppSizes.md,
             crossAxisSpacing: AppSizes.sm,
-            childAspectRatio: 0.9,
+            // Image stays square; the label sits underneath. Aspect ratio
+            // is tuned so 2-line names ("Get-together", "House Party") wrap
+            // without overflowing the cell — 0.78 was too tight.
+            childAspectRatio: 0.68,
           ),
           itemBuilder: (_, i) => _EventCategoryTile(category: cats[i]),
         ),
@@ -753,10 +1261,55 @@ class _EventCategoryTile extends ConsumerWidget {
   const _EventCategoryTile({required this.category});
   final EventCategory category;
 
+  /// Hard-coded slug → Unsplash photo for each occasion. Picked from URLs
+  /// already proven to load in this codebase (menu repo + onboarding +
+  /// venue picker) so they're known-good. Swap freely — the tile falls
+  /// back to the icon-on-tinted-bg design if the URL ever 404s.
+  static const _imageBySlug = <String, String>{
+    'birthday':
+        'https://images.unsplash.com/photo-1558636508-e0db3814bd1d?auto=format&fit=crop&w=600&q=80',
+    'wedding':
+        'https://images.unsplash.com/photo-1519225421980-715cb0215aed?auto=format&fit=crop&w=600&q=80',
+    'corporate':
+        'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?auto=format&fit=crop&w=600&q=80',
+    'house':
+        'https://images.unsplash.com/photo-1631452180519-c014fe946bc7?auto=format&fit=crop&w=600&q=80',
+    'kitty':
+        'https://images.unsplash.com/photo-1585937421612-70a008356fbe?auto=format&fit=crop&w=600&q=80',
+    // Festival — swapped from a 404'd URL to a verified menu-repo photo.
+    'festival':
+        'https://images.unsplash.com/photo-1567188040759-fb8a883dc6d8?auto=format&fit=crop&w=600&q=80',
+    'anniversary':
+        'https://images.unsplash.com/photo-1530023367847-a683933f4172?auto=format&fit=crop&w=600&q=80',
+    'gettogether':
+        'https://images.unsplash.com/photo-1565557623262-b51c2513a641?auto=format&fit=crop&w=600&q=80',
+  };
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final bg = AppColors.fromHex(category.bgHex);
     final fg = AppColors.fromHex(category.iconHex, fallback: AppColors.primary);
+    final imageUrl = _imageBySlug[category.slug];
+
+    Widget iconFallback() => Container(
+          color: bg,
+          alignment: Alignment.center,
+          child: Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: fg.withValues(alpha: 0.14),
+              shape: BoxShape.circle,
+            ),
+            alignment: Alignment.center,
+            child: Icon(
+              materialIconByName(category.iconName),
+              color: fg,
+              size: 20,
+            ),
+          ),
+        );
+
     return InkWell(
       onTap: () {
         HapticFeedback.selectionClick();
@@ -769,42 +1322,60 @@ class _EventCategoryTile extends ConsumerWidget {
         context.push(AppRoutes.eventDetails);
       },
       borderRadius: BorderRadius.circular(AppSizes.radiusMd),
-      child: Container(
-        padding: const EdgeInsets.all(AppSizes.sm),
-        decoration: BoxDecoration(
-          color: bg,
-          borderRadius: BorderRadius.circular(AppSizes.radiusMd),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              width: 42,
-              height: 42,
-              decoration: BoxDecoration(
-                color: fg.withValues(alpha: 0.12),
-                shape: BoxShape.circle,
-              ),
-              alignment: Alignment.center,
-              child: Icon(
-                materialIconByName(category.iconName),
-                color: fg,
-                size: 20,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Square photo on top.
+          AspectRatio(
+            aspectRatio: 1,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(AppSizes.radiusMd),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  if (imageUrl != null)
+                    SafeNetImage(
+                      url: imageUrl,
+                      errorBuilder: (_) => iconFallback(),
+                      placeholder: (_) => iconFallback(),
+                    )
+                  else
+                    iconFallback(),
+                  // Subtle dark scrim helps the photo read as tappable
+                  // and gives consistent contrast against the label below.
+                  if (imageUrl != null)
+                    const DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          stops: [0.6, 1.0],
+                          colors: [
+                            Colors.transparent,
+                            Color(0x1F000000),
+                          ],
+                        ),
+                      ),
+                    ),
+                ],
               ),
             ),
-            const SizedBox(height: AppSizes.sm),
-            Text(
-              category.name,
-              style: AppTextStyles.captionBold.copyWith(
-                color: AppColors.textPrimary,
-                fontSize: 11,
-              ),
-              textAlign: TextAlign.center,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 6),
+          // Label below — capped at 2 lines so "Get-together" etc. wrap
+          // cleanly without resizing the tile.
+          Text(
+            category.name,
+            textAlign: TextAlign.center,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: AppTextStyles.captionBold.copyWith(
+              fontSize: 11,
+              height: 1.15,
+              color: AppColors.textPrimary,
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

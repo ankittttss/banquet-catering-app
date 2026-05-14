@@ -5,6 +5,7 @@ import 'venue_type.dart';
 /// Client-side draft of an event — not persisted until the order is placed.
 class EventDraft {
   const EventDraft({
+    this.eventName,
     this.date,
     this.location,
     this.session,
@@ -21,6 +22,11 @@ class EventDraft {
     this.addonQuantities = const {},
     this.recce,
   });
+
+  /// Customer-chosen display name for the event, e.g. "Aanya's Sangeet".
+  /// Optional — when null the UI falls back to a composed label like
+  /// "Dinner for 150".
+  final String? eventName;
 
   final DateTime? date;
   final String? location;
@@ -77,6 +83,7 @@ class EventDraft {
       tierId != null;
 
   EventDraft copyWith({
+    String? eventName,
     DateTime? date,
     String? location,
     String? session,
@@ -94,6 +101,7 @@ class EventDraft {
     ReccePick? recce,
   }) =>
       EventDraft(
+        eventName: eventName ?? this.eventName,
         date: date ?? this.date,
         location: location ?? this.location,
         session: session ?? this.session,
@@ -124,4 +132,62 @@ class EventDraft {
         if (tierId != null) 'tier_id': tierId,
         if (banquetVenueId != null) 'banquet_venue_id': banquetVenueId,
       };
+
+  /// Snapshot of the draft for persistence in `shared_preferences`. Bumps
+  /// the schema version so old payloads can be discarded cleanly if the
+  /// model evolves.
+  Map<String, dynamic> toJson() => {
+        'v': 1,
+        if (eventName != null) 'eventName': eventName,
+        if (date != null) 'date': date!.toIso8601String(),
+        if (location != null) 'location': location,
+        if (session != null) 'session': session,
+        if (startTime != null) 'startTime': startTime!.toIso8601String(),
+        if (endTime != null) 'endTime': endTime!.toIso8601String(),
+        'guestCount': guestCount,
+        if (tierId != null) 'tierId': tierId,
+        if (tierCode != null) 'tierCode': tierCode,
+        if (banquetVenueId != null) 'banquetVenueId': banquetVenueId,
+        if (banquetVenueName != null) 'banquetVenueName': banquetVenueName,
+        if (serviceBoyCount != null) 'serviceBoyCount': serviceBoyCount,
+        if (venueType != null) 'venueType': venueType!.dbValue,
+        if (propertyDraft != null) 'propertyDraft': propertyDraft!.toJson(),
+        if (addonQuantities.isNotEmpty) 'addonQuantities': addonQuantities,
+        if (recce != null) 'recce': recce!.toJson(),
+      };
+
+  factory EventDraft.fromJson(Map<String, dynamic> json) {
+    DateTime? parse(String key) {
+      final v = json[key];
+      return v is String ? DateTime.tryParse(v) : null;
+    }
+    final qty = (json['addonQuantities'] as Map?)?.map(
+          (k, v) => MapEntry(k.toString(), (v as num).toInt()),
+        ) ??
+        const <String, int>{};
+    return EventDraft(
+      eventName: json['eventName'] as String?,
+      date: parse('date'),
+      location: json['location'] as String?,
+      session: json['session'] as String?,
+      startTime: parse('startTime'),
+      endTime: parse('endTime'),
+      guestCount: (json['guestCount'] as num?)?.toInt() ?? 50,
+      tierId: json['tierId'] as String?,
+      tierCode: json['tierCode'] as String?,
+      banquetVenueId: json['banquetVenueId'] as String?,
+      banquetVenueName: json['banquetVenueName'] as String?,
+      serviceBoyCount: (json['serviceBoyCount'] as num?)?.toInt(),
+      venueType: VenueType.fromDbValue(json['venueType'] as String?),
+      propertyDraft: json['propertyDraft'] is Map<String, dynamic>
+          ? PrivatePropertyDraft.fromJson(
+              json['propertyDraft'] as Map<String, dynamic>,
+            )
+          : null,
+      addonQuantities: qty,
+      recce: json['recce'] is Map<String, dynamic>
+          ? ReccePick.fromJson(json['recce'] as Map<String, dynamic>)
+          : null,
+    );
+  }
 }
