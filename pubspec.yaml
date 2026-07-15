@@ -57,6 +57,7 @@ dependencies:
 
 dev_dependencies:
   flutter_lints: ^4.0.0
+  flutter_launcher_icons: ^0.14.1
   flutter_test:
     sdk: flutter
   riverpod_generator: ^2.4.0
@@ -69,3 +70,17 @@ flutter:
   assets:
     - assets/images/
     - assets/icons/
+
+# App launcher icon (Android) + web favicon/PWA icons, generated from the
+# Dawat "D" mark via `dart run flutter_launcher_icons`.
+flutter_launcher_icons:
+  android: true
+  min_sdk_android: 21
+  image_path: "assets/icon/app_icon.png"
+  adaptive_icon_background: "#C0212E"
+  adaptive_icon_foreground: "assets/icon/app_icon.png"
+  web:
+    generate: true
+    image_path: "assets/icon/app_icon.png"
+    background_color: "#C0212E"
+    theme_color: "#C0212E"
