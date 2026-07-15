@@ -22,8 +22,7 @@ class SetupEquipmentScreen extends ConsumerStatefulWidget {
       _SetupEquipmentScreenState();
 }
 
-class _SetupEquipmentScreenState
-    extends ConsumerState<SetupEquipmentScreen> {
+class _SetupEquipmentScreenState extends ConsumerState<SetupEquipmentScreen> {
   @override
   void initState() {
     super.initState();
@@ -34,9 +33,7 @@ class _SetupEquipmentScreenState
       if (draft.addonQuantities.isEmpty) {
         final seed = ref.read(defaultAddonSelectionProvider);
         seed.forEach((id, qty) {
-          ref
-              .read(eventDraftProvider.notifier)
-              .setAddonQuantity(id, qty);
+          ref.read(eventDraftProvider.notifier).setAddonQuantity(id, qty);
         });
       }
     });
@@ -103,7 +100,8 @@ class _SetupEquipmentScreenState
                 // restaurants.
                 if (draft.recce?.isComplete == true) {
                   final t = DateTime.now().millisecondsSinceEpoch;
-                  context.go(
+                  // Push so the back stack preserves the planning steps.
+                  context.push(
                     '${AppRoutes.userHome}?scrollTo=restaurants&t=$t',
                   );
                 } else {
@@ -359,8 +357,7 @@ class _AddonRow extends ConsumerWidget {
                     ),
                     decoration: BoxDecoration(
                       color: AppColors.accentSoft,
-                      borderRadius:
-                          BorderRadius.circular(AppSizes.radiusXs),
+                      borderRadius: BorderRadius.circular(AppSizes.radiusXs),
                     ),
                     child: Text(
                       'RECOMMENDED',
@@ -392,8 +389,8 @@ class _AddonRow extends ConsumerWidget {
                           TextSpan(text: Formatters.currency(addon.unitPrice)),
                           TextSpan(
                             text: ' / ${addon.unitLabel}',
-                            style: AppTextStyles.bodyMuted
-                                .copyWith(fontSize: 13),
+                            style:
+                                AppTextStyles.bodyMuted.copyWith(fontSize: 13),
                           ),
                         ],
                       ),
@@ -412,12 +409,10 @@ class _AddonRow extends ConsumerWidget {
           const SizedBox(width: AppSizes.sm),
           _QtyStepper(
             value: qty,
-            onMinus: () => ref
-                .read(eventDraftProvider.notifier)
-                .bumpAddon(addon.id, -1),
-            onPlus: () => ref
-                .read(eventDraftProvider.notifier)
-                .bumpAddon(addon.id, 1),
+            onMinus: () =>
+                ref.read(eventDraftProvider.notifier).bumpAddon(addon.id, -1),
+            onPlus: () =>
+                ref.read(eventDraftProvider.notifier).bumpAddon(addon.id, 1),
           ),
         ],
       ),

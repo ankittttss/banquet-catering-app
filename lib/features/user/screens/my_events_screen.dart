@@ -3,42 +3,17 @@ import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:google_fonts/google_fonts.dart';
 
+import '../../../core/constants/app_colors.dart';
+import '../../../core/constants/app_sizes.dart';
+import '../../../core/constants/app_text_styles.dart';
 import '../../../core/router/app_routes.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../data/models/order.dart';
-import '../../../data/models/restaurant.dart';
-import '../../../shared/providers/menu_providers.dart';
 import '../../../shared/providers/order_providers.dart';
 import '../../../shared/widgets/app_scaffold.dart';
 import '../../../shared/widgets/empty_state.dart';
 import '../../../shared/widgets/user_bottom_nav.dart';
-
-// ───────────────────────── Palette (matches HTML mock) ─────────────────────────
-
-class _P {
-  static const Color red   = Color(0xFFE23744);
-  static const Color redLt = Color(0xFFFFF1F2);
-  static const Color grn   = Color(0xFF1BA672);
-  static const Color grnLt = Color(0xFFEAFAF1);
-  static const Color blu   = Color(0xFF2B6CB0);
-  static const Color bluLt = Color(0xFFEBF4FF);
-  static const Color gld   = Color(0xFFC4922A);
-  static const Color gldLt = Color(0xFFFFF8E7);
-  static const Color pur   = Color(0xFF7C3AED);
-  static const Color purLt = Color(0xFFF3E8FF);
-  static const Color org   = Color(0xFFE97A2B);
-  static const Color orgLt = Color(0xFFFFF4EB);
-  static const Color blk   = Color(0xFF1A1A1A);
-  static const Color g70   = Color(0xFF4F4F4F);
-  static const Color g50   = Color(0xFF828282);
-  static const Color g30   = Color(0xFFBDBDBD);
-  static const Color g15   = Color(0xFFE0E0E0);
-  static const Color g8    = Color(0xFFF2F2F2);
-  static const Color w     = Color(0xFFFFFFFF);
-  static const Color bg    = Color(0xFFF7F4F0);
-}
 
 enum _Filter { all, active, delivered, cancelled }
 
@@ -50,6 +25,7 @@ class _EventGroup {
   _EventGroup({
     required this.eventId,
     required this.orders,
+    required this.eventName,
     required this.eventDate,
     required this.location,
     required this.guestCount,
@@ -60,6 +36,7 @@ class _EventGroup {
 
   final String eventId;
   final List<OrderSummary> orders;
+  final String? eventName;
   final DateTime? eventDate;
   final String? location;
   final int? guestCount;
@@ -86,12 +63,10 @@ class _MyEventsScreenState extends ConsumerState<MyEventsScreen> {
   @override
   Widget build(BuildContext context) {
     final orders = ref.watch(myOrdersStreamProvider);
-    final restaurants =
-        ref.watch(restaurantsProvider).valueOrNull ?? const <Restaurant>[];
 
     return AppScaffold(
       padded: false,
-      backgroundColor: _P.bg,
+      backgroundColor: AppColors.surfaceAlt,
       bottomBar: const UserBottomNav(active: UserNavTab.orders),
       body: orders.when(
         loading: () => const Center(child: CircularProgressIndicator()),
@@ -111,7 +86,9 @@ class _MyEventsScreenState extends ConsumerState<MyEventsScreen> {
           final groups = _groupByEvent(list);
           final counts = _eventCounts(groups);
           final filtered = _filteredGroups(groups, _filter);
+          final stats = _spendStats(groups);
           return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               _Header(total: groups.length),
               _Filters(
@@ -121,12 +98,15 @@ class _MyEventsScreenState extends ConsumerState<MyEventsScreen> {
               ),
               Expanded(
                 child: RefreshIndicator(
-                  color: _P.red,
-                  onRefresh: () async =>
-                      ref.invalidate(myOrdersStreamProvider),
+                  color: AppColors.primary,
+                  onRefresh: () async => ref.invalidate(myOrdersStreamProvider),
                   child: _EventGroupsList(
                     groups: filtered,
-                    restaurants: restaurants,
+                    header: _SpendSummaryCard(
+                      spend: stats.spend,
+                      eventsDone: stats.events,
+                      guestsFed: stats.guests,
+                    ),
                   ),
                 ),
               ),
@@ -153,6 +133,7 @@ class _MyEventsScreenState extends ConsumerState<MyEventsScreen> {
       out.add(_EventGroup(
         eventId: eventId,
         orders: orders,
+        eventName: first.eventName,
         eventDate: first.eventDate,
         location: first.location,
         guestCount: first.guestCount,
@@ -205,12 +186,10 @@ class _MyEventsScreenState extends ConsumerState<MyEventsScreen> {
   List<_EventGroup> _filteredGroups(List<_EventGroup> groups, _Filter f) {
     return switch (f) {
       _Filter.all => groups,
-      _Filter.delivered => groups
-          .where((g) => g.rolledUpStatus == OrderStatus.delivered)
-          .toList(),
-      _Filter.cancelled => groups
-          .where((g) => g.rolledUpStatus == OrderStatus.cancelled)
-          .toList(),
+      _Filter.delivered =>
+        groups.where((g) => g.rolledUpStatus == OrderStatus.delivered).toList(),
+      _Filter.cancelled =>
+        groups.where((g) => g.rolledUpStatus == OrderStatus.cancelled).toList(),
       _Filter.active => groups
           .where((g) =>
               g.rolledUpStatus != OrderStatus.delivered &&
@@ -218,6 +197,87 @@ class _MyEventsScreenState extends ConsumerState<MyEventsScreen> {
           .toList(),
     };
   }
+
+  /// Lifetime totals for the spend hero card. Cancelled events don't count
+  /// toward spend or guests fed; "events done" counts delivered events.
+  ({double spend, int events, int guests}) _spendStats(
+    List<_EventGroup> groups,
+  ) {
+    var spend = 0.0;
+    var events = 0;
+    var guests = 0;
+    for (final g in groups) {
+      if (g.rolledUpStatus != OrderStatus.cancelled) {
+        spend += g.totalAmount;
+        guests += g.guestCount ?? 0;
+      }
+      if (g.rolledUpStatus == OrderStatus.delivered) events++;
+    }
+    return (spend: spend, events: events, guests: guests);
+  }
+}
+
+// ───────────────────────── Status + event-type helpers ─────────────────────
+
+/// (background, foreground, label, leading-glyph) for an order-status badge,
+/// styled after the prototype's StatusBadge: soft tint background, strong
+/// tint foreground, uppercase label. Glyph is ● for in-progress statuses,
+/// ✓ for delivered, ✕ for cancelled.
+(Color, Color, String, String) _statusView(OrderStatus s) => switch (s) {
+      OrderStatus.placed => (
+          AppColors.catGoldLt,
+          AppColors.accentDark,
+          'Placed',
+          '●',
+        ),
+      OrderStatus.confirmed => (
+          AppColors.catGreenLt,
+          AppColors.catGreen,
+          'Confirmed',
+          '●',
+        ),
+      OrderStatus.preparing => (
+          AppColors.catBlueLt,
+          AppColors.catBlue,
+          'Preparing',
+          '●',
+        ),
+      OrderStatus.dispatched => (
+          AppColors.catBlueLt,
+          AppColors.catBlue,
+          'On the way',
+          '●',
+        ),
+      OrderStatus.delivered => (
+          AppColors.divider,
+          AppColors.textSecondary,
+          'Delivered',
+          '✓',
+        ),
+      OrderStatus.cancelled => (
+          AppColors.catRedLt,
+          AppColors.error,
+          'Cancelled',
+          '✕',
+        ),
+    };
+
+/// (background, foreground, emoji, label) for the event-type chip, inferred
+/// from guest count as a lightweight stand-in until events carry a type.
+(Color, Color, String, String) _eventMeta(int guests) {
+  if (guests >= 60) {
+    return (AppColors.catPurpleLt, AppColors.catPurple, '💒', 'Wedding');
+  }
+  if (guests >= 30) {
+    return (AppColors.catBlueLt, AppColors.catBlue, '🏢', 'Corporate event');
+  }
+  if (guests >= 10) {
+    return (AppColors.catGoldLt, AppColors.catGold, '🏠', 'House party');
+  }
+  if (guests > 0) {
+    return (AppColors.primarySoft, AppColors.primary, '🎂', 'Birthday');
+  }
+  return (AppColors.accentSoft, AppColors.accentDark, '🎉', 'Event');
 }
 
 // ───────────────────────── Header ─────────────────────────
@@ -229,26 +289,21 @@ class _Header extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: _P.w,
-      padding: const EdgeInsets.fromLTRB(20, 14, 20, 14),
+      color: AppColors.surface,
+      padding: const EdgeInsets.fromLTRB(
+        AppSizes.pagePadding,
+        AppSizes.md,
+        AppSizes.pagePadding,
+        AppSizes.md,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'My orders',
-            style: GoogleFonts.instrumentSerif(
-              fontSize: 28,
-              fontWeight: FontWeight.w400,
-              color: _P.blk,
-            ),
-          ),
+          Text('My orders', style: AppTextStyles.display),
           const SizedBox(height: 2),
           Text(
-            total == 1 ? '1 event this month' : '$total events this month',
-            style: GoogleFonts.outfit(
-              fontSize: 13,
-              color: _P.g50,
-            ),
+            total == 1 ? '1 event' : '$total events',
+            style: AppTextStyles.caption,
           ),
         ],
       ),
@@ -271,13 +326,13 @@ class _Filters extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: _P.w,
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      color: AppColors.surface,
+      padding: const EdgeInsets.only(bottom: AppSizes.md),
       child: SizedBox(
-        height: 34,
+        height: 36,
         child: ListView(
           scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: 4),
+          padding: const EdgeInsets.symmetric(horizontal: AppSizes.pagePadding),
           children: [
             _chip(_Filter.all, 'All'),
             _chip(_Filter.active, 'Active'),
@@ -293,46 +348,47 @@ class _Filters extends StatelessWidget {
     final on = filter == f;
     final count = counts[f] ?? 0;
     return Padding(
-      padding: const EdgeInsets.only(right: 6),
+      padding: const EdgeInsets.only(right: AppSizes.sm),
       child: Material(
-        color: on ? _P.blk : _P.w,
+        color: on ? AppColors.primary : AppColors.surface,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-          side: BorderSide(color: on ? _P.blk : _P.g15, width: 1.5),
+          borderRadius: BorderRadius.circular(AppSizes.radiusPill),
+          side: BorderSide(color: on ? AppColors.primary : AppColors.border),
         ),
         child: InkWell(
           onTap: () {
             HapticFeedback.selectionClick();
             onChanged(f);
           },
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(AppSizes.radiusPill),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
                   label,
-                  style: GoogleFonts.outfit(
-                    fontSize: 12,
+                  style: AppTextStyles.caption.copyWith(
                     fontWeight: FontWeight.w600,
-                    color: on ? _P.w : _P.g50,
+                    color: on ? Colors.white : AppColors.textSecondary,
                   ),
                 ),
-                const SizedBox(width: 5),
+                const SizedBox(width: 6),
                 Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 6, vertical: 1),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
                   decoration: BoxDecoration(
-                    color: on ? _P.w.withValues(alpha: 0.2) : _P.g8,
+                    color: on
+                        ? Colors.white.withValues(alpha: 0.22)
+                        : AppColors.surfaceAlt,
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
                     '$count',
-                    style: GoogleFonts.outfit(
+                    style: AppTextStyles.caption.copyWith(
                       fontSize: 10,
                       fontWeight: FontWeight.w700,
-                      color: on ? _P.w : _P.g70,
+                      color: on ? Colors.white : AppColors.textSecondary,
                     ),
                   ),
                 ),
@@ -348,9 +404,14 @@ class _Filters extends StatelessWidget {
 // ───────────────────────── Event groups list ─────────────────────────
 
 class _EventGroupsList extends StatelessWidget {
-  const _EventGroupsList({required this.groups, required this.restaurants});
+  const _EventGroupsList({
+    required this.groups,
+    required this.header,
+  });
   final List<_EventGroup> groups;
-  final List<Restaurant> restaurants;
+
+  /// Widget pinned to the top of the scrollable list (the spend summary card).
+  final Widget header;
 
   @override
   Widget build(BuildContext context) {
@@ -358,85 +419,32 @@ class _EventGroupsList extends StatelessWidget {
       return ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         children: [
+          header,
           const SizedBox(height: 120),
           Center(
             child: Text(
               'No events match this filter',
-              style: GoogleFonts.outfit(
-                fontSize: 14,
-                color: _P.g50,
-              ),
+              style: AppTextStyles.bodyMuted,
             ),
           ),
         ],
       );
     }
 
-    // Group by date bucket (Today / Yesterday / formatted date).
-    final bucketed = <String, List<_EventGroup>>{};
-    for (final g in groups) {
-      final bucket = _bucket(g.createdAt);
-      bucketed.putIfAbsent(bucket, () => []).add(g);
+    final children = <Widget>[header];
+    for (var i = 0; i < groups.length; i++) {
+      children.add(
+        _EventGroupCard(group: groups[i])
+            .animate()
+            .fadeIn(duration: 240.ms, delay: (30 * i).ms),
+      );
     }
-
-    final children = <Widget>[];
-    var cardIndex = 0;
-    bucketed.forEach((bucket, list) {
-      children.add(_DateDivider(label: bucket));
-      for (final g in list) {
-        children.add(
-          _EventGroupCard(group: g, restaurants: restaurants)
-              .animate()
-              .fadeIn(duration: 240.ms, delay: (30 * cardIndex).ms),
-        );
-        cardIndex++;
-      }
-    });
     children.add(const SizedBox(height: 20));
 
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.only(top: 4, bottom: 16),
+      padding: const EdgeInsets.only(top: AppSizes.xs, bottom: AppSizes.md),
       children: children,
-    );
-  }
-
-  String _bucket(DateTime d) {
-    final now = DateTime.now();
-    final dOnly = DateTime(d.year, d.month, d.day);
-    final nOnly = DateTime(now.year, now.month, now.day);
-    final diff = nOnly.difference(dOnly).inDays;
-    if (diff == 0) return 'Today';
-    if (diff == 1) return 'Yesterday';
-    return Formatters.date(d);
-  }
-}
-
-class _DateDivider extends StatelessWidget {
-  const _DateDivider({required this.label});
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 14, 20, 6),
-      child: Row(
-        children: [
-          Text(
-            label.toUpperCase(),
-            style: GoogleFonts.outfit(
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-              color: _P.g50,
-              letterSpacing: 0.5,
-            ),
-          ),
-          const SizedBox(width: 8),
-          const Expanded(
-            child: Divider(color: _P.g15, height: 1, thickness: 1),
-          ),
-        ],
-      ),
     );
   }
 }
@@ -444,71 +452,215 @@ class _DateDivider extends StatelessWidget {
 // ───────────────────────── Event group card ─────────────────────────
 
 class _EventGroupCard extends StatelessWidget {
-  const _EventGroupCard({required this.group, required this.restaurants});
+  const _EventGroupCard({required this.group});
   final _EventGroup group;
-  final List<Restaurant> restaurants;
 
-  Restaurant? _restaurantFor(OrderSummary o) {
-    if (o.restaurantId == null) return null;
-    for (final r in restaurants) {
-      if (r.id == o.restaurantId) return r;
+  /// The order a card tap / "Track" opens — the most-active one for a
+  /// multi-vendor event, else the only order.
+  OrderSummary get _primaryOrder {
+    for (final wanted in const [
+      OrderStatus.dispatched,
+      OrderStatus.preparing,
+      OrderStatus.confirmed,
+      OrderStatus.placed,
+    ]) {
+      for (final o in group.orders) {
+        if (o.orderStatus == wanted) return o;
+      }
     }
-    return null;
+    return group.orders.first;
   }
 
   @override
   Widget build(BuildContext context) {
     final s = group.rolledUpStatus;
-    final isPast = group.isPast;
+    final cancelled = s == OrderStatus.cancelled;
+    final reorderable = s == OrderStatus.delivered || cancelled;
+    final (evBg, _, emoji, typeLabel) = _eventMeta(group.guestCount ?? 0);
+    // Prefer the customer's chosen event name; fall back to the inferred type
+    // label (e.g. "Wedding") for legacy orders placed before names existed.
+    final name = group.eventName?.trim();
+    final title = (name != null && name.isNotEmpty) ? name : typeLabel;
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
-      child: Material(
-        color: _P.w,
-        borderRadius: BorderRadius.circular(16),
+      padding: const EdgeInsets.fromLTRB(
+        AppSizes.md,
+        AppSizes.xs,
+        AppSizes.md,
+        AppSizes.sm,
+      ),
+      child: Opacity(
+        opacity: cancelled ? 0.85 : 1,
         child: Container(
+          clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.black.withValues(alpha: 0.04)),
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(AppSizes.radiusMd),
+            border: Border.all(color: AppColors.border),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _accentStrip(s, dim: isPast),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
-                child: Opacity(
-                  opacity: isPast ? 0.82 : 1.0,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _topRow(s),
-                      const SizedBox(height: 10),
-                      _eventBadge(),
-                      if (_meta().isNotEmpty) ...[
-                        const SizedBox(height: 8),
-                        Text(
-                          _meta(),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: GoogleFonts.outfit(
-                            fontSize: 12,
-                            color: _P.g50,
-                            height: 1.6,
+              // ---- Tappable body: thumbnail + title/status + date + meta ----
+              Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: () {
+                    HapticFeedback.lightImpact();
+                    context.push(AppRoutes.orderDetailFor(_primaryOrder.id));
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.all(AppSizes.md),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Thumbnail — event-type emoji on a tinted tile
+                        // (the data model carries no cover photos).
+                        Container(
+                          width: 60,
+                          height: 60,
+                          decoration: BoxDecoration(
+                            color: evBg,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          alignment: Alignment.center,
+                          child: Text(
+                            emoji,
+                            style: const TextStyle(fontSize: 28),
+                          ),
+                        ),
+                        const SizedBox(width: AppSizes.md),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      title,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: AppTextStyles.heading2.copyWith(
+                                        color: cancelled
+                                            ? AppColors.textMuted
+                                            : AppColors.textPrimary,
+                                        decoration: cancelled
+                                            ? TextDecoration.lineThrough
+                                            : null,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: AppSizes.sm),
+                                  _StatusBadge(status: s),
+                                ],
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                Formatters.date(
+                                  group.eventDate ?? group.createdAt,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: AppTextStyles.caption
+                                    .copyWith(color: AppColors.textMuted),
+                              ),
+                              const SizedBox(height: 8),
+                              _metaRow(),
+                            ],
                           ),
                         ),
                       ],
-                      if (!isPast) ...[
-                        const SizedBox(height: 12),
-                        _miniProgress(s),
-                      ],
-                      const SizedBox(height: 14),
-                      _restaurantsList(context),
-                    ],
+                    ),
                   ),
                 ),
               ),
-              _footer(context, s, isPast),
+              // ---- Footer: id · total · actions (perforated receipt) ----
+              const _DashedLine(),
+              Container(
+                color: AppColors.surfaceAlt,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppSizes.md,
+                  vertical: AppSizes.sm,
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              _idLabel(),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: AppTextStyles.caption.copyWith(
+                                color: AppColors.textMuted,
+                                fontFamily: 'monospace',
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            '·',
+                            style: AppTextStyles.caption
+                                .copyWith(color: AppColors.textMuted),
+                          ),
+                          const SizedBox(width: 6),
+                          Flexible(
+                            child: Text(
+                              Formatters.currency(group.totalAmount),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: AppTextStyles.bodyBold.copyWith(
+                                color: cancelled
+                                    ? AppColors.textMuted
+                                    : AppColors.textPrimary,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: AppSizes.sm),
+                    if (reorderable)
+                      _FooterButton(
+                        label: 'Reorder',
+                        icon: Icons.add_rounded,
+                        filled: true,
+                        onTap: () {
+                          HapticFeedback.selectionClick();
+                          context.push(AppRoutes.userHome);
+                        },
+                      )
+                    else
+                      _FooterButton(
+                        label: 'Track',
+                        filled: false,
+                        onTap: () {
+                          HapticFeedback.selectionClick();
+                          context
+                              .push(AppRoutes.orderDetailFor(_primaryOrder.id));
+                        },
+                      ),
+                    const SizedBox(width: 6),
+                    _FooterButton(
+                      label: 'Invoice',
+                      icon: Icons.receipt_long_rounded,
+                      filled: false,
+                      onTap: () {
+                        HapticFeedback.selectionClick();
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Invoices are coming soon'),
+                            behavior: SnackBarBehavior.floating,
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ),
             ],
           ),
         ),
@@ -516,527 +668,140 @@ class _EventGroupCard extends StatelessWidget {
     );
   }
 
-  // ------- accent strip -------
-  Widget _accentStrip(OrderStatus s, {required bool dim}) {
-    final gradient = _statusGradient(s);
-    return Opacity(
-      opacity: dim ? 0.5 : 1.0,
-      child: Container(
-        height: 3,
-        decoration: BoxDecoration(
-          gradient: gradient,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+  Widget _metaRow() {
+    final bits = <Widget>[];
+    final guests = group.guestCount ?? 0;
+    if (guests > 0) {
+      bits.add(_metaBit(Icons.groups_outlined, '$guests'));
+    }
+    final loc = group.location?.trim();
+    if (loc != null && loc.isNotEmpty) {
+      bits.add(Flexible(child: _metaBit(Icons.place_outlined, loc)));
+    }
+    if (bits.isEmpty) {
+      final n = group.orders.length;
+      bits.add(
+        _metaBit(
+          Icons.receipt_long_outlined,
+          n == 1 ? '1 order' : '$n orders',
         ),
-      ),
-    );
+      );
+    }
+    final spaced = <Widget>[];
+    for (var i = 0; i < bits.length; i++) {
+      if (i > 0) spaced.add(const SizedBox(width: AppSizes.md));
+      spaced.add(bits[i]);
+    }
+    return Row(children: spaced);
   }
 
-  LinearGradient _statusGradient(OrderStatus s) => switch (s) {
-        OrderStatus.placed =>
-          const LinearGradient(colors: [_P.gld, _P.org]),
-        OrderStatus.confirmed =>
-          const LinearGradient(colors: [_P.blu, Color(0xFF5B9BD5)]),
-        OrderStatus.preparing =>
-          const LinearGradient(colors: [_P.org, Color(0xFFF5A623)]),
-        OrderStatus.dispatched =>
-          const LinearGradient(colors: [_P.blu, _P.grn]),
-        OrderStatus.delivered =>
-          const LinearGradient(colors: [_P.grn, Color(0xFF2DC98A)]),
-        OrderStatus.cancelled =>
-          const LinearGradient(colors: [_P.red, Color(0xFFF07070)]),
-      };
-
-  // ------- top row -------
-  Widget _topRow(OrderStatus s) {
-    final (bg, emoji, _, _) = _eventMeta();
+  Widget _metaBit(IconData icon, String text) {
     return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Container(
-          width: 44,
-          height: 44,
-          decoration: BoxDecoration(
-            color: bg,
-            borderRadius: BorderRadius.circular(14),
-          ),
-          alignment: Alignment.center,
-          child: Text(emoji, style: const TextStyle(fontSize: 22)),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                _eventTitle(),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: GoogleFonts.outfit(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                  color: _P.blk,
-                ),
-              ),
-              const SizedBox(height: 1),
-              Text(
-                _eventSubtitle(),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: GoogleFonts.outfit(
-                  fontSize: 12,
-                  color: _P.g50,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ],
+        Icon(icon, size: 14, color: AppColors.textMuted),
+        const SizedBox(width: 4),
+        Flexible(
+          child: Text(
+            text,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style:
+                AppTextStyles.caption.copyWith(color: AppColors.textSecondary),
           ),
         ),
-        const SizedBox(width: 8),
-        _statusBadge(s),
       ],
     );
   }
 
-  String _eventTitle() {
-    final (_, _, _, label) = _eventMeta();
-    return label;
-  }
-
-  String _eventSubtitle() {
-    final parts = <String>[];
-    final eventId = group.eventId.length >= 6
+  String _idLabel() {
+    final id = group.eventId.length >= 6
         ? group.eventId.substring(0, 6).toUpperCase()
         : group.eventId.toUpperCase();
-    parts.add('#EVT-$eventId');
-    if (group.isMultiVendor) {
-      parts.add('${group.orders.length} kitchens');
-    }
-    parts.add(_clock(group.createdAt));
-    return parts.join(' · ');
+    return '#EVT-$id';
   }
+}
 
-  // ------- status badge -------
-  Widget _statusBadge(OrderStatus s) {
-    final (bg, fg, pulsing) = switch (s) {
-      OrderStatus.placed => (_P.gldLt, _P.gld, false),
-      OrderStatus.confirmed => (_P.bluLt, _P.blu, false),
-      OrderStatus.preparing => (_P.orgLt, _P.org, true),
-      OrderStatus.dispatched => (_P.bluLt, _P.blu, true),
-      OrderStatus.delivered => (_P.grnLt, _P.grn, false),
-      OrderStatus.cancelled => (_P.redLt, _P.red, false),
-    };
-    final label = switch (s) {
-      OrderStatus.placed => 'Placed',
-      OrderStatus.confirmed => 'Confirmed',
-      OrderStatus.preparing => 'Preparing',
-      OrderStatus.dispatched => 'In Transit',
-      OrderStatus.delivered => 'Delivered',
-      OrderStatus.cancelled => 'Cancelled',
-    };
+// ───────────────────────── Status badge ─────────────────────────
 
-    Widget dot = Container(
-      width: 6,
-      height: 6,
-      decoration: BoxDecoration(color: fg, shape: BoxShape.circle),
-    );
-    if (pulsing) {
-      dot = dot
-          .animate(onPlay: (c) => c.repeat(reverse: true))
-          .fadeIn(duration: 800.ms)
-          .scale(
-              begin: const Offset(0.7, 0.7),
-              end: const Offset(1.1, 1.1),
-              duration: 800.ms);
-    }
+/// Pill badge for an order's rolled-up status, matching the prototype's
+/// StatusBadge (soft tint bg, strong tint fg, uppercase, leading glyph).
+class _StatusBadge extends StatelessWidget {
+  const _StatusBadge({required this.status});
+  final OrderStatus status;
 
+  @override
+  Widget build(BuildContext context) {
+    final (bg, fg, label, glyph) = _statusView(status);
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration:
-          BoxDecoration(color: bg, borderRadius: BorderRadius.circular(8)),
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(AppSizes.radiusPill),
+      ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          dot,
+          Text(glyph, style: TextStyle(fontSize: 8, color: fg, height: 1)),
           const SizedBox(width: 4),
           Text(
-            label,
-            style: GoogleFonts.outfit(
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
+            label.toUpperCase(),
+            style: AppTextStyles.captionBold.copyWith(
+              fontSize: 10,
               color: fg,
+              letterSpacing: 0.4,
             ),
           ),
         ],
       ),
     );
   }
+}
 
-  // ------- event badge -------
-  Widget _eventBadge() {
-    final (bg, _, fg, _) = _eventMeta();
-    final guests = group.guestCount ?? 0;
-    final dateLabel = group.eventDate != null
-        ? Formatters.date(group.eventDate!)
-        : null;
-    final pieces = <String>[];
-    if (guests > 0) pieces.add('$guests guests');
-    if (dateLabel != null) pieces.add(dateLabel);
-    final label = pieces.isEmpty ? 'Event' : pieces.join(' · ');
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-        decoration:
-            BoxDecoration(color: bg, borderRadius: BorderRadius.circular(8)),
-        child: Text(
-          label,
-          style: GoogleFonts.outfit(
-            fontSize: 11,
-            fontWeight: FontWeight.w600,
-            color: fg,
-          ),
-        ),
-      ),
-    );
-  }
+// ───────────────────────── Footer button ─────────────────────────
 
-  /// (background, emoji, foreground, label)
-  (Color, String, Color, String) _eventMeta() {
-    final guests = group.guestCount ?? 0;
-    if (guests >= 60) return (_P.purLt, '💒', _P.pur, 'Wedding');
-    if (guests >= 30) return (_P.bluLt, '🏢', _P.blu, 'Corporate event');
-    if (guests >= 10) return (_P.gldLt, '🏠', _P.gld, 'House party');
-    if (guests > 0)   return (_P.redLt, '🎂', _P.red, 'Birthday');
-    return (_P.orgLt, '🎉', _P.org, 'Event');
-  }
+/// Compact receipt-footer action. [filled] renders the solid primary CTA
+/// (Reorder); otherwise a white outline button (Track / Invoice).
+class _FooterButton extends StatelessWidget {
+  const _FooterButton({
+    required this.label,
+    required this.filled,
+    required this.onTap,
+    this.icon,
+  });
+  final String label;
+  final bool filled;
+  final VoidCallback onTap;
+  final IconData? icon;
 
-  // ------- meta line (location) -------
-  String _meta() {
-    final loc = group.location?.trim();
-    if (loc == null || loc.isEmpty) return '';
-    return '📍 $loc';
-  }
-
-  // ------- mini progress tracker -------
-  Widget _miniProgress(OrderStatus s) {
-    final active = s.stepIndex;
-    return Row(
-      children: List.generate(5, (i) {
-        final isDone = i < active;
-        final isActive = i == active;
-        return Expanded(
-          child: Container(
-            margin: EdgeInsets.only(right: i == 4 ? 0 : 3),
-            height: 3,
-            decoration: BoxDecoration(
-              color: isDone
-                  ? _P.grn
-                  : isActive
-                      ? _P.org
-                      : _P.g8,
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
-        );
-      }),
-    );
-  }
-
-  // ------- restaurant rows -------
-  Widget _restaurantsList(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: _P.bg,
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
-            child: Row(
-              children: [
-                Text(
-                  group.isMultiVendor ? 'KITCHENS' : 'KITCHEN',
-                  style: GoogleFonts.outfit(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                    color: _P.g50,
-                    letterSpacing: 0.5,
-                  ),
-                ),
-                const Spacer(),
-                Text(
-                  '${group.orders.length}',
-                  style: GoogleFonts.outfit(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                    color: _P.g50,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          for (var i = 0; i < group.orders.length; i++) ...[
-            if (i > 0)
-              const Divider(height: 1, thickness: 1, color: _P.g15),
-            _restaurantRow(context, group.orders[i]),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _restaurantRow(BuildContext context, OrderSummary order) {
-    final r = _restaurantFor(order);
-    final emoji = r?.heroEmoji ?? '🍽️';
-    final name = r?.name ?? 'Dawat Kitchen';
+  @override
+  Widget build(BuildContext context) {
+    final fg = filled ? Colors.white : AppColors.textSecondary;
     return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(8),
-        onTap: () {
-          HapticFeedback.lightImpact();
-          context.push(AppRoutes.orderDetailFor(order.id));
-        },
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-          child: Row(
-            children: [
-              Container(
-                width: 32,
-                height: 32,
-                decoration: BoxDecoration(
-                  color: _P.w,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                alignment: Alignment.center,
-                child: Text(emoji, style: const TextStyle(fontSize: 16)),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.outfit(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: _P.blk,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    _smallStatusPill(order.orderStatus),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                Formatters.currency(order.total),
-                style: GoogleFonts.outfit(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  color: order.orderStatus == OrderStatus.cancelled
-                      ? _P.g30
-                      : _P.blk,
-                  decoration: order.orderStatus == OrderStatus.cancelled
-                      ? TextDecoration.lineThrough
-                      : null,
-                ),
-              ),
-              const SizedBox(width: 2),
-              const Icon(Icons.chevron_right_rounded,
-                  color: _P.g30, size: 18),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _smallStatusPill(OrderStatus s) {
-    final (bg, fg) = switch (s) {
-      OrderStatus.placed => (_P.gldLt, _P.gld),
-      OrderStatus.confirmed => (_P.bluLt, _P.blu),
-      OrderStatus.preparing => (_P.orgLt, _P.org),
-      OrderStatus.dispatched => (_P.bluLt, _P.blu),
-      OrderStatus.delivered => (_P.grnLt, _P.grn),
-      OrderStatus.cancelled => (_P.redLt, _P.red),
-    };
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-      decoration:
-          BoxDecoration(color: bg, borderRadius: BorderRadius.circular(6)),
-      child: Text(
-        s.label,
-        style: GoogleFonts.outfit(
-          fontSize: 9,
-          fontWeight: FontWeight.w700,
-          color: fg,
-          letterSpacing: 0.2,
-        ),
-      ),
-    );
-  }
-
-  // ------- footer -------
-  Widget _footer(BuildContext context, OrderStatus s, bool isPast) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
-      child: Column(
-        children: [
-          Container(
-            height: 1,
-            margin: const EdgeInsets.only(bottom: 10),
-            color: _P.g8,
-          ),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      Formatters.currency(group.totalAmount),
-                      style: GoogleFonts.outfit(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w800,
-                        color: s == OrderStatus.cancelled ? _P.g30 : _P.blk,
-                      ),
-                    ),
-                    const SizedBox(height: 1),
-                    Text(
-                      _footerSub(s),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.outfit(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w500,
-                        color: s == OrderStatus.cancelled ? _P.red : _P.g50,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              _actionButton(context, s),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  String _footerSub(OrderStatus s) {
-    final n = group.orders.length;
-    final suffix = n == 1 ? 'order' : 'orders';
-    return switch (s) {
-      OrderStatus.placed => 'Across $n $suffix · awaiting confirmation',
-      OrderStatus.confirmed => 'Across $n $suffix · preparing soon',
-      OrderStatus.preparing => 'Across $n $suffix · food being prepared',
-      OrderStatus.dispatched => 'Across $n $suffix · on the way',
-      OrderStatus.delivered => 'Across $n $suffix · delivered',
-      OrderStatus.cancelled => 'Refund credited to wallet',
-    };
-  }
-
-  Widget _actionButton(BuildContext context, OrderStatus s) {
-    // For multi-vendor events, route to the most-active order's detail
-    // page so the user lands on something relevant.
-    OrderSummary primary() {
-      for (final wanted in const [
-        OrderStatus.dispatched,
-        OrderStatus.preparing,
-        OrderStatus.confirmed,
-        OrderStatus.placed,
-      ]) {
-        for (final o in group.orders) {
-          if (o.orderStatus == wanted) return o;
-        }
-      }
-      return group.orders.first;
-    }
-
-    switch (s) {
-      case OrderStatus.delivered:
-        return _btn(
-          label: 'Reorder',
-          bg: _P.grnLt,
-          fg: _P.grn,
-          icon: Icons.refresh_rounded,
-          onTap: () {
-            HapticFeedback.selectionClick();
-            context.push(AppRoutes.userHome);
-          },
-        );
-      case OrderStatus.cancelled:
-        return Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _btn(
-              label: 'Details',
-              bg: _P.g8,
-              fg: _P.g70,
-              icon: Icons.info_outline_rounded,
-              onTap: () =>
-                  context.push(AppRoutes.orderDetailFor(primary().id)),
-            ),
-            const SizedBox(width: 6),
-            _btn(
-              label: 'Reorder',
-              bg: _P.grnLt,
-              fg: _P.grn,
-              icon: Icons.refresh_rounded,
-              onTap: () => context.push(AppRoutes.userHome),
-            ),
-          ],
-        );
-      case OrderStatus.placed:
-      case OrderStatus.confirmed:
-      case OrderStatus.preparing:
-      case OrderStatus.dispatched:
-        return _btn(
-          label: 'Track',
-          bg: _P.red,
-          fg: _P.w,
-          icon: Icons.location_on_rounded,
-          onTap: () {
-            HapticFeedback.selectionClick();
-            context.push(AppRoutes.orderDetailFor(primary().id));
-          },
-        );
-    }
-  }
-
-  Widget _btn({
-    required String label,
-    required Color bg,
-    required Color fg,
-    required IconData icon,
-    required VoidCallback onTap,
-  }) {
-    return Material(
-      color: bg,
-      borderRadius: BorderRadius.circular(10),
+      color: filled ? AppColors.primary : AppColors.surface,
+      borderRadius: BorderRadius.circular(AppSizes.radiusSm),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(10),
-        child: Padding(
-          padding:
-              const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        borderRadius: BorderRadius.circular(AppSizes.radiusSm),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(AppSizes.radiusSm),
+            border: filled ? null : Border.all(color: AppColors.border),
+          ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, size: 14, color: fg),
-              const SizedBox(width: 5),
+              if (icon != null) ...[
+                Icon(icon, size: 13, color: fg),
+                const SizedBox(width: 5),
+              ],
               Text(
                 label,
-                style: GoogleFonts.outfit(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
+                style: AppTextStyles.captionBold.copyWith(
+                  fontSize: 11,
                   color: fg,
+                  letterSpacing: 0,
                 ),
               ),
             ],
@@ -1045,14 +810,164 @@ class _EventGroupCard extends StatelessWidget {
       ),
     );
   }
+}
 
-  // ------- helpers -------
-  String _clock(DateTime d) {
-    final h = d.hour % 12 == 0 ? 12 : d.hour % 12;
-    final m = d.minute.toString().padLeft(2, '0');
-    final ap = d.hour < 12 ? 'AM' : 'PM';
-    return '$h:$m $ap';
+// ───────────────────────── Spend summary card ─────────────────────────
+
+/// Dark gradient "lifetime spend" hero, ported from the prototype's orders
+/// screen. Sits at the top of the scrollable list so it slides away as the
+/// host scrolls their bookings. Cancelled events are excluded from the totals.
+class _SpendSummaryCard extends StatelessWidget {
+  const _SpendSummaryCard({
+    required this.spend,
+    required this.eventsDone,
+    required this.guestsFed,
+  });
+  final double spend;
+  final int eventsDone;
+  final int guestsFed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppSizes.md,
+        AppSizes.md,
+        AppSizes.md,
+        AppSizes.xs,
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Color(0xFF1C1C1C), Color(0xFF333333)],
+            ),
+          ),
+          child: Stack(
+            children: [
+              // Soft gold blob bleeding off the top-right corner.
+              Positioned(
+                top: -30,
+                right: -20,
+                child: Container(
+                  width: 140,
+                  height: 140,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: AppColors.accent.withValues(alpha: 0.16),
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(18),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'LIFETIME SPEND',
+                      style: AppTextStyles.captionBold.copyWith(
+                        color: Colors.white.withValues(alpha: 0.6),
+                        letterSpacing: 0.6,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      Formatters.currency(spend),
+                      style:
+                          AppTextStyles.display.copyWith(color: Colors.white),
+                    ),
+                    const SizedBox(height: 14),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _SpendStat(value: '$eventsDone', label: 'Events done'),
+                        const SizedBox(width: 22),
+                        Container(
+                          width: 1,
+                          height: 30,
+                          color: Colors.white.withValues(alpha: 0.15),
+                        ),
+                        const SizedBox(width: 22),
+                        _SpendStat(value: '$guestsFed', label: 'Guests fed'),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
+}
+
+class _SpendStat extends StatelessWidget {
+  const _SpendStat({required this.value, required this.label});
+  final String value;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          value,
+          style: AppTextStyles.heading2.copyWith(
+            fontSize: 18,
+            fontWeight: FontWeight.w800,
+            color: AppColors.accent,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          label,
+          style: AppTextStyles.caption.copyWith(
+            color: Colors.white.withValues(alpha: 0.65),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ───────────────────────── Dashed divider ─────────────────────────
+
+/// A horizontal dashed rule for the receipt-style card footer.
+class _DashedLine extends StatelessWidget {
+  const _DashedLine();
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      height: 1,
+      child: CustomPaint(painter: _DashedLinePainter()),
+    );
+  }
+}
+
+class _DashedLinePainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    const dashWidth = 4.0;
+    const dashGap = 4.0;
+    final paint = Paint()
+      ..color = AppColors.border
+      ..strokeWidth = 1;
+    var x = 0.0;
+    while (x < size.width) {
+      canvas.drawLine(Offset(x, 0.5), Offset(x + dashWidth, 0.5), paint);
+      x += dashWidth + dashGap;
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _DashedLinePainter oldDelegate) => false;
 }
 
 // ───────────────────────── Empty state ─────────────────────────
@@ -1070,43 +985,28 @@ class _Empty extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             const Text('🍽️', style: TextStyle(fontSize: 56)),
-            const SizedBox(height: 16),
-            Text(
-              'No orders yet',
-              style: GoogleFonts.outfit(
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-                color: _P.blk,
-              ),
-            ),
+            const SizedBox(height: AppSizes.md),
+            Text('No orders yet', style: AppTextStyles.heading1),
             const SizedBox(height: 6),
             Text(
               'Your bookings will show up here.\nStart planning your first event.',
               textAlign: TextAlign.center,
-              style: GoogleFonts.outfit(
-                fontSize: 13,
-                color: _P.g50,
-                height: 1.5,
-              ),
+              style: AppTextStyles.bodyMuted,
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: AppSizes.lg),
             FilledButton(
               onPressed: onStart,
               style: FilledButton.styleFrom(
-                backgroundColor: _P.red,
+                backgroundColor: AppColors.primary,
                 padding:
                     const EdgeInsets.symmetric(horizontal: 28, vertical: 12),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(AppSizes.radiusSm),
                 ),
               ),
               child: Text(
                 'Start a new event',
-                style: GoogleFonts.outfit(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                  color: _P.w,
-                ),
+                style: AppTextStyles.buttonLabel.copyWith(color: Colors.white),
               ),
             ),
           ],

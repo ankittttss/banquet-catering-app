@@ -1,15 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_sizes.dart';
 import '../../core/constants/app_text_styles.dart';
-import '../../core/router/app_routes.dart';
 import '../../core/utils/formatters.dart';
 import '../providers/cart_providers.dart';
+import '../providers/event_providers.dart';
+import 'selected_items_sheet.dart';
 
 /// Persistent "cart peek" bar shown at the bottom of menu-like screens.
 /// Hidden when the cart is empty; slides in as soon as the first item is added.
@@ -21,12 +21,11 @@ class CartPeekBar extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final count = ref.watch(cartCountProvider);
     if (count == 0) return const SizedBox.shrink();
-    final total = ref.watch(cartFoodTotalProvider);
-    final uniqueRestaurants = ref
-        .watch(cartProvider)
-        .map((c) => c.item.restaurantId)
-        .toSet()
-        .length;
+    // Guest-scaled total so the running amount matches the cart's item total.
+    final total = ref.watch(cartBilledFoodTotalProvider);
+    final guests = ref.watch(eventDraftProvider).guestCount;
+    final uniqueRestaurants =
+        ref.watch(cartProvider).map((c) => c.item.restaurantId).toSet().length;
 
     return SafeArea(
       top: false,
@@ -36,7 +35,7 @@ class CartPeekBar extends ConsumerWidget {
           elevation: 0,
           color: Colors.transparent,
           child: InkWell(
-            onTap: () => context.push(AppRoutes.cart),
+            onTap: () => showSelectedItemsSheet(context),
             borderRadius: BorderRadius.circular(AppSizes.radiusLg),
             child: Container(
               padding: const EdgeInsets.all(AppSizes.md),
@@ -61,8 +60,7 @@ class CartPeekBar extends ConsumerWidget {
                     padding: const EdgeInsets.all(AppSizes.sm),
                     decoration: BoxDecoration(
                       color: Colors.white.withValues(alpha: 0.18),
-                      borderRadius:
-                          BorderRadius.circular(AppSizes.radiusSm),
+                      borderRadius: BorderRadius.circular(AppSizes.radiusSm),
                     ),
                     child: const Icon(
                       PhosphorIconsFill.shoppingBag,
@@ -77,7 +75,8 @@ class CartPeekBar extends ConsumerWidget {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
-                          '$count ${count == 1 ? 'item' : 'items'}'
+                          '$count ${count == 1 ? 'item' : 'items'} · '
+                          '$guests ${guests == 1 ? 'guest' : 'guests'}'
                           '${uniqueRestaurants > 1 ? ' · $uniqueRestaurants kitchens' : ''}',
                           style: AppTextStyles.captionBold.copyWith(
                             color: Colors.white.withValues(alpha: 0.85),
@@ -97,12 +96,12 @@ class CartPeekBar extends ConsumerWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        'View cart',
+                        'View items',
                         style: AppTextStyles.bodyBold
                             .copyWith(color: Colors.white),
                       ),
                       const SizedBox(width: AppSizes.xs),
-                      const Icon(PhosphorIconsBold.arrowRight,
+                      const Icon(PhosphorIconsBold.caretUp,
                           color: Colors.white, size: 16),
                     ],
                   ),

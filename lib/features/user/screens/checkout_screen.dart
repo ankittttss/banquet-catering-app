@@ -42,18 +42,52 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   _PaymentMethod _payment = _PaymentMethod.upi;
 
   Future<void> _placeOrder(CheckoutTotals totals) async {
+    // Gate: the customer must have a complete profile (name + phone) before
+    // an order can be placed. Send them to profile completion if not.
+    final profile = await ref.read(currentProfileProvider.future);
+    if (!mounted) return;
+    if (profile == null || !profile.isComplete) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Please complete your profile (name & phone) before ordering.',
+          ),
+        ),
+      );
+      context.push(AppRoutes.editProfile);
+      return;
+    }
+
     final draft = ref.read(eventDraftProvider);
     final address = ref.read(defaultAddressProvider);
 
-    // Make sure we have enough to insert the event row (date/location/session
-    // /times are NOT NULL in Postgres, so we backfill sensible defaults rather
-    // than letting the insert fail with a type error).
+    // Gate: the event must actually be planned before an order is placed.
+    // Otherwise the checkout would fabricate a nameless event with a default
+    // date/time (the customer never filled anything in). Require the core
+    // details the "Plan your event" screen collects — a name and a date —
+    // and route the customer there to complete them if they're missing.
+    final eventName = draft.eventName?.trim() ?? '';
+    if (eventName.isEmpty || draft.date == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Add your event details (name & date) before placing the order.',
+          ),
+        ),
+      );
+      context.push(AppRoutes.eventDetails);
+      return;
+    }
+
+    // Backfill only the NOT-NULL-but-UI-optional scheduling fields (session /
+    // start / end time) and resolve the delivery location from the saved
+    // address when the draft carries none. Name and date are guaranteed above.
     final filled = _ensureDraftComplete(draft, address?.fullAddress);
     if (filled == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text(
-              'Please add a delivery address before placing the order.'),
+          content:
+              Text('Please add a delivery address before placing the order.'),
         ),
       );
       return;
@@ -100,10 +134,9 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     final now = DateTime.now();
     final date = d.date ?? now.add(const Duration(days: 3));
     final session = d.session ?? 'Dinner';
-    final start = d.startTime ??
-        DateTime(date.year, date.month, date.day, 19, 0);
-    final end = d.endTime ??
-        DateTime(date.year, date.month, date.day, 22, 0);
+    final start =
+        d.startTime ?? DateTime(date.year, date.month, date.day, 19, 0);
+    final end = d.endTime ?? DateTime(date.year, date.month, date.day, 22, 0);
     final guests = d.guestCount > 0 ? d.guestCount : 50;
 
     return d.copyWith(
@@ -139,7 +172,8 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
         title: const Text('Checkout'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () => context.pop(),
+          onPressed: () =>
+              context.canPop() ? context.pop() : context.go(AppRoutes.cart),
         ),
       ),
       body: charges.when(
@@ -169,6 +203,31 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                   ),
                   _Section(
                     title: 'Event details',
+                    action: TextButton.icon(
+                      onPressed: () {
+                        HapticFeedback.selectionClick();
+                        context.push(AppRoutes.eventDetails);
+                      },
+                      style: TextButton.styleFrom(
+                        foregroundColor: AppColors.primary,
+                        backgroundColor: AppColors.primarySoft,
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: AppSizes.md,
+                          vertical: 6,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius:
+                              BorderRadius.circular(AppSizes.radiusPill),
+                        ),
+                      ),
+                      icon: const Icon(Icons.edit_outlined, size: 15),
+                      label: Text(
+                        'Edit',
+                        style: AppTextStyles.captionBold
+                            .copyWith(color: AppColors.primary),
+                      ),
+                    ),
                     child: _EventCard(event: event),
                   ),
                   _Section(
@@ -180,24 +239,24 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                           label: 'UPI / Google Pay',
                           helper: 'Pay securely via UPI',
                           selected: _payment == _PaymentMethod.upi,
-                          onTap: () => setState(
-                              () => _payment = _PaymentMethod.upi),
+                          onTap: () =>
+                              setState(() => _payment = _PaymentMethod.upi),
                         ),
                         _PaymentOption(
                           icon: Icons.credit_card_rounded,
                           label: 'Credit / Debit Card',
                           helper: 'Visa, Mastercard, RuPay',
                           selected: _payment == _PaymentMethod.card,
-                          onTap: () => setState(
-                              () => _payment = _PaymentMethod.card),
+                          onTap: () =>
+                              setState(() => _payment = _PaymentMethod.card),
                         ),
                         _PaymentOption(
                           icon: Icons.payments_outlined,
                           label: 'Cash on Delivery',
                           helper: 'Pay when food arrives',
                           selected: _payment == _PaymentMethod.cod,
-                          onTap: () => setState(
-                              () => _payment = _PaymentMethod.cod),
+                          onTap: () =>
+                              setState(() => _payment = _PaymentMethod.cod),
                         ),
                       ],
                     ),
@@ -258,8 +317,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       delivery[id] = restaurants
           .firstWhere(
             (r) => r.id == id,
-            orElse: () =>
-                const Restaurant(id: '', name: '', deliveryCharge: 0),
+            orElse: () => const Restaurant(id: '', name: '', deliveryCharge: 0),
           )
           .deliveryCharge;
     }
@@ -279,9 +337,12 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
 // ───────────────────────── Section ─────────────────────────
 
 class _Section extends StatelessWidget {
-  const _Section({required this.title, required this.child});
+  const _Section({required this.title, required this.child, this.action});
   final String title;
   final Widget child;
+
+  /// Optional trailing widget on the header row (e.g. an "Edit" pill).
+  final Widget? action;
 
   @override
   Widget build(BuildContext context) {
@@ -293,7 +354,12 @@ class _Section extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: AppTextStyles.heading3),
+          Row(
+            children: [
+              Expanded(child: Text(title, style: AppTextStyles.heading3)),
+              if (action != null) action!,
+            ],
+          ),
           const SizedBox(height: AppSizes.md),
           child,
         ],
@@ -329,12 +395,11 @@ class _AddressCard extends StatelessWidget {
               Expanded(
                 child: Text(
                   'Add a delivery address to continue',
-                  style: AppTextStyles.bodyBold
-                      .copyWith(color: AppColors.primary),
+                  style:
+                      AppTextStyles.bodyBold.copyWith(color: AppColors.primary),
                 ),
               ),
-              const Icon(Icons.chevron_right_rounded,
-                  color: AppColors.primary),
+              const Icon(Icons.chevron_right_rounded, color: AppColors.primary),
             ],
           ),
         ),
@@ -351,8 +416,7 @@ class _AddressCard extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.home_outlined,
-              color: AppColors.primary, size: 22),
+          const Icon(Icons.home_outlined, color: AppColors.primary, size: 22),
           const SizedBox(width: AppSizes.sm),
           Expanded(
             child: Column(
@@ -391,43 +455,69 @@ class _EventCard extends StatelessWidget {
   const _EventCard({required this.event});
   final EventDraft event;
 
+  String? _venueLabel() {
+    if (event.banquetVenueName != null) return event.banquetVenueName;
+    if (event.venueType == VenueType.privateProperty) {
+      return 'Private property';
+    }
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
+    final occasion = event.eventName ??
+        (event.session == null ? 'Not set yet' : '${event.session} event');
+    final venue = _venueLabel();
+    final time = (event.startTime != null && event.endTime != null)
+        ? '${_fmtTime(event.startTime!)} – ${_fmtTime(event.endTime!)}'
+        : null;
+    final dateLabel = event.date == null
+        ? 'Date TBD'
+        : (time == null
+            ? Formatters.date(event.date!)
+            : '${Formatters.date(event.date!)} · $time');
+
     return Container(
-      padding: const EdgeInsets.all(AppSizes.md),
+      padding: const EdgeInsets.fromLTRB(
+        AppSizes.md,
+        AppSizes.sm,
+        AppSizes.md,
+        AppSizes.md,
+      ),
       decoration: BoxDecoration(
-        color: AppColors.surfaceAlt,
+        color: AppColors.surface,
         border: Border.all(color: AppColors.border),
-        borderRadius: BorderRadius.circular(AppSizes.radiusSm),
+        borderRadius: BorderRadius.circular(AppSizes.radiusMd),
       ),
       child: Column(
         children: [
           _EventRow(
             icon: Icons.celebration_outlined,
-            text: event.session == null
-                ? 'Event type pending'
-                : '${event.session} event',
+            label: 'Occasion',
+            value: occasion,
           ),
           _EventRow(
             icon: Icons.groups_outlined,
-            text: '${event.guestCount} guests',
+            label: 'Guests',
+            value: '${event.guestCount} guests',
           ),
           _EventRow(
             icon: Icons.calendar_today_outlined,
-            text: event.date == null
-                ? 'Date TBD'
-                : Formatters.date(event.date!),
+            label: 'Date & time',
+            value: dateLabel,
           ),
-          if (event.startTime != null && event.endTime != null)
+          if (venue != null)
             _EventRow(
-              icon: Icons.schedule_outlined,
-              text:
-                  '${_fmtTime(event.startTime!)} – ${_fmtTime(event.endTime!)}',
+              icon: Icons.apartment_outlined,
+              label: 'Venue',
+              value: venue,
             ),
           if (event.location != null && event.location!.isNotEmpty)
             _EventRow(
               icon: Icons.place_outlined,
-              text: event.location!,
+              label: 'Location',
+              value: event.location!,
+              maxLines: 2,
             ),
         ],
       ),
@@ -443,25 +533,56 @@ class _EventCard extends StatelessWidget {
 }
 
 class _EventRow extends StatelessWidget {
-  const _EventRow({required this.icon, required this.text});
+  const _EventRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+    this.maxLines = 1,
+  });
   final IconData icon;
-  final String text;
+  final String label;
+  final String value;
+  final int maxLines;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
+      padding: const EdgeInsets.symmetric(vertical: AppSizes.xs + 2),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: AppColors.textMuted, size: 20),
-          const SizedBox(width: AppSizes.sm),
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: AppColors.primarySoft,
+              borderRadius: BorderRadius.circular(AppSizes.radiusSm),
+            ),
+            alignment: Alignment.center,
+            child: Icon(icon, color: AppColors.primary, size: 18),
+          ),
+          const SizedBox(width: AppSizes.md),
           Expanded(
-            child: Text(
-              text,
-              style: AppTextStyles.body.copyWith(
-                color: AppColors.textSecondary,
-                fontSize: 13,
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label.toUpperCase(),
+                  style: AppTextStyles.caption.copyWith(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.8,
+                    color: AppColors.textMuted,
+                  ),
+                ),
+                const SizedBox(height: 1),
+                Text(
+                  value,
+                  style: AppTextStyles.bodyBold.copyWith(fontSize: 13.5),
+                  maxLines: maxLines,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
             ),
           ),
         ],
@@ -500,8 +621,7 @@ class _PaymentOption extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.all(AppSizes.md),
           decoration: BoxDecoration(
-            color:
-                selected ? AppColors.primarySoft : AppColors.surface,
+            color: selected ? AppColors.primarySoft : AppColors.surface,
             border: Border.all(
               color: selected ? AppColors.primary : AppColors.border,
               width: selected ? 1.4 : 1,
@@ -534,9 +654,7 @@ class _PaymentOption extends StatelessWidget {
               ),
               const SizedBox(width: AppSizes.md),
               Icon(icon,
-                  color: selected
-                      ? AppColors.primary
-                      : AppColors.textSecondary,
+                  color: selected ? AppColors.primary : AppColors.textSecondary,
                   size: 22),
               const SizedBox(width: AppSizes.md),
               Expanded(
@@ -583,8 +701,7 @@ class _BillSummary extends StatelessWidget {
   final VoidCallback onMinusBoy;
   final VoidCallback onPlusBoy;
 
-  String _pct(double v) =>
-      v.toStringAsFixed(v.truncateToDouble() == v ? 0 : 1);
+  String _pct(double v) => v.toStringAsFixed(v.truncateToDouble() == v ? 0 : 1);
 
   @override
   Widget build(BuildContext context) {
@@ -611,8 +728,7 @@ class _BillSummary extends StatelessWidget {
             _BillRow(
                 'Banquet charge', Formatters.currency(totals.banquetCharge)),
           if (totals.buffetSetup > 0)
-            _BillRow(
-                'Buffet setup', Formatters.currency(totals.buffetSetup)),
+            _BillRow('Buffet setup', Formatters.currency(totals.buffetSetup)),
           if (totals.waterBottleCost > 0)
             _BillRow(
                 'Water bottles', Formatters.currency(totals.waterBottleCost)),

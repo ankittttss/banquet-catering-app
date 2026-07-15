@@ -41,9 +41,8 @@ class CartScreen extends ConsumerWidget {
         title: const Text('Cart'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () => context.canPop()
-              ? context.pop()
-              : context.go(AppRoutes.userHome),
+          onPressed: () =>
+              context.canPop() ? context.pop() : context.go(AppRoutes.userHome),
         ),
       ),
       bottomBar: const UserBottomNav(active: UserNavTab.cart),
@@ -158,8 +157,7 @@ class _CartBody extends ConsumerWidget {
       delivery[id] = restaurants
           .firstWhere(
             (r) => r.id == id,
-            orElse: () =>
-                const Restaurant(id: '', name: '', deliveryCharge: 0),
+            orElse: () => const Restaurant(id: '', name: '', deliveryCharge: 0),
           )
           .deliveryCharge;
     }
@@ -280,12 +278,10 @@ class _CartLineRow extends ConsumerWidget {
           ),
           _QtyControl(
             qty: line.qty,
-            onMinus: () => ref
-                .read(cartProvider.notifier)
-                .bumpLine(line.signature, -1),
-            onPlus: () => ref
-                .read(cartProvider.notifier)
-                .bumpLine(line.signature, 1),
+            onMinus: () =>
+                ref.read(cartProvider.notifier).bumpLine(line.signature, -1),
+            onPlus: () =>
+                ref.read(cartProvider.notifier).bumpLine(line.signature, 1),
           ),
           const SizedBox(width: AppSizes.md),
           SizedBox(
@@ -402,59 +398,107 @@ class _EventDetailsBlock extends StatelessWidget {
   const _EventDetailsBlock({required this.event});
   final EventDraft event;
 
+  String _dateTimeLabel() {
+    if (event.date == null) return 'Pick a date';
+    final date = Formatters.date(event.date!);
+    final t = event.startTime;
+    if (t == null) return date;
+    final h = t.hour % 12 == 0 ? 12 : t.hour % 12;
+    final m = t.minute.toString().padLeft(2, '0');
+    final ap = t.hour < 12 ? 'AM' : 'PM';
+    return '$date · $h:$m $ap';
+  }
+
+  String? _venueLabel() {
+    if (event.banquetVenueName != null) return event.banquetVenueName;
+    if (event.venueType == VenueType.privateProperty) {
+      return 'Private property';
+    }
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
+    final occasion = event.eventName ??
+        (event.session == null ? 'Not set yet' : '${event.session} event');
+    final venue = _venueLabel();
+
+    // Flat section styled like the rest of the page (restaurant groups,
+    // Bill details) — no floating card, just a divider-separated block.
     return Container(
-      color: AppColors.surfaceAlt,
+      decoration: const BoxDecoration(
+        color: AppColors.surface,
+        border: Border(
+          top: BorderSide(color: AppColors.divider),
+          bottom: BorderSide(color: AppColors.divider),
+        ),
+      ),
       padding: const EdgeInsets.all(AppSizes.pagePadding),
-      margin: const EdgeInsets.only(top: AppSizes.sm),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('🎉 Event details', style: AppTextStyles.heading3),
-          const SizedBox(height: AppSizes.sm),
-          Container(
-            padding: const EdgeInsets.all(AppSizes.md),
-            decoration: BoxDecoration(
-              color: AppColors.surface,
-              border: Border.all(color: AppColors.border),
-              borderRadius: BorderRadius.circular(AppSizes.radiusSm),
-            ),
-            child: Column(
-              children: [
-                _EventRow(
-                  icon: Icons.celebration_outlined,
-                  text: event.session == null
-                      ? 'Tap to set event type'
-                      : '${event.session} event',
-                ),
-                _EventRow(
-                  icon: Icons.groups_outlined,
-                  text: '${event.guestCount} Guests',
-                ),
-                _EventRow(
-                  icon: Icons.calendar_today_outlined,
-                  text: event.date == null
-                      ? 'Pick a date'
-                      : Formatters.date(event.date!),
-                ),
-                if (event.location != null && event.location!.isNotEmpty)
-                  _EventRow(
-                    icon: Icons.place_outlined,
-                    text: event.location!,
+          // Header — title + Edit action, so editing is an obvious,
+          // tappable affordance rather than a dangling text link.
+          Row(
+            children: [
+              Expanded(
+                child: Text('Event details', style: AppTextStyles.heading3),
+              ),
+              TextButton.icon(
+                onPressed: () {
+                  HapticFeedback.selectionClick();
+                  context.push(AppRoutes.eventDetails);
+                },
+                style: TextButton.styleFrom(
+                  foregroundColor: AppColors.primary,
+                  backgroundColor: AppColors.primarySoft,
+                  visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppSizes.md,
+                    vertical: 6,
                   ),
-              ],
-            ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(AppSizes.radiusPill),
+                  ),
+                ),
+                icon: const Icon(Icons.edit_outlined, size: 15),
+                label: Text(
+                  'Edit',
+                  style: AppTextStyles.captionBold
+                      .copyWith(color: AppColors.primary),
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: AppSizes.sm),
-          InkWell(
-            onTap: () => context.push(AppRoutes.eventDetails),
-            child: Text(
-              'Edit event details →',
-              style: AppTextStyles.bodyBold
-                  .copyWith(color: AppColors.primary, fontSize: 13),
-            ),
+          _EventRow(
+            icon: Icons.celebration_outlined,
+            label: 'Occasion',
+            value: occasion,
           ),
+          _EventRow(
+            icon: Icons.groups_outlined,
+            label: 'Guests',
+            value: '${event.guestCount} guests',
+          ),
+          _EventRow(
+            icon: Icons.calendar_today_outlined,
+            label: 'Date & time',
+            value: _dateTimeLabel(),
+          ),
+          if (venue != null)
+            _EventRow(
+              icon: Icons.apartment_outlined,
+              label: 'Venue',
+              value: venue,
+            ),
+          if (event.location != null && event.location!.isNotEmpty)
+            _EventRow(
+              icon: Icons.place_outlined,
+              label: 'Location',
+              value: event.location!,
+              maxLines: 2,
+            ),
         ],
       ),
     );
@@ -462,25 +506,56 @@ class _EventDetailsBlock extends StatelessWidget {
 }
 
 class _EventRow extends StatelessWidget {
-  const _EventRow({required this.icon, required this.text});
+  const _EventRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+    this.maxLines = 1,
+  });
   final IconData icon;
-  final String text;
+  final String label;
+  final String value;
+  final int maxLines;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
+      padding: const EdgeInsets.symmetric(vertical: AppSizes.xs + 2),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: AppColors.textMuted, size: 20),
-          const SizedBox(width: AppSizes.sm),
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: AppColors.primarySoft,
+              borderRadius: BorderRadius.circular(AppSizes.radiusSm),
+            ),
+            alignment: Alignment.center,
+            child: Icon(icon, color: AppColors.primary, size: 18),
+          ),
+          const SizedBox(width: AppSizes.md),
           Expanded(
-            child: Text(
-              text,
-              style: AppTextStyles.body
-                  .copyWith(color: AppColors.textSecondary, fontSize: 13),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label.toUpperCase(),
+                  style: AppTextStyles.caption.copyWith(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.8,
+                    color: AppColors.textMuted,
+                  ),
+                ),
+                const SizedBox(height: 1),
+                Text(
+                  value,
+                  style: AppTextStyles.bodyBold.copyWith(fontSize: 13.5),
+                  maxLines: maxLines,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
             ),
           ),
         ],
@@ -511,8 +586,7 @@ class _BillDetails extends ConsumerWidget {
       delivery[id] = restaurants
           .firstWhere(
             (r) => r.id == id,
-            orElse: () =>
-                const Restaurant(id: '', name: '', deliveryCharge: 0),
+            orElse: () => const Restaurant(id: '', name: '', deliveryCharge: 0),
           )
           .deliveryCharge;
     }
@@ -554,8 +628,7 @@ class _BillDetails extends ConsumerWidget {
             _BillRow(
                 'Banquet charge', Formatters.currency(totals.banquetCharge)),
           if (totals.buffetSetup > 0)
-            _BillRow(
-                'Buffet setup', Formatters.currency(totals.buffetSetup)),
+            _BillRow('Buffet setup', Formatters.currency(totals.buffetSetup)),
           if (totals.waterBottleCost > 0)
             _BillRow(
                 'Water bottles', Formatters.currency(totals.waterBottleCost)),
@@ -582,9 +655,8 @@ class _BillDetails extends ConsumerWidget {
             percent: charges.serviceTaxPercent,
             amount: serviceTaxIfIncluded,
             included: includeServiceTax,
-            onChanged: (v) => ref
-                .read(includeServiceTaxProvider.notifier)
-                .state = v,
+            onChanged: (v) =>
+                ref.read(includeServiceTaxProvider.notifier).state = v,
           ),
           const Padding(
             padding: EdgeInsets.symmetric(vertical: AppSizes.sm),
@@ -768,8 +840,8 @@ class _BillRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final labelStyle = (bold ? AppTextStyles.bodyBold : AppTextStyles.body)
         .copyWith(fontSize: bold ? 15 : 13);
-    final valueStyle = (bold ? AppTextStyles.bodyBold : AppTextStyles.body)
-        .copyWith(
+    final valueStyle =
+        (bold ? AppTextStyles.bodyBold : AppTextStyles.body).copyWith(
       color: valueColor ?? AppColors.textPrimary,
       fontSize: bold ? 15 : 13,
       fontWeight: bold ? FontWeight.w800 : FontWeight.w500,
@@ -786,8 +858,7 @@ class _BillRow extends StatelessWidget {
             ],
           ),
           if (helper != null)
-            Text(helper!,
-                style: AppTextStyles.caption.copyWith(fontSize: 11)),
+            Text(helper!, style: AppTextStyles.caption.copyWith(fontSize: 11)),
         ],
       ),
     );
@@ -874,8 +945,8 @@ class _CheckoutBar extends StatelessWidget {
                 children: [
                   Text(
                     'Proceed to checkout',
-                    style: AppTextStyles.buttonLabel
-                        .copyWith(color: Colors.white),
+                    style:
+                        AppTextStyles.buttonLabel.copyWith(color: Colors.white),
                   ),
                   const SizedBox(width: 4),
                   const Icon(Icons.arrow_forward_rounded,

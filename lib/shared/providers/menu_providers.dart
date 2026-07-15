@@ -14,37 +14,58 @@ final menuCategoriesProvider = FutureProvider<List<MenuCategory>>((ref) {
 
 /// Home restaurant list.
 ///
+/// Restaurants are sorted nearest-first to the **event location** when the
+/// user has chosen one (its coordinates live on the event draft). Only when
+/// there is no event location do we fall back to the user's saved home/work
+/// address — so a customer planning an event across town sees the kitchens
+/// near the venue, not near their house.
+///
 /// Precedence (most → least specific):
 ///   1. Event draft has a chosen tier → `restaurants_for_event` RPC, which
 ///      filters by the tier's per-guest budget band *and* (when coords are
-///      available) a 25km radius around the event location.
-///   2. Active address has coordinates → `restaurants_near` RPC, distance sort.
+///      available) a 25km radius around the resolved location.
+///   2. Coordinates available (event location, else saved address) →
+///      `restaurants_near` RPC, distance sort.
 ///   3. Otherwise → full catalog, popularity sort.
 final restaurantsProvider = FutureProvider<List<Restaurant>>((ref) async {
   final repo = ref.read(menuRepositoryProvider);
   final addr = ref.watch(activeAddressProvider);
   final draft = ref.watch(eventDraftProvider);
 
+  // Prefer the event-location coordinates; fall back to the saved address.
+  double? lat;
+  double? lng;
+  if (draft.hasEventCoords) {
+    lat = draft.eventLatitude;
+    lng = draft.eventLongitude;
+  } else if (addr != null && addr.hasCoords) {
+    lat = addr.latitude;
+    lng = addr.longitude;
+  }
+
   if (draft.tierId != null) {
     final tierRepo = ref.read(eventTierRepositoryProvider);
     return tierRepo.restaurantsForTier(
       tierId: draft.tierId!,
-      latitude: addr?.latitude,
-      longitude: addr?.longitude,
+      latitude: lat,
+      longitude: lng,
     );
   }
 
-  if (addr != null && addr.hasCoords) {
-    return repo.fetchNearby(
-      latitude: addr.latitude!,
-      longitude: addr.longitude!,
-    );
+  if (lat != null && lng != null) {
+    return repo.fetchNearby(latitude: lat, longitude: lng);
   }
   return repo.fetchRestaurants();
 });
 
 final menuItemsProvider = FutureProvider<List<MenuItem>>((ref) {
   return ref.read(menuRepositoryProvider).fetchMenuItems();
+});
+
+/// Admin catalog view — every menu item including unavailable ones. Distinct
+/// from [menuItemsProvider], which hides unavailable rows for the storefront.
+final adminMenuItemsProvider = FutureProvider<List<MenuItem>>((ref) {
+  return ref.read(menuRepositoryProvider).fetchAllMenuItems();
 });
 
 /// Menu items for a single restaurant — avoids the 1000-row PostgREST cap

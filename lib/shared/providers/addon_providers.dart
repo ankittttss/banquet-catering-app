@@ -60,18 +60,6 @@ final addonCatalogProvider = Provider<List<Addon>>((ref) {
       defaultQty: 2,
     ),
     Addon(
-      id: 'genset_silent_15kva',
-      group: 'KITCHEN & EQUIPMENT',
-      label: 'Silent genset 15 KVA',
-      subtitle: 'Backup power · 4-hour run',
-      iconName: 'local_fire_department',
-      iconBgHex: '#FFF8E7',
-      iconHex: '#E5A100',
-      unitPrice: 3500,
-      unitLabel: 'unit',
-      defaultQty: 1,
-    ),
-    Addon(
       id: 'water_dispenser',
       group: 'KITCHEN & EQUIPMENT',
       label: 'Water dispenser',
@@ -92,13 +80,12 @@ final addonBundlesProvider = Provider<List<AddonBundle>>((ref) {
     AddonBundle(
       id: 'open_lawn',
       name: 'OPEN LAWN',
-      description: 'Tent · 250 chairs · genset · lights',
+      description: 'Tent · 250 chairs · lights',
       tintHex: '#EAFAF1',
       colorHex: '#1BA672',
       quantities: {
         'mughal_pole_tent': 1,
         'cushioned_chair': 250,
-        'genset_silent_15kva': 1,
       },
     ),
     AddonBundle(

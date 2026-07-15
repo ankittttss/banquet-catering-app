@@ -43,74 +43,76 @@ class _NavBar extends StatelessWidget {
     return Container(
       decoration: const BoxDecoration(
         color: AppColors.surface,
-        border: Border(top: BorderSide(color: AppColors.border)),
+        border: Border(top: BorderSide(color: AppColors.divider)),
       ),
       child: SafeArea(
         top: false,
-        child: SizedBox(
-          height: 72,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: AppSizes.sm),
-            child: Row(
-              children: [
-                Expanded(
-                  child: _NavItem(
-                    icon: PhosphorIconsFill.house,
-                    label: 'Home',
-                    selected: active == UserNavTab.home,
-                    onTap: () {
-                      if (active == UserNavTab.home) return;
-                      context.go(AppRoutes.userHome);
-                    },
-                  ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(AppSizes.xs, 6, AppSizes.xs, 4),
+          child: Row(
+            children: [
+              Expanded(
+                child: _NavItem(
+                  icon: PhosphorIconsRegular.house,
+                  activeIcon: PhosphorIconsBold.house,
+                  label: 'Home',
+                  selected: active == UserNavTab.home,
+                  onTap: () {
+                    if (active == UserNavTab.home) return;
+                    context.go(AppRoutes.userHome);
+                  },
                 ),
-                Expanded(
-                  child: _NavItem(
-                    icon: PhosphorIconsBold.confetti,
-                    label: 'Events',
-                    selected: active == UserNavTab.events,
-                    onTap: () {
-                      if (active == UserNavTab.events) return;
-                      context.push(AppRoutes.eventDetails);
-                    },
-                  ),
+              ),
+              Expanded(
+                child: _NavItem(
+                  icon: PhosphorIconsRegular.calendarBlank,
+                  activeIcon: PhosphorIconsBold.calendarBlank,
+                  label: 'Events',
+                  selected: active == UserNavTab.events,
+                  onTap: () {
+                    if (active == UserNavTab.events) return;
+                    context.push(AppRoutes.eventDetails);
+                  },
                 ),
-                Expanded(
-                  child: _NavItem(
-                    icon: PhosphorIconsBold.shoppingBag,
-                    label: 'Cart',
-                    selected: active == UserNavTab.cart,
-                    onTap: () {
-                      if (active == UserNavTab.cart) return;
-                      context.push(AppRoutes.cart);
-                    },
-                    badge: cartCount > 0 ? cartCount : null,
-                  ),
+              ),
+              Expanded(
+                child: _NavItem(
+                  icon: PhosphorIconsRegular.shoppingBag,
+                  activeIcon: PhosphorIconsBold.shoppingBag,
+                  label: 'Cart',
+                  selected: active == UserNavTab.cart,
+                  onTap: () {
+                    if (active == UserNavTab.cart) return;
+                    context.push(AppRoutes.cart);
+                  },
+                  badge: cartCount > 0 ? cartCount : null,
                 ),
-                Expanded(
-                  child: _NavItem(
-                    icon: PhosphorIconsBold.receipt,
-                    label: 'Orders',
-                    selected: active == UserNavTab.orders,
-                    onTap: () {
-                      if (active == UserNavTab.orders) return;
-                      context.go(AppRoutes.myEvents);
-                    },
-                  ),
+              ),
+              Expanded(
+                child: _NavItem(
+                  icon: PhosphorIconsRegular.receipt,
+                  activeIcon: PhosphorIconsBold.receipt,
+                  label: 'Orders',
+                  selected: active == UserNavTab.orders,
+                  onTap: () {
+                    if (active == UserNavTab.orders) return;
+                    context.go(AppRoutes.myEvents);
+                  },
                 ),
-                Expanded(
-                  child: _NavItem(
-                    icon: PhosphorIconsBold.userCircle,
-                    label: 'Profile',
-                    selected: active == UserNavTab.profile,
-                    onTap: () {
-                      if (active == UserNavTab.profile) return;
-                      context.go(AppRoutes.profile);
-                    },
-                  ),
+              ),
+              Expanded(
+                child: _NavItem(
+                  icon: PhosphorIconsRegular.user,
+                  activeIcon: PhosphorIconsBold.user,
+                  label: 'Profile',
+                  selected: active == UserNavTab.profile,
+                  onTap: () {
+                    if (active == UserNavTab.profile) return;
+                    context.go(AppRoutes.profile);
+                  },
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
@@ -121,13 +123,19 @@ class _NavBar extends StatelessWidget {
 class _NavItem extends StatelessWidget {
   const _NavItem({
     required this.icon,
+    required this.activeIcon,
     required this.label,
     required this.selected,
     required this.onTap,
     this.badge,
   });
 
+  /// Outline (regular-weight) glyph shown when the tab is inactive.
   final IconData icon;
+
+  /// Heavier (bold-weight) glyph shown when the tab is active — mirrors the
+  /// prototype's thicker stroke on the selected tab.
+  final IconData activeIcon;
   final String label;
   final bool selected;
   final VoidCallback onTap;
@@ -139,68 +147,61 @@ class _NavItem extends StatelessWidget {
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(AppSizes.radiusMd),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Stack(
-            clipBehavior: Clip.none,
-            children: [
-              Icon(icon, color: color, size: 22),
-              if (badge != null)
-                Positioned(
-                  right: -8,
-                  top: -6,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 5,
-                      vertical: 2,
-                    ),
-                    constraints: const BoxConstraints(minWidth: 16),
-                    decoration: BoxDecoration(
-                      color: AppColors.primary,
-                      borderRadius:
-                          BorderRadius.circular(AppSizes.radiusPill),
-                      border: Border.all(
-                        color: AppColors.surface,
-                        width: 1.5,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Icon(selected ? activeIcon : icon, color: color, size: 24),
+                if (badge != null)
+                  Positioned(
+                    right: -8,
+                    top: -6,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 5,
+                        vertical: 2,
                       ),
-                    ),
-                    alignment: Alignment.center,
-                    child: Text(
-                      badge! > 99 ? '99+' : '$badge',
-                      style: AppTextStyles.captionBold.copyWith(
-                        color: Colors.white,
-                        fontSize: 9,
+                      constraints: const BoxConstraints(minWidth: 16),
+                      decoration: BoxDecoration(
+                        color: AppColors.primary,
+                        borderRadius: BorderRadius.circular(AppSizes.radiusPill),
+                        border: Border.all(
+                          color: AppColors.surface,
+                          width: 1.5,
+                        ),
+                      ),
+                      alignment: Alignment.center,
+                      child: Text(
+                        badge! > 99 ? '99+' : '$badge',
+                        style: AppTextStyles.captionBold.copyWith(
+                          color: Colors.white,
+                          fontSize: 9,
+                        ),
                       ),
                     ),
                   ),
-                ),
-            ],
-          ),
-          const SizedBox(height: 3),
-          Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: AppTextStyles.caption.copyWith(
-              fontSize: 11,
-              fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-              color: color,
-              height: 1.1,
+              ],
             ),
-          ),
-          const SizedBox(height: 3),
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 220),
-            curve: Curves.easeOutCubic,
-            width: selected ? 18 : 0,
-            height: 3,
-            decoration: BoxDecoration(
-              color: AppColors.primary,
-              borderRadius: BorderRadius.circular(AppSizes.radiusPill),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppTextStyles.caption.copyWith(
+                fontSize: 10,
+                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                color: color,
+                letterSpacing: 0.3,
+                height: 1.1,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -236,12 +237,10 @@ class _InlineCartPeek extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final count = ref.watch(cartCountProvider);
-    final total = ref.watch(cartFoodTotalProvider);
-    final kitchens = ref
-        .watch(cartProvider)
-        .map((c) => c.item.restaurantId)
-        .toSet()
-        .length;
+    // Guest-scaled total so the peek matches the cart's item total.
+    final total = ref.watch(cartBilledFoodTotalProvider);
+    final kitchens =
+        ref.watch(cartProvider).map((c) => c.item.restaurantId).toSet().length;
 
     return Material(
       color: Colors.transparent,

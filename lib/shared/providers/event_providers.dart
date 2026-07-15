@@ -83,6 +83,8 @@ class EventDraftController extends Notifier<EventDraft> {
         eventName: null,
         date: s.date,
         location: s.location,
+        eventLatitude: s.eventLatitude,
+        eventLongitude: s.eventLongitude,
         session: s.session,
         startTime: s.startTime,
         endTime: s.endTime,
@@ -104,6 +106,22 @@ class EventDraftController extends Notifier<EventDraft> {
 
   void setDate(DateTime d) => state = state.copyWith(date: d);
   void setLocation(String v) => state = state.copyWith(location: v);
+
+  /// Set the event location together with its coordinates. Coordinates drive
+  /// the nearest-first restaurant sort, so callers that have them (address
+  /// search, saved-address pick) should use this rather than [setLocation].
+  void setEventLocation({
+    required String address,
+    double? latitude,
+    double? longitude,
+  }) {
+    state = state.copyWith(
+      location: address,
+      eventLatitude: latitude,
+      eventLongitude: longitude,
+    );
+  }
+
   void setSession(String v) => state = state.copyWith(session: v);
   void setStartTime(DateTime v) => state = state.copyWith(startTime: v);
   void setEndTime(DateTime v) => state = state.copyWith(endTime: v);
@@ -120,6 +138,7 @@ class EventDraftController extends Notifier<EventDraft> {
       state = next;
     }
   }
+
   void setTier({required String tierId, required String tierCode}) =>
       state = state.copyWith(tierId: tierId, tierCode: tierCode);
   void setBanquetVenue({required String venueId, required String venueName}) =>
@@ -127,8 +146,7 @@ class EventDraftController extends Notifier<EventDraft> {
         banquetVenueId: venueId,
         banquetVenueName: venueName,
       );
-  void setServiceBoyCount(int v) =>
-      state = state.copyWith(
+  void setServiceBoyCount(int v) => state = state.copyWith(
         serviceBoyCount: v.clamp(state.suggestedServiceBoys, 999),
       );
   void bumpServiceBoyCount(int delta) {
@@ -148,6 +166,8 @@ class EventDraftController extends Notifier<EventDraft> {
       state = EventDraft(
         date: s.date,
         location: s.location,
+        eventLatitude: s.eventLatitude,
+        eventLongitude: s.eventLongitude,
         session: s.session,
         startTime: s.startTime,
         endTime: s.endTime,
@@ -166,6 +186,8 @@ class EventDraftController extends Notifier<EventDraft> {
       state = EventDraft(
         date: s.date,
         location: s.location,
+        eventLatitude: s.eventLatitude,
+        eventLongitude: s.eventLongitude,
         session: s.session,
         startTime: s.startTime,
         endTime: s.endTime,
@@ -176,8 +198,7 @@ class EventDraftController extends Notifier<EventDraft> {
         banquetVenueName: null,
         serviceBoyCount: s.serviceBoyCount,
         venueType: type,
-        propertyDraft:
-            s.propertyDraft ?? const PrivatePropertyDraft(),
+        propertyDraft: s.propertyDraft ?? const PrivatePropertyDraft(),
         addonQuantities: s.addonQuantities,
         recce: s.recce,
       );
@@ -259,7 +280,6 @@ class EventDraftController extends Notifier<EventDraft> {
   void reset() => state = const EventDraft();
 }
 
-final eventDraftProvider =
-    NotifierProvider<EventDraftController, EventDraft>(
+final eventDraftProvider = NotifierProvider<EventDraftController, EventDraft>(
   EventDraftController.new,
 );

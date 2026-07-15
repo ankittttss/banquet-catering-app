@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../data/models/cart_item.dart';
 import '../../data/models/menu_item.dart';
+import 'event_providers.dart';
 
 /// Customization payload for adding a new cart line.
 class CartCustomization {
@@ -174,11 +175,21 @@ final cartCountProvider = Provider<int>(
 );
 
 /// Per-guest food total — sum of line totals *before* guest-count scaling.
-/// Kept as the default "food cost" seen by callers that haven't been updated
-/// to scale by guest count yet.
+/// Use this only when you explicitly want the "per guest" figure; the running
+/// order total shown to the customer should use [cartBilledFoodTotalProvider].
 final cartFoodTotalProvider = Provider<double>(
   (ref) => ref.watch(cartProvider).fold<double>(0, (s, c) => s + c.lineTotal),
 );
+
+/// Billed food total — each cart line is priced *per guest*, so the amount the
+/// customer will actually pay for food is the per-guest total × the event's
+/// guest count. This is the figure the cart bar / "View items" bar / popup
+/// should show so the running total matches the cart's "Item total".
+final cartBilledFoodTotalProvider = Provider<double>((ref) {
+  final cart = ref.watch(cartProvider);
+  final guests = ref.watch(eventDraftProvider).guestCount;
+  return cart.fold<double>(0, (s, c) => s + c.billedLineTotal(guests));
+});
 
 /// Grouped cart — one entry per restaurant, preserving line order within each
 /// group. Empty list when the cart is empty. Used by the cart screen to render

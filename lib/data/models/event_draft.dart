@@ -8,6 +8,8 @@ class EventDraft {
     this.eventName,
     this.date,
     this.location,
+    this.eventLatitude,
+    this.eventLongitude,
     this.session,
     this.startTime,
     this.endTime,
@@ -30,6 +32,13 @@ class EventDraft {
 
   final DateTime? date;
   final String? location;
+
+  /// Coordinates of the event location. When present, the restaurant list is
+  /// sorted nearest-first to *these* coordinates rather than the user's saved
+  /// home/work address.
+  final double? eventLatitude;
+  final double? eventLongitude;
+
   final String? session; // 'Lunch' | 'Dinner' | 'High Tea'
   final DateTime? startTime;
   final DateTime? endTime;
@@ -66,12 +75,13 @@ class EventDraft {
 
   /// Suggested staffing level — 1 service boy per 10 guests (rounded up),
   /// floor of 1. e.g. 25 guests → 3, 100 guests → 10, 150 guests → 15.
-  int get suggestedServiceBoys =>
-      ((guestCount + 9) ~/ 10).clamp(1, 999);
+  int get suggestedServiceBoys => ((guestCount + 9) ~/ 10).clamp(1, 999);
 
   /// Effective service boy count used for billing.
-  int get effectiveServiceBoyCount =>
-      serviceBoyCount ?? suggestedServiceBoys;
+  int get effectiveServiceBoyCount => serviceBoyCount ?? suggestedServiceBoys;
+
+  /// True when the event location carries usable coordinates.
+  bool get hasEventCoords => eventLatitude != null && eventLongitude != null;
 
   bool get isComplete =>
       date != null &&
@@ -86,6 +96,8 @@ class EventDraft {
     String? eventName,
     DateTime? date,
     String? location,
+    double? eventLatitude,
+    double? eventLongitude,
     String? session,
     DateTime? startTime,
     DateTime? endTime,
@@ -104,6 +116,8 @@ class EventDraft {
         eventName: eventName ?? this.eventName,
         date: date ?? this.date,
         location: location ?? this.location,
+        eventLatitude: eventLatitude ?? this.eventLatitude,
+        eventLongitude: eventLongitude ?? this.eventLongitude,
         session: session ?? this.session,
         startTime: startTime ?? this.startTime,
         endTime: endTime ?? this.endTime,
@@ -121,6 +135,8 @@ class EventDraft {
 
   Map<String, dynamic> toInsertMap(String userId) => {
         'user_id': userId,
+        if (eventName != null && eventName!.trim().isNotEmpty)
+          'name': eventName!.trim(),
         'event_date': date!.toIso8601String().substring(0, 10),
         'location': location,
         'session': session,
@@ -141,6 +157,8 @@ class EventDraft {
         if (eventName != null) 'eventName': eventName,
         if (date != null) 'date': date!.toIso8601String(),
         if (location != null) 'location': location,
+        if (eventLatitude != null) 'eventLatitude': eventLatitude,
+        if (eventLongitude != null) 'eventLongitude': eventLongitude,
         if (session != null) 'session': session,
         if (startTime != null) 'startTime': startTime!.toIso8601String(),
         if (endTime != null) 'endTime': endTime!.toIso8601String(),
@@ -161,6 +179,7 @@ class EventDraft {
       final v = json[key];
       return v is String ? DateTime.tryParse(v) : null;
     }
+
     final qty = (json['addonQuantities'] as Map?)?.map(
           (k, v) => MapEntry(k.toString(), (v as num).toInt()),
         ) ??
@@ -169,6 +188,8 @@ class EventDraft {
       eventName: json['eventName'] as String?,
       date: parse('date'),
       location: json['location'] as String?,
+      eventLatitude: (json['eventLatitude'] as num?)?.toDouble(),
+      eventLongitude: (json['eventLongitude'] as num?)?.toDouble(),
       session: json['session'] as String?,
       startTime: parse('startTime'),
       endTime: parse('endTime'),

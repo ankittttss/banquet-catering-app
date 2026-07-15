@@ -34,10 +34,13 @@ class RecceScreen extends ConsumerWidget {
 
     final chefName = pick?.chefId == null
         ? null
-        : chefs.firstWhere(
-            (c) => c.id == pick!.chefId,
-            orElse: () => chefs.first,
-          ).name.replaceFirst('Chef ', '');
+        : chefs
+            .firstWhere(
+              (c) => c.id == pick!.chefId,
+              orElse: () => chefs.first,
+            )
+            .name
+            .replaceFirst('Chef ', '');
 
     return Scaffold(
       backgroundColor: AppColors.surfaceWarm,
@@ -86,9 +89,7 @@ class RecceScreen extends ConsumerWidget {
                     onPick: (d) {
                       if (d.isFull) return;
                       HapticFeedback.selectionClick();
-                      ref
-                          .read(eventDraftProvider.notifier)
-                          .setRecceDay(d.date);
+                      ref.read(eventDraftProvider.notifier).setRecceDay(d.date);
                     },
                   ),
                   const SizedBox(height: AppSizes.lg),
@@ -99,10 +100,10 @@ class RecceScreen extends ConsumerWidget {
                   const SizedBox(height: AppSizes.sm),
                   _SlotGrid(
                     day: selectedDay,
-                    selectedSlotLabel:
-                        pick?.day != null && _sameDay(pick!.day!, selectedDay.date)
-                            ? pick.slotLabel
-                            : null,
+                    selectedSlotLabel: pick?.day != null &&
+                            _sameDay(pick!.day!, selectedDay.date)
+                        ? pick.slotLabel
+                        : null,
                     onPick: (slot) {
                       if (slot.isBooked) return;
                       HapticFeedback.selectionClick();
@@ -138,7 +139,8 @@ class RecceScreen extends ConsumerWidget {
                         ),
                       );
                       final t = DateTime.now().millisecondsSinceEpoch;
-                      context.go(
+                      // Push so the back stack preserves the planning steps.
+                      context.push(
                         '${AppRoutes.userHome}?scrollTo=restaurants&t=$t',
                       );
                     }
@@ -156,8 +158,18 @@ bool _sameDay(DateTime a, DateTime b) =>
 
 String _dayHeaderLabel(DateTime d) {
   const months = [
-    'JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN',
-    'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC',
+    'JAN',
+    'FEB',
+    'MAR',
+    'APR',
+    'MAY',
+    'JUN',
+    'JUL',
+    'AUG',
+    'SEP',
+    'OCT',
+    'NOV',
+    'DEC',
   ];
   return '${months[d.month - 1]} ${d.day}';
 }
@@ -205,8 +217,7 @@ class _WhyCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: AppSizes.md),
-          const _RecceBullet(
-              text: 'Measurements for tent, tables, lighting'),
+          const _RecceBullet(text: 'Measurements for tent, tables, lighting'),
           const SizedBox(height: AppSizes.sm),
           const _RecceBullet(text: 'Pinpoint power & water before the day'),
           const SizedBox(height: AppSizes.sm),
@@ -368,8 +379,8 @@ class _ChefRow extends StatelessWidget {
                           decoration: BoxDecoration(
                             color: AppColors.surface,
                             border: Border.all(color: AppColors.border),
-                            borderRadius: BorderRadius.circular(
-                                AppSizes.radiusPill),
+                            borderRadius:
+                                BorderRadius.circular(AppSizes.radiusPill),
                           ),
                           child: Text(
                             tag,
@@ -472,8 +483,7 @@ class _DayCard extends StatelessWidget {
         ? AppColors.textPrimary
         : (isFull ? AppColors.surfaceAlt : AppColors.surface);
     final border = isSelected ? AppColors.textPrimary : AppColors.border;
-    final fg =
-        isSelected ? Colors.white : AppColors.textPrimary;
+    final fg = isSelected ? Colors.white : AppColors.textPrimary;
     return InkWell(
       onTap: isFull ? null : onTap,
       borderRadius: BorderRadius.circular(AppSizes.radiusMd),
