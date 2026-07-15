@@ -34,7 +34,7 @@ class CheckoutTotals {
   final double serviceBoyCost;
   final double waterBottleCost;
   /// Total rupees from the customer's Setup & equipment selection (tents,
-  /// tables, gensets, etc.). Only non-zero on the private-property path —
+  /// tables, live counters, etc.). Only non-zero on the private-property path —
   /// the Setup screen is gated behind that branch and the hall provides
   /// equivalent infrastructure on the hall path.
   final double setupEquipment;

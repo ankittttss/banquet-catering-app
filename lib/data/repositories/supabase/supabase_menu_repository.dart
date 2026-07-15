@@ -73,4 +73,75 @@ class SupabaseMenuRepository implements MenuRepository {
         .order('name');
     return rows.map<MenuItem>(MenuItem.fromMap).toList(growable: false);
   }
+
+  // ── Admin catalog editing ───────────────────────────────────────────────
+
+  @override
+  Future<List<MenuItem>> fetchAllMenuItems() async {
+    // Like [fetchMenuItems] but WITHOUT the is_available filter, so the admin
+    // can see and re-enable disabled items. Paginated for the 1000-row cap.
+    final all = <MenuItem>[];
+    const pageSize = 1000;
+    for (var offset = 0;; offset += pageSize) {
+      final rows = await supabase
+          .from('menu_items')
+          .select()
+          .order('name')
+          .range(offset, offset + pageSize - 1);
+      all.addAll(rows.map<MenuItem>(MenuItem.fromMap));
+      if (rows.length < pageSize) break;
+    }
+    return all;
+  }
+
+  @override
+  Future<void> createMenuItem({
+    required String restaurantId,
+    required String categoryId,
+    required String name,
+    required double price,
+    String? description,
+    bool isVeg = true,
+    bool isAvailable = true,
+  }) async {
+    final desc = description?.trim();
+    await supabase.from('menu_items').insert({
+      'restaurant_id': restaurantId,
+      'category_id': categoryId,
+      'name': name.trim(),
+      'price': price,
+      if (desc != null && desc.isNotEmpty) 'description': desc,
+      'is_veg': isVeg,
+      'is_available': isAvailable,
+    });
+  }
+
+  @override
+  Future<void> updateMenuItem(MenuItem item) async {
+    final desc = item.description?.trim();
+    await supabase.from('menu_items').update({
+      'restaurant_id': item.restaurantId,
+      'category_id': item.categoryId,
+      'name': item.name.trim(),
+      'price': item.price,
+      'description': (desc != null && desc.isNotEmpty) ? desc : null,
+      'is_veg': item.isVeg,
+      'is_available': item.isAvailable,
+    }).eq('id', item.id);
+  }
+
+  @override
+  Future<void> setMenuItemAvailability({
+    required String id,
+    required bool isAvailable,
+  }) async {
+    await supabase
+        .from('menu_items')
+        .update({'is_available': isAvailable}).eq('id', id);
+  }
+
+  @override
+  Future<void> deleteMenuItem(String id) async {
+    await supabase.from('menu_items').delete().eq('id', id);
+  }
 }

@@ -38,6 +38,13 @@ class UserProfile {
 
   bool get isAdmin => role == UserRole.admin;
 
+  /// True when the profile carries the details required to place an order —
+  /// a name and a contact phone number. Email is collected for promotions
+  /// but is not required to order.
+  bool get isComplete =>
+      (name != null && name!.trim().isNotEmpty) &&
+      (phone != null && phone!.trim().isNotEmpty);
+
   factory UserProfile.fromMap(Map<String, dynamic> map) {
     final rawAllergies = map['allergies'];
     final allergies = <String>[];
@@ -85,8 +92,7 @@ class UserProfile {
           'date_of_birth':
               '${dateOfBirth!.year.toString().padLeft(4, '0')}-${dateOfBirth!.month.toString().padLeft(2, '0')}-${dateOfBirth!.day.toString().padLeft(2, '0')}',
         if (avatarUrl != null) 'avatar_url': avatarUrl,
-        if (dietaryPreference != null)
-          'dietary_preference': dietaryPreference,
+        if (dietaryPreference != null) 'dietary_preference': dietaryPreference,
         'allergies': allergies,
         'notification_prefs': notificationPrefs,
       };

@@ -7,7 +7,6 @@ import 'package:go_router/go_router.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_sizes.dart';
 import '../../../core/constants/app_text_styles.dart';
-import '../../../core/router/app_routes.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../data/models/menu_category.dart';
 import '../../../data/models/menu_item.dart';
@@ -19,6 +18,7 @@ import '../../../shared/providers/menu_providers.dart';
 import '../../../shared/providers/offers_providers.dart';
 import '../../../shared/widgets/app_scaffold.dart';
 import '../../../shared/widgets/safe_net_image.dart';
+import '../../../shared/widgets/selected_items_sheet.dart';
 import '../widgets/reviews_section.dart';
 
 class RestaurantDetailScreen extends ConsumerWidget {
@@ -32,12 +32,14 @@ class RestaurantDetailScreen extends ConsumerWidget {
         ref.watch(restaurantsProvider).valueOrNull ?? const <Restaurant>[];
     // Fetch menu items for THIS restaurant only — the catalog-wide provider
     // hits a 1000-row cap and misses most restaurants' menus.
-    final items = ref.watch(restaurantMenuItemsProvider(restaurantId)).valueOrNull ??
-        const <MenuItem>[];
-    final categories = ref.watch(menuCategoriesProvider).valueOrNull ??
-        const <MenuCategory>[];
+    final items =
+        ref.watch(restaurantMenuItemsProvider(restaurantId)).valueOrNull ??
+            const <MenuItem>[];
+    final categories =
+        ref.watch(menuCategoriesProvider).valueOrNull ?? const <MenuCategory>[];
     final cartCount = ref.watch(cartCountProvider);
-    final cartTotal = ref.watch(cartFoodTotalProvider);
+    // Guest-scaled total so the bar matches the cart's item total.
+    final cartTotal = ref.watch(cartBilledFoodTotalProvider);
 
     final restaurant = restaurants.firstWhere(
       (r) => r.id == restaurantId,
@@ -50,8 +52,8 @@ class RestaurantDetailScreen extends ConsumerWidget {
       grouped.putIfAbsent(it.categoryId, () => []).add(it);
     }
     final sortedCatIds = grouped.keys.toList()
-      ..sort((a, b) => (catMap[a]?.sortOrder ?? 99)
-          .compareTo(catMap[b]?.sortOrder ?? 99));
+      ..sort((a, b) =>
+          (catMap[a]?.sortOrder ?? 99).compareTo(catMap[b]?.sortOrder ?? 99));
 
     return AppScaffold(
       padded: false,
@@ -130,9 +132,7 @@ class _HeroSliver extends StatelessWidget {
       ),
       actions: [
         _CircleAction(
-          icon: isFav
-              ? Icons.favorite_rounded
-              : Icons.favorite_border_rounded,
+          icon: isFav ? Icons.favorite_rounded : Icons.favorite_border_rounded,
           color: isFav ? AppColors.primary : AppColors.textPrimary,
           onTap: () {
             HapticFeedback.selectionClick();
@@ -141,7 +141,20 @@ class _HeroSliver extends StatelessWidget {
         ),
         _CircleAction(
           icon: Icons.ios_share_rounded,
-          onTap: () {},
+          onTap: () {
+            HapticFeedback.selectionClick();
+            Clipboard.setData(
+              ClipboardData(
+                text: 'Check out ${restaurant.name} on Dawat',
+              ),
+            );
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Link copied to clipboard'),
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          },
         ),
         const SizedBox(width: AppSizes.sm),
       ],
@@ -375,8 +388,7 @@ class _OfferCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final accent =
-        AppColors.fromHex(offer.accentHex, fallback: AppColors.info);
+    final accent = AppColors.fromHex(offer.accentHex, fallback: AppColors.info);
     final bg = AppColors.fromHex(offer.bgHex, fallback: AppColors.catBlueLt);
     return Container(
       width: 220,
@@ -606,8 +618,7 @@ class _AddedBadge extends StatelessWidget {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.check_rounded,
-                  size: 14, color: Colors.white),
+              const Icon(Icons.check_rounded, size: 14, color: Colors.white),
               const SizedBox(width: 4),
               Text(
                 'ADDED',
@@ -671,7 +682,7 @@ class _ViewCartBar extends StatelessWidget {
           elevation: 6,
           shadowColor: Colors.black.withValues(alpha: 0.15),
           child: InkWell(
-            onTap: () => context.push(AppRoutes.cart),
+            onTap: () => showSelectedItemsSheet(context),
             borderRadius: BorderRadius.circular(AppSizes.radiusMd),
             child: Padding(
               padding: const EdgeInsets.symmetric(
@@ -685,15 +696,15 @@ class _ViewCartBar extends StatelessWidget {
                   const SizedBox(width: AppSizes.sm),
                   Expanded(
                     child: Text(
-                      'View Cart · $count ${count == 1 ? 'item' : 'items'} · '
+                      'View items · $count ${count == 1 ? 'item' : 'items'} · '
                       '${Formatters.currency(total)}',
-                      style: AppTextStyles.bodyBold
-                          .copyWith(color: Colors.white),
+                      style:
+                          AppTextStyles.bodyBold.copyWith(color: Colors.white),
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
-                  const Icon(Icons.arrow_forward_rounded,
-                      color: Colors.white, size: 20),
+                  const Icon(Icons.keyboard_arrow_up_rounded,
+                      color: Colors.white, size: 22),
                 ],
               ),
             ),

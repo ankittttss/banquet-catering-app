@@ -1,3 +1,5 @@
+import 'package:supabase_flutter/supabase_flutter.dart';
+
 import '../../../core/supabase/supabase_client.dart';
 import '../../models/cart_item.dart';
 import '../../models/checkout_totals.dart';
@@ -14,11 +16,21 @@ class SupabaseOrderRepository implements OrderRepository {
     required List<CartItem> cart,
     required CheckoutTotals totals,
   }) async {
-    final eventRow = await supabase
-        .from('events')
-        .insert(event.toInsertMap(userId))
-        .select()
-        .single();
+    final eventPayload = event.toInsertMap(userId);
+    Map<String, dynamic> eventRow;
+    try {
+      eventRow =
+          await supabase.from('events').insert(eventPayload).select().single();
+    } on PostgrestException catch (e) {
+      // The optional `name` column may not be migrated yet on older schemas.
+      // Drop it and retry so order placement never fails on that alone.
+      final missingName = eventPayload.containsKey('name') &&
+          e.message.toLowerCase().contains('name');
+      if (!missingName) rethrow;
+      eventPayload.remove('name');
+      eventRow =
+          await supabase.from('events').insert(eventPayload).select().single();
+    }
     final eventId = eventRow['id'] as String;
 
     // Group cart lines by restaurant — becomes one vendor lot per kitchen.
@@ -43,8 +55,7 @@ class SupabaseOrderRepository implements OrderRepository {
         .insert({
           'event_id': eventId,
           'user_id': userId,
-          if (primaryRestaurantId != null)
-            'restaurant_id': primaryRestaurantId,
+          if (primaryRestaurantId != null) 'restaurant_id': primaryRestaurantId,
           'food_cost': totals.foodCost,
           'banquet_charge': totals.banquetCharge,
           'delivery_charge': totals.deliveryCharge,
@@ -110,34 +121,45 @@ class SupabaseOrderRepository implements OrderRepository {
 
   @override
   Stream<List<OrderSummary>> streamMyOrders(String userId) async* {
-    // 1. Always yield an initial REST fetch so the UI has data even if
-    //    Realtime subscription fails / times out.
-    try {
+    // The joined query lets PostgREST embed the parent event (name, date,
+    // location, guest count) onto each order. Realtime row streams CANNOT
+    // embed related tables, so we run this authoritative fetch both for the
+    // initial paint and on every realtime signal — otherwise the live
+    // overlay would clobber those event fields back to null (cards would
+    // show a generic "Event" with no guests/venue).
+    Future<List<OrderSummary>> fetchJoined() async {
       final rows = await supabase
           .from('orders')
-          .select('*, events(event_date, location, guest_count)')
+          .select('*, events(*)')
           .eq('user_id', userId)
           .order('created_at', ascending: false);
-      yield rows
+      return rows
           .map<OrderSummary>(OrderSummary.fromMap)
           .toList(growable: false);
+    }
+
+    // 1. Initial fetch so the UI has fully-hydrated data immediately.
+    try {
+      yield await fetchJoined();
     } catch (_) {
       yield const <OrderSummary>[];
     }
 
-    // 2. Try to overlay a realtime stream. If it errors out (publication,
-    //    replica identity, or subscribe timeout), swallow — the UI keeps
-    //    showing the initial fetch above. Pull-to-refresh still works.
+    // 2. Use realtime purely as a "something changed" trigger, then re-run
+    //    the joined fetch so event name/date/location/guests stay attached.
+    //    If realtime is unavailable (publication, replica identity, or
+    //    subscribe timeout), the initial data above still stands and
+    //    pull-to-refresh keeps working.
     try {
       final stream = supabase
           .from('orders')
-          .stream(primaryKey: ['id'])
-          .order('created_at', ascending: false);
-      await for (final rows in stream) {
-        yield rows
-            .where((r) => r['user_id'] == userId)
-            .map<OrderSummary>(OrderSummary.fromMap)
-            .toList(growable: false);
+          .stream(primaryKey: ['id']).eq('user_id', userId);
+      await for (final _ in stream) {
+        try {
+          yield await fetchJoined();
+        } catch (_) {
+          // Transient fetch error — keep the last good list on screen.
+        }
       }
     } catch (_) {
       // Realtime unavailable — initial data already surfaced. No-op.
@@ -148,11 +170,9 @@ class SupabaseOrderRepository implements OrderRepository {
   Future<List<OrderSummary>> fetchAll() async {
     final rows = await supabase
         .from('orders')
-        .select('*, events(event_date, location, guest_count)')
+        .select('*, events(*)')
         .order('created_at', ascending: false);
-    return rows
-        .map<OrderSummary>(OrderSummary.fromMap)
-        .toList(growable: false);
+    return rows.map<OrderSummary>(OrderSummary.fromMap).toList(growable: false);
   }
 
   @override

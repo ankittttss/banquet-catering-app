@@ -64,6 +64,7 @@ class OrderSummary {
     required this.paymentStatus,
     required this.createdAt,
     this.restaurantId,
+    this.eventName,
     this.eventDate,
     this.location,
     this.guestCount,
@@ -92,6 +93,9 @@ class OrderSummary {
   final String? restaurantId;
 
   // Joined from events table.
+  /// Customer-chosen event name (e.g. "Aanya's Sangeet"). Null on legacy
+  /// orders placed before the events.name column existed.
+  final String? eventName;
   final DateTime? eventDate;
   final String? location;
   final int? guestCount;
@@ -128,9 +132,9 @@ class OrderSummary {
       restaurantId: map['restaurant_id'] as String?,
       total: (map['total'] as num).toDouble(),
       orderStatus: OrderStatus.fromString(map['order_status'] as String?),
-      paymentStatus:
-          PaymentStatus.fromString(map['payment_status'] as String?),
+      paymentStatus: PaymentStatus.fromString(map['payment_status'] as String?),
       createdAt: DateTime.parse(map['created_at'] as String),
+      eventName: event?['name'] as String?,
       eventDate: event?['event_date'] != null
           ? DateTime.parse(event!['event_date'] as String)
           : null,

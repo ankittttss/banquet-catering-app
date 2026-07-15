@@ -21,6 +21,7 @@ import '../../../shared/providers/home_providers.dart';
 import '../../../shared/providers/menu_providers.dart';
 import '../../../shared/providers/notification_providers.dart';
 import '../../../shared/widgets/app_scaffold.dart';
+import '../../../shared/widgets/double_back_exit.dart';
 import '../../../shared/widgets/empty_state.dart';
 import '../../../shared/widgets/safe_net_image.dart';
 import '../../../shared/widgets/user_bottom_nav.dart';
@@ -68,38 +69,40 @@ class _UserHomeScreenState extends ConsumerState<UserHomeScreen> {
   Widget build(BuildContext context) {
     WidgetsBinding.instance
         .addPostFrameCallback((_) => _maybeScrollToRestaurants());
-    return AppScaffold(
-      padded: false,
-      body: RefreshIndicator(
-        color: AppColors.primary,
-        onRefresh: _refresh,
-        child: CustomScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          slivers: [
-            const _LocationHeader(),
-            const SliverToBoxAdapter(child: _SearchBar()),
-            const SliverToBoxAdapter(child: _HeroOrDraft()),
-            const _SectionHeader(title: "What's the occasion?"),
-            const SliverToBoxAdapter(child: _EventCategoriesGrid()),
-            const SliverToBoxAdapter(child: SizedBox(height: AppSizes.md)),
-            _SectionHeader(
-              title: 'Curated for events',
-              trailing: 'See all',
-              onTrailingTap: () => context.push(AppRoutes.search),
-            ),
-            const SliverToBoxAdapter(child: _CollectionsScroll()),
-            const SliverToBoxAdapter(child: SizedBox(height: AppSizes.md)),
-            const SliverToBoxAdapter(child: _FilterChipsRow()),
-            _SectionHeader(
-              key: _restaurantsHeaderKey,
-              title: 'Restaurants nearby',
-            ),
-            const _RestaurantList(),
-            const SliverToBoxAdapter(child: SizedBox(height: AppSizes.xxxl)),
-          ],
+    return DoubleBackToExit(
+      child: AppScaffold(
+        padded: false,
+        body: RefreshIndicator(
+          color: AppColors.primary,
+          onRefresh: _refresh,
+          child: CustomScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            slivers: [
+              const _LocationHeader(),
+              const SliverToBoxAdapter(child: _SearchBar()),
+              const SliverToBoxAdapter(child: _HeroOrDraft()),
+              const _SectionHeader(title: "What's the occasion?"),
+              const SliverToBoxAdapter(child: _EventCategoriesGrid()),
+              const SliverToBoxAdapter(child: SizedBox(height: AppSizes.md)),
+              _SectionHeader(
+                title: 'Curated for events',
+                trailing: 'See all',
+                onTrailingTap: () => context.push(AppRoutes.search),
+              ),
+              const SliverToBoxAdapter(child: _CollectionsScroll()),
+              const SliverToBoxAdapter(child: SizedBox(height: AppSizes.md)),
+              const SliverToBoxAdapter(child: _FilterChipsRow()),
+              _SectionHeader(
+                key: _restaurantsHeaderKey,
+                title: 'Restaurants nearby',
+              ),
+              const _RestaurantList(),
+              const SliverToBoxAdapter(child: SizedBox(height: AppSizes.xxxl)),
+            ],
+          ),
         ),
+        bottomBar: const UserBottomNav(active: UserNavTab.home),
       ),
-      bottomBar: const UserBottomNav(active: UserNavTab.home),
     );
   }
 }
@@ -119,6 +122,10 @@ class _LocationHeader extends ConsumerWidget {
       pinned: false,
       floating: true,
       snap: true,
+      // Home is a top-level tab destination — never show an auto back arrow.
+      // It can be reached via push (from the planning flow), and without this
+      // Flutter would inject a leading arrow that shifts the whole header.
+      automaticallyImplyLeading: false,
       backgroundColor: AppColors.surface,
       surfaceTintColor: AppColors.surface,
       elevation: 0,
@@ -181,8 +188,7 @@ class _LocationHeader extends ConsumerWidget {
           const SizedBox(width: AppSizes.sm),
           _AvatarButton(
             avatarUrl: ref.watch(currentProfileProvider).valueOrNull?.avatarUrl,
-            fallbackLabel:
-                ref.watch(currentProfileProvider).valueOrNull?.name,
+            fallbackLabel: ref.watch(currentProfileProvider).valueOrNull?.name,
             onTap: () => context.push(AppRoutes.profile),
           ),
         ],
@@ -357,8 +363,7 @@ class _SearchBar extends StatelessWidget {
               borderRadius: BorderRadius.circular(AppSizes.radiusMd),
               child: Container(
                 height: 48,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: AppSizes.md),
+                padding: const EdgeInsets.symmetric(horizontal: AppSizes.md),
                 decoration: BoxDecoration(
                   color: AppColors.surfaceAlt,
                   borderRadius: BorderRadius.circular(AppSizes.radiusMd),
@@ -421,8 +426,8 @@ class _FilterButton extends ConsumerWidget {
               color: AppColors.primary,
               borderRadius: BorderRadius.circular(AppSizes.radiusMd),
             ),
-            child: const Icon(Icons.tune_rounded,
-                color: Colors.white, size: 22),
+            child:
+                const Icon(Icons.tune_rounded, color: Colors.white, size: 22),
           ),
           if (hasFilter)
             Positioned(
@@ -509,8 +514,7 @@ class _FilterSheet extends ConsumerWidget {
                         const SizedBox(height: 2),
                         Text(
                           'Personalize what you see',
-                          style: AppTextStyles.bodyMuted
-                              .copyWith(fontSize: 12),
+                          style: AppTextStyles.bodyMuted.copyWith(fontSize: 12),
                         ),
                       ],
                     ),
@@ -677,9 +681,7 @@ class _FilterOptionRow extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final on = ref.watch(homeSortProvider) == data.sort;
     return Material(
-      color: on
-          ? data.iconColor.withValues(alpha: 0.06)
-          : Colors.transparent,
+      color: on ? data.iconColor.withValues(alpha: 0.06) : Colors.transparent,
       borderRadius: BorderRadius.circular(AppSizes.radiusMd),
       child: InkWell(
         onTap: () {
@@ -711,9 +713,8 @@ class _FilterOptionRow extends ConsumerWidget {
                       data.sort.label,
                       style: AppTextStyles.body.copyWith(
                         fontSize: 14,
-                        color: on
-                            ? AppColors.textPrimary
-                            : AppColors.textPrimary,
+                        color:
+                            on ? AppColors.textPrimary : AppColors.textPrimary,
                         fontWeight: on ? FontWeight.w700 : FontWeight.w600,
                       ),
                     ),
@@ -737,9 +738,7 @@ class _FilterOptionRow extends ConsumerWidget {
                   color: on ? data.iconColor : Colors.transparent,
                   shape: BoxShape.circle,
                   border: Border.all(
-                    color: on
-                        ? data.iconColor
-                        : AppColors.border,
+                    color: on ? data.iconColor : AppColors.border,
                     width: 1.5,
                   ),
                 ),
@@ -881,8 +880,7 @@ class _DraftEventCard extends StatelessWidget {
                 ),
                 const SizedBox(height: AppSizes.md),
                 ClipRRect(
-                  borderRadius:
-                      BorderRadius.circular(AppSizes.radiusPill),
+                  borderRadius: BorderRadius.circular(AppSizes.radiusPill),
                   child: LinearProgressIndicator(
                     value: progress.fraction,
                     minHeight: 6,
@@ -1031,8 +1029,18 @@ class _DraftProgress {
   static String _composeDate(EventDraft d) {
     if (d.date == null) return 'Date not set';
     const months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
     ];
     const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
     final dt = d.date!;
@@ -1084,8 +1092,7 @@ class _HeroBanner extends StatelessWidget {
                     ),
                     decoration: BoxDecoration(
                       color: Colors.white.withValues(alpha: 0.2),
-                      borderRadius:
-                          BorderRadius.circular(AppSizes.radiusPill),
+                      borderRadius: BorderRadius.circular(AppSizes.radiusPill),
                     ),
                     child: Text(
                       '🎉 EVENT CATERING',
@@ -1107,14 +1114,13 @@ class _HeroBanner extends StatelessWidget {
                   const SizedBox(height: AppSizes.xs),
                   Text(
                     'From 5 to 5,000 guests',
-                    style: AppTextStyles.caption
-                        .copyWith(color: Colors.white70),
+                    style:
+                        AppTextStyles.caption.copyWith(color: Colors.white70),
                   ),
                   const SizedBox(height: AppSizes.md),
                   InkWell(
                     onTap: () => context.push(AppRoutes.eventDetails),
-                    borderRadius:
-                        BorderRadius.circular(AppSizes.radiusSm),
+                    borderRadius: BorderRadius.circular(AppSizes.radiusSm),
                     child: Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: AppSizes.md,
@@ -1122,8 +1128,7 @@ class _HeroBanner extends StatelessWidget {
                       ),
                       decoration: BoxDecoration(
                         color: Colors.white,
-                        borderRadius:
-                            BorderRadius.circular(AppSizes.radiusSm),
+                        borderRadius: BorderRadius.circular(AppSizes.radiusSm),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
@@ -1235,8 +1240,7 @@ class _EventCategoriesGrid extends ConsumerWidget {
       loading: () => const _EventGridSkeleton(),
       error: (_, __) => const SizedBox.shrink(),
       data: (cats) => Padding(
-        padding:
-            const EdgeInsets.symmetric(horizontal: AppSizes.pagePadding),
+        padding: const EdgeInsets.symmetric(horizontal: AppSizes.pagePadding),
         child: GridView.builder(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
@@ -1387,8 +1391,7 @@ class _EventGridSkeleton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding:
-          const EdgeInsets.symmetric(horizontal: AppSizes.pagePadding),
+      padding: const EdgeInsets.symmetric(horizontal: AppSizes.pagePadding),
       child: GridView.builder(
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
@@ -1445,8 +1448,8 @@ class _CollectionCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final bg =
         AppColors.fromHex(collection.bgHex, fallback: AppColors.primarySoft);
-    final fg = AppColors.fromHex(collection.iconHex,
-        fallback: AppColors.primary);
+    final fg =
+        AppColors.fromHex(collection.iconHex, fallback: AppColors.primary);
     return InkWell(
       onTap: () {
         HapticFeedback.lightImpact();
@@ -1575,8 +1578,7 @@ class _RestaurantList extends ConsumerWidget {
         }
         return SliverList.separated(
           itemCount: list.length,
-          separatorBuilder: (_, __) =>
-              const SizedBox(height: AppSizes.md),
+          separatorBuilder: (_, __) => const SizedBox(height: AppSizes.md),
           itemBuilder: (_, i) => Padding(
             padding: EdgeInsets.fromLTRB(
               AppSizes.pagePadding,
@@ -1658,8 +1660,7 @@ class _RestaurantCard extends ConsumerWidget {
                         Positioned(
                           bottom: AppSizes.sm,
                           right: AppSizes.sm,
-                          child: _MinGuestsChip(
-                              min: restaurant.minGuests!),
+                          child: _MinGuestsChip(min: restaurant.minGuests!),
                         ),
                       if (restaurant.pricePerPlate != null)
                         Positioned(
@@ -1719,8 +1720,7 @@ class _RestaurantCard extends ConsumerWidget {
                       children: [
                         if (restaurant.deliveryEta.isNotEmpty) ...[
                           const Icon(Icons.schedule_rounded,
-                              size: 14,
-                              color: AppColors.textSecondary),
+                              size: 14, color: AppColors.textSecondary),
                           const SizedBox(width: 4),
                           Text(restaurant.deliveryEta,
                               style: AppTextStyles.caption),
@@ -1881,8 +1881,7 @@ class _RatingChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bg =
-        rating >= 4.0 ? AppColors.success : AppColors.warning;
+    final bg = rating >= 4.0 ? AppColors.success : AppColors.warning;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -1945,8 +1944,7 @@ class _RestaurantSkeleton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding:
-          const EdgeInsets.symmetric(horizontal: AppSizes.pagePadding),
+      padding: const EdgeInsets.symmetric(horizontal: AppSizes.pagePadding),
       child: Column(
         children: List.generate(
           3,

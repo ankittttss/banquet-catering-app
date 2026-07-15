@@ -40,8 +40,11 @@ class VenueTypeScreen extends ConsumerWidget {
           if (picked != true) return;
         }
         if (!context.mounted) return;
+        // Push (not go) so the planning steps stay on the back stack —
+        // the user can return to change guests / venue / details without
+        // restarting the order.
         final t = DateTime.now().millisecondsSinceEpoch;
-        context.go('${AppRoutes.userHome}?scrollTo=restaurants&t=$t');
+        context.push('${AppRoutes.userHome}?scrollTo=restaurants&t=$t');
       } else {
         context.push(AppRoutes.eventProperty);
       }
@@ -307,8 +310,7 @@ class _HeroImage extends StatelessWidget {
                 ),
                 decoration: BoxDecoration(
                   color: AppColors.accent,
-                  borderRadius:
-                      BorderRadius.circular(AppSizes.radiusPill),
+                  borderRadius: BorderRadius.circular(AppSizes.radiusPill),
                 ),
                 child: Text(
                   badgeLabel!,
@@ -457,8 +459,7 @@ class _BanquetPickerSheet extends ConsumerWidget {
             const SizedBox(height: AppSizes.lg),
             Expanded(
               child: venues.when(
-                loading: () =>
-                    const Center(child: CircularProgressIndicator()),
+                loading: () => const Center(child: CircularProgressIndicator()),
                 error: (e, _) => Text(
                   'Could not load venues: $e',
                   style: AppTextStyles.caption,
@@ -480,9 +481,7 @@ class _BanquetPickerSheet extends ConsumerWidget {
                     itemBuilder: (_, i) => _PickerVenueRow(
                       venue: rows[i],
                       onTap: () {
-                        ref
-                            .read(eventDraftProvider.notifier)
-                            .setBanquetVenue(
+                        ref.read(eventDraftProvider.notifier).setBanquetVenue(
                               venueId: rows[i].id,
                               venueName: rows[i].name,
                             );
@@ -564,4 +563,3 @@ class _PickerVenueRow extends StatelessWidget {
     );
   }
 }
-

@@ -27,6 +27,69 @@ class StubMenuRepository implements MenuRepository {
   Future<List<MenuItem>> fetchMenuItemsForRestaurant(String restaurantId) async =>
       _items.where((i) => i.restaurantId == restaurantId).toList();
 
+  // ── Admin catalog editing (in-memory; persists for the session) ─────────
+
+  var _idSeq = 100;
+
+  @override
+  Future<List<MenuItem>> fetchAllMenuItems() async => List.of(_items);
+
+  @override
+  Future<void> createMenuItem({
+    required String restaurantId,
+    required String categoryId,
+    required String name,
+    required double price,
+    String? description,
+    bool isVeg = true,
+    bool isAvailable = true,
+  }) async {
+    _items.add(
+      MenuItem(
+        id: 'i${++_idSeq}',
+        restaurantId: restaurantId,
+        categoryId: categoryId,
+        name: name.trim(),
+        price: price,
+        description: description?.trim(),
+        isVeg: isVeg,
+        isAvailable: isAvailable,
+      ),
+    );
+  }
+
+  @override
+  Future<void> updateMenuItem(MenuItem item) async {
+    final i = _items.indexWhere((m) => m.id == item.id);
+    if (i != -1) _items[i] = item;
+  }
+
+  @override
+  Future<void> setMenuItemAvailability({
+    required String id,
+    required bool isAvailable,
+  }) async {
+    final i = _items.indexWhere((m) => m.id == id);
+    if (i == -1) return;
+    final o = _items[i];
+    _items[i] = MenuItem(
+      id: o.id,
+      restaurantId: o.restaurantId,
+      categoryId: o.categoryId,
+      name: o.name,
+      price: o.price,
+      description: o.description,
+      imageUrl: o.imageUrl,
+      isVeg: o.isVeg,
+      isAvailable: isAvailable,
+    );
+  }
+
+  @override
+  Future<void> deleteMenuItem(String id) async {
+    _items.removeWhere((m) => m.id == id);
+  }
+
   static const _categories = [
     MenuCategory(id: 'c1', name: 'Welcome Drinks', sortOrder: 1),
     MenuCategory(id: 'c2', name: 'Starters', sortOrder: 2),
@@ -148,77 +211,77 @@ class StubMenuRepository implements MenuRepository {
     ),
   ];
 
-  static const _items = [
-    MenuItem(
+  final List<MenuItem> _items = [
+    const MenuItem(
         id: 'i1',
         restaurantId: 'r1',
         categoryId: 'c1',
         name: 'Masala Lemonade',
         price: 80),
-    MenuItem(
+    const MenuItem(
         id: 'i2',
         restaurantId: 'r1',
         categoryId: 'c1',
         name: 'Rose Sharbat',
         price: 90),
-    MenuItem(
+    const MenuItem(
         id: 'i3',
         restaurantId: 'r1',
         categoryId: 'c2',
         name: 'Paneer Tikka',
         price: 220),
-    MenuItem(
+    const MenuItem(
         id: 'i4',
         restaurantId: 'r1',
         categoryId: 'c2',
         name: 'Murg Malai Kebab',
         price: 260,
         isVeg: false),
-    MenuItem(
+    const MenuItem(
         id: 'i5',
         restaurantId: 'r1',
         categoryId: 'c3',
         name: 'Dal Makhani',
         price: 180),
-    MenuItem(
+    const MenuItem(
         id: 'i6',
         restaurantId: 'r1',
         categoryId: 'c3',
         name: 'Hyderabadi Biryani',
         price: 240,
         isVeg: false),
-    MenuItem(
+    const MenuItem(
         id: 'i7',
         restaurantId: 'r1',
         categoryId: 'c4',
         name: 'Gulab Jamun',
         price: 90),
-    MenuItem(
+    const MenuItem(
         id: 'i8',
         restaurantId: 'r2',
         categoryId: 'c1',
         name: 'Coconut Cooler',
         price: 100),
-    MenuItem(
+    const MenuItem(
         id: 'i9',
         restaurantId: 'r2',
         categoryId: 'c3',
         name: 'Kashmiri Rogan Josh',
         price: 320,
         isVeg: false),
-    MenuItem(
+    const MenuItem(
         id: 'i10',
         restaurantId: 'r2',
         categoryId: 'c3',
         name: 'Paneer Butter Masala',
         price: 220),
-    MenuItem(
+    const MenuItem(
         id: 'i11',
         restaurantId: 'r2',
         categoryId: 'c4',
         name: 'Rasmalai',
         price: 110),
-    MenuItem(
+    const MenuItem(
         id: 'i12',
         restaurantId: 'r3',
         categoryId: 'c5',

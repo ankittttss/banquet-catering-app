@@ -17,6 +17,7 @@ import '../../../shared/providers/event_providers.dart';
 import '../../../shared/providers/event_tier_providers.dart';
 import '../../../shared/providers/home_providers.dart';
 import '../../../shared/widgets/app_scaffold.dart';
+import '../widgets/address_search_sheet.dart';
 
 /// Visual accents per tier code — keeps the old package colour/icon palette
 /// without having to push those fields into the DB.
@@ -59,8 +60,7 @@ class EventDetailsScreen extends ConsumerStatefulWidget {
   const EventDetailsScreen({super.key});
 
   @override
-  ConsumerState<EventDetailsScreen> createState() =>
-      _EventDetailsScreenState();
+  ConsumerState<EventDetailsScreen> createState() => _EventDetailsScreenState();
 }
 
 class _EventDetailsScreenState extends ConsumerState<EventDetailsScreen> {
@@ -74,12 +74,18 @@ class _EventDetailsScreenState extends ConsumerState<EventDetailsScreen> {
       text: ref.read(eventDraftProvider).eventName ?? '',
     );
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      // Pre-fill location from default saved address if empty.
+      // Pre-fill the event location from the default saved address if empty,
+      // carrying its coordinates so the restaurant list can sort nearest to
+      // it until the user picks a specific event location.
       final draft = ref.read(eventDraftProvider);
       if (draft.location == null || draft.location!.trim().isEmpty) {
         final def = ref.read(defaultAddressProvider);
         if (def != null) {
-          ref.read(eventDraftProvider.notifier).setLocation(def.fullAddress);
+          ref.read(eventDraftProvider.notifier).setEventLocation(
+                address: def.fullAddress,
+                latitude: def.hasCoords ? def.latitude : null,
+                longitude: def.hasCoords ? def.longitude : null,
+              );
         }
       }
     });
@@ -95,8 +101,8 @@ class _EventDetailsScreenState extends ConsumerState<EventDetailsScreen> {
     final now = DateTime.now();
     final picked = await showDatePicker(
       context: context,
-      initialDate: ref.read(eventDraftProvider).date ??
-          now.add(const Duration(days: 3)),
+      initialDate:
+          ref.read(eventDraftProvider).date ?? now.add(const Duration(days: 3)),
       firstDate: now,
       lastDate: now.add(const Duration(days: 365)),
       builder: (ctx, child) => Theme(
@@ -150,19 +156,27 @@ class _EventDetailsScreenState extends ConsumerState<EventDetailsScreen> {
     }
   }
 
+  Future<void> _pickEventLocation() async {
+    final res = await AddressSearchSheet.show(context);
+    if (res == null || !mounted) return;
+    final label = res.displayAddress.trim().isNotEmpty
+        ? res.displayAddress
+        : (res.shortLabel.trim().isNotEmpty ? res.shortLabel : res.name);
+    // Photon results always carry coords; the saved-address fallback may use
+    // 0/0 when a saved row has none — treat that as "no coords".
+    final hasCoords = res.latitude != 0 || res.longitude != 0;
+    ref.read(eventDraftProvider.notifier).setEventLocation(
+          address: label,
+          latitude: hasCoords ? res.latitude : null,
+          longitude: hasCoords ? res.longitude : null,
+        );
+  }
+
   void _applyCategory(EventCategory cat) {
     HapticFeedback.selectionClick();
     setState(() => _categorySlug = cat.slug);
     ref.read(eventDraftProvider.notifier).setSession(cat.defaultSession);
-    ref
-        .read(eventDraftProvider.notifier)
-        .setGuestCount(cat.defaultGuestCount);
-  }
-
-  void _bumpGuests(int delta) {
-    final draft = ref.read(eventDraftProvider);
-    final next = (draft.guestCount + delta).clamp(5, 5000);
-    ref.read(eventDraftProvider.notifier).setGuestCount(next);
+    ref.read(eventDraftProvider.notifier).setGuestCount(cat.defaultGuestCount);
   }
 
   @override
@@ -176,9 +190,8 @@ class _EventDetailsScreenState extends ConsumerState<EventDetailsScreen> {
         title: const Text('Plan your event'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () => context.canPop()
-              ? context.pop()
-              : context.go(AppRoutes.userHome),
+          onPressed: () =>
+              context.canPop() ? context.pop() : context.go(AppRoutes.userHome),
         ),
       ),
       body: ListView(
@@ -186,11 +199,11 @@ class _EventDetailsScreenState extends ConsumerState<EventDetailsScreen> {
         children: [
           _Section(
             title: 'Event name',
+            required: true,
             child: _EventNameField(
               controller: _nameCtrl,
-              onChanged: (v) => ref
-                  .read(eventDraftProvider.notifier)
-                  .setEventName(v),
+              onChanged: (v) =>
+                  ref.read(eventDraftProvider.notifier).setEventName(v),
             ),
           ),
           _Section(
@@ -203,10 +216,31 @@ class _EventDetailsScreenState extends ConsumerState<EventDetailsScreen> {
           ),
           _Section(
             title: 'Number of guests',
-            child: _GuestCounter(
+            child: _GuestSelector(
               count: draft.guestCount,
-              onMinus: () => _bumpGuests(-5),
-              onPlus: () => _bumpGuests(5),
+              onChanged: (v) =>
+                  ref.read(eventDraftProvider.notifier).setGuestCount(v),
+            ),
+          ),
+          _Section(
+            title: 'Event location',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _PickerRow(
+                  icon: Icons.location_on_outlined,
+                  value:
+                      (draft.location == null || draft.location!.trim().isEmpty)
+                          ? 'Add event location'
+                          : draft.location!,
+                  onTap: _pickEventLocation,
+                ),
+                const SizedBox(height: AppSizes.xs),
+                Text(
+                  'We show restaurants nearest to your event location.',
+                  style: AppTextStyles.caption,
+                ),
+              ],
             ),
           ),
           _Section(
@@ -240,7 +274,10 @@ class _EventDetailsScreenState extends ConsumerState<EventDetailsScreen> {
             padding:
                 const EdgeInsets.symmetric(horizontal: AppSizes.pagePadding),
             child: FilledButton(
-              onPressed: (draft.date == null || draft.tierId == null)
+              onPressed: (draft.date == null ||
+                      draft.tierId == null ||
+                      draft.eventName == null ||
+                      draft.eventName!.trim().isEmpty)
                   ? null
                   : () => context.push(AppRoutes.eventVenueType),
               style: FilledButton.styleFrom(
@@ -289,9 +326,16 @@ class _EventDetailsScreenState extends ConsumerState<EventDetailsScreen> {
 // ───────────────────────── Section ─────────────────────────
 
 class _Section extends StatelessWidget {
-  const _Section({required this.title, required this.child});
+  const _Section({
+    required this.title,
+    required this.child,
+    this.required = false,
+  });
   final String title;
   final Widget child;
+
+  /// Adds a red asterisk after the title to flag a mandatory field.
+  final bool required;
 
   @override
   Widget build(BuildContext context) {
@@ -311,7 +355,21 @@ class _Section extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: AppTextStyles.heading3),
+          Text.rich(
+            TextSpan(
+              text: title,
+              style: AppTextStyles.heading3,
+              children: required
+                  ? [
+                      TextSpan(
+                        text: '  *',
+                        style: AppTextStyles.heading3
+                            .copyWith(color: AppColors.primary),
+                      ),
+                    ]
+                  : null,
+            ),
+          ),
           const SizedBox(height: AppSizes.md),
           child,
         ],
@@ -368,8 +426,7 @@ class _CategoryChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final fg = AppColors.fromHex(category.iconHex,
-        fallback: AppColors.primary);
+    final fg = AppColors.fromHex(category.iconHex, fallback: AppColors.primary);
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(AppSizes.radiusPill),
@@ -379,9 +436,7 @@ class _CategoryChip extends StatelessWidget {
           vertical: AppSizes.sm,
         ),
         decoration: BoxDecoration(
-          color: selected
-              ? fg.withValues(alpha: 0.12)
-              : AppColors.surfaceAlt,
+          color: selected ? fg.withValues(alpha: 0.12) : AppColors.surfaceAlt,
           border: Border.all(
             color: selected ? fg : AppColors.border,
             width: selected ? 1.4 : 1,
@@ -391,8 +446,7 @@ class _CategoryChip extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(materialIconByName(category.iconName),
-                color: fg, size: 16),
+            Icon(materialIconByName(category.iconName), color: fg, size: 16),
             const SizedBox(width: 6),
             Text(
               category.name,
@@ -410,33 +464,157 @@ class _CategoryChip extends StatelessWidget {
 
 // ───────────────────────── Guest counter ─────────────────────────
 
-class _GuestCounter extends StatelessWidget {
-  const _GuestCounter({
-    required this.count,
-    required this.onMinus,
-    required this.onPlus,
-  });
+/// Guest-count selector: a tap-to-type number field + a slider, with small
+/// ±5 fine-adjust buttons. Replaces the old plus/minus-only stepper the
+/// client found hard to use for large guest counts.
+class _GuestSelector extends StatefulWidget {
+  const _GuestSelector({required this.count, required this.onChanged});
   final int count;
-  final VoidCallback onMinus;
-  final VoidCallback onPlus;
+  final ValueChanged<int> onChanged;
+
+  @override
+  State<_GuestSelector> createState() => _GuestSelectorState();
+}
+
+class _GuestSelectorState extends State<_GuestSelector> {
+  static const int _min = 5;
+  static const int _max = 5000;
+  static const double _sliderMax = 1000;
+
+  late final TextEditingController _ctrl;
+  final FocusNode _focus = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = TextEditingController(text: '${widget.count}');
+    _focus.addListener(() {
+      if (!_focus.hasFocus) _commit();
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant _GuestSelector old) {
+    super.didUpdateWidget(old);
+    // Reflect external changes (e.g. an event-type preset) unless the user
+    // is mid-edit in the field.
+    if (!_focus.hasFocus && widget.count != old.count) {
+      _ctrl.text = '${widget.count}';
+    }
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    _focus.dispose();
+    super.dispose();
+  }
+
+  void _commit() {
+    final parsed = int.tryParse(_ctrl.text.trim());
+    final clamped = (parsed ?? widget.count).clamp(_min, _max);
+    _ctrl.text = '$clamped';
+    if (clamped != widget.count) widget.onChanged(clamped);
+  }
+
+  void _set(int v) {
+    final clamped = v.clamp(_min, _max);
+    HapticFeedback.selectionClick();
+    _ctrl.text = '$clamped';
+    if (clamped != widget.count) widget.onChanged(clamped);
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Row(
+    final sliderVal = widget.count.clamp(_min, _sliderMax.toInt()).toDouble();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _GuestBtn(icon: Icons.remove_rounded, onTap: onMinus),
-        Expanded(
-          child: Center(
-            child: Text(
-              '$count',
-              style: AppTextStyles.display.copyWith(
-                fontSize: 24,
-                color: AppColors.textPrimary,
+        Row(
+          children: [
+            SizedBox(
+              width: 96,
+              child: TextField(
+                controller: _ctrl,
+                focusNode: _focus,
+                keyboardType: TextInputType.number,
+                textAlign: TextAlign.center,
+                inputFormatters: [
+                  FilteringTextInputFormatter.digitsOnly,
+                  LengthLimitingTextInputFormatter(4),
+                ],
+                style: AppTextStyles.display.copyWith(
+                  fontSize: 24,
+                  color: AppColors.textPrimary,
+                ),
+                decoration: InputDecoration(
+                  isDense: true,
+                  filled: true,
+                  fillColor: AppColors.surfaceAlt,
+                  contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(AppSizes.radiusSm),
+                    borderSide: const BorderSide(color: AppColors.border),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(AppSizes.radiusSm),
+                    borderSide: const BorderSide(
+                      color: AppColors.primary,
+                      width: 1.4,
+                    ),
+                  ),
+                ),
+                onEditingComplete: () {
+                  _commit();
+                  FocusScope.of(context).unfocus();
+                },
+                onSubmitted: (_) => _commit(),
               ),
             ),
+            const SizedBox(width: AppSizes.sm),
+            Text(
+              'guests',
+              style:
+                  AppTextStyles.body.copyWith(color: AppColors.textSecondary),
+            ),
+            const Spacer(),
+            _GuestBtn(
+              icon: Icons.remove_rounded,
+              onTap: () => _set(widget.count - 5),
+            ),
+            const SizedBox(width: 8),
+            _GuestBtn(
+              icon: Icons.add_rounded,
+              onTap: () => _set(widget.count + 5),
+            ),
+          ],
+        ),
+        const SizedBox(height: AppSizes.xs),
+        SliderTheme(
+          data: SliderTheme.of(context).copyWith(
+            activeTrackColor: AppColors.primary,
+            thumbColor: AppColors.primary,
+            overlayColor: AppColors.primary.withValues(alpha: 0.15),
+          ),
+          child: Slider(
+            value: sliderVal,
+            min: _min.toDouble(),
+            max: _sliderMax,
+            divisions: ((_sliderMax - _min) / 5).round(),
+            label: '${widget.count}',
+            onChanged: (v) => _set(v.round()),
           ),
         ),
-        _GuestBtn(icon: Icons.add_rounded, onTap: onPlus),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('$_min', style: AppTextStyles.caption),
+              Text('${_sliderMax.toInt()}+', style: AppTextStyles.caption),
+            ],
+          ),
+        ),
       ],
     );
   }
@@ -499,9 +677,15 @@ class _PickerRow extends StatelessWidget {
           children: [
             Icon(icon, color: AppColors.textMuted, size: 20),
             const SizedBox(width: AppSizes.sm),
-            Expanded(child: Text(value, style: AppTextStyles.body)),
-            const Icon(Icons.chevron_right_rounded,
-                color: AppColors.textMuted),
+            Expanded(
+              child: Text(
+                value,
+                style: AppTextStyles.body,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const Icon(Icons.chevron_right_rounded, color: AppColors.textMuted),
           ],
         ),
       ),
@@ -667,8 +851,7 @@ class _EventNameFieldState extends State<_EventNameField> {
         hintText: "e.g. Aanya's Sangeet",
         hintStyle: AppTextStyles.body
             .copyWith(color: AppColors.textMuted, fontSize: 15),
-        helperText:
-            'Shows up on the home draft card and in operator inboxes',
+        helperText: 'Required · shows on your orders and in operator inboxes',
         helperStyle: AppTextStyles.caption,
         filled: true,
         fillColor: AppColors.surfaceAlt,
@@ -718,4 +901,3 @@ class _EventNameFieldState extends State<_EventNameField> {
     );
   }
 }
-

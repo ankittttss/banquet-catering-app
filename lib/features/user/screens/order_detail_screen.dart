@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -29,8 +27,6 @@ class _TP {
   static const Color goldLight = Color(0xFFFFF8E7);
   static const Color green = Color(0xFF1BA672);
   static const Color greenLight = Color(0xFFEAFAF1);
-  static const Color blue = Color(0xFF2B6CB0);
-  static const Color blueLight = Color(0xFFEBF4FF);
 
   static const Color black = Color(0xFF1A1A1A);
   static const Color g80 = Color(0xFF3D3530);
@@ -41,10 +37,6 @@ class _TP {
   static const Color g8 = Color(0xFFEAE4DE);
   static const Color g4 = Color(0xFFF5F0EB);
   static const Color cream = Color(0xFFFDFBF9);
-
-  static const Color mapTop = Color(0xFFE8DDD4);
-  static const Color mapMid = Color(0xFFD4C8BC);
-  static const Color mapBot = Color(0xFFC8BCA8);
 }
 
 // ───────────────────────── Screen ─────────────────────────
@@ -80,526 +72,64 @@ class _Tracker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        // Fills whole screen; map sits up top, bottom sheet overlaps.
-        Positioned.fill(
-          child: Column(
-            children: [
-              _MapArea(order: order),
-              Expanded(
-                child: _BottomSheet(order: order),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-// ───────────────────────── Map area ─────────────────────────
-
-class _MapArea extends StatelessWidget {
-  const _MapArea({required this.order});
-  final OrderSummary order;
-
-  @override
-  Widget build(BuildContext context) {
-    final topPad = MediaQuery.of(context).padding.top;
-    return SizedBox(
-      height: 300 + topPad,
-      child: Stack(
+    return SafeArea(
+      bottom: false,
+      child: Column(
         children: [
-          // Gradient terrain
-          Positioned.fill(
-            child: DecoratedBox(
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment(-0.2, -1),
-                  end: Alignment(0.4, 1),
-                  colors: [_TP.mapTop, _TP.mapMid, _TP.mapBot],
-                  stops: [0.0, 0.4, 1.0],
-                ),
-              ),
-            ),
-          ),
-          // Grid
-          const Positioned.fill(child: _MapGrid()),
-          // Roads
-          const Positioned.fill(child: _MapRoads()),
-          // Labels
-          const Positioned(
-            top: 90,
-            left: 30,
-            child: _MapLabel(text: 'Jubilee Hills'),
-          ),
-          const Positioned(
-            top: 200,
-            right: 30,
-            child: _MapLabel(text: 'Banjara Hills'),
-          ),
-          // Animated route
-          Positioned.fill(
-            child: CustomPaint(painter: _RoutePainter()),
-          ),
-          // Restaurant marker
-          Positioned(
-            top: topPad + 100,
-            left: 40,
-            child: const _MapMarker(
-              emoji: '🍛',
-              pinColor: _TP.gold,
-              label: 'Restaurant',
-            ),
-          ),
-          // Rider (animated)
-          Positioned(
-            top: topPad + 140,
-            left: MediaQuery.of(context).size.width / 2 - 34,
-            child: _RiderMarker(
-              name: order.driverName ?? 'On the way',
-            ),
-          ),
-          // User marker
-          Positioned(
-            bottom: 64,
-            right: 40,
-            child: const _MapMarker(
-              emoji: '📍',
-              pinColor: _TP.red,
-              label: 'Your location',
-            ),
-          ),
-          // Top controls
-          Positioned(
-            top: topPad + 12,
-            left: 16,
-            right: 16,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                _MapBtn(
-                  icon: Icons.arrow_back_rounded,
-                  onTap: () => context.canPop()
-                      ? context.pop()
-                      : context.go(AppRoutes.userHome),
-                ),
-                _MapBtn(
-                  icon: Icons.open_in_full_rounded,
-                  onTap: () => HapticFeedback.selectionClick(),
-                ),
-              ],
-            ),
-          ),
-          // ETA chip
-          Positioned(
-            bottom: 16,
-            left: 0,
-            right: 0,
-            child: Center(child: _EtaChip(order: order)),
-          ),
+          _TopBar(order: order),
+          Expanded(child: _BottomSheet(order: order)),
         ],
       ),
     );
   }
 }
 
-class _MapGrid extends StatelessWidget {
-  const _MapGrid();
-  @override
-  Widget build(BuildContext context) {
-    return CustomPaint(painter: _GridPainter());
-  }
-}
+// ───────────────────────── Top bar ─────────────────────────
 
-class _GridPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final p = Paint()
-      ..color = _TP.black.withValues(alpha: 0.06)
-      ..strokeWidth = 1;
-    for (final frac in [0.2, 0.4, 0.6, 0.8]) {
-      canvas.drawLine(
-        Offset(0, size.height * frac),
-        Offset(size.width, size.height * frac),
-        p,
-      );
-      canvas.drawLine(
-        Offset(size.width * frac, 0),
-        Offset(size.width * frac, size.height),
-        p,
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(_GridPainter old) => false;
-}
-
-class _MapRoads extends StatelessWidget {
-  const _MapRoads();
-  @override
-  Widget build(BuildContext context) {
-    return CustomPaint(painter: _RoadsPainter());
-  }
-}
-
-class _RoadsPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final p = Paint()
-      ..color = Colors.white.withValues(alpha: 0.55)
-      ..strokeCap = StrokeCap.round;
-
-    // Main horizontal road
-    p.strokeWidth = 6;
-    canvas.drawLine(
-      Offset(0, size.height * 0.5),
-      Offset(size.width, size.height * 0.5),
-      p,
-    );
-    // Vertical cross
-    canvas.drawLine(
-      Offset(size.width * 0.45, 0),
-      Offset(size.width * 0.45, size.height),
-      p,
-    );
-    // Side
-    p.strokeWidth = 5;
-    canvas.save();
-    canvas.translate(size.width * 0.2, size.height * 0.35);
-    canvas.rotate(-12 * math.pi / 180);
-    canvas.drawLine(Offset.zero, Offset(size.width * 0.55, 0), p);
-    canvas.restore();
-
-    canvas.save();
-    canvas.translate(size.width * 0.1, size.height * 0.72);
-    canvas.rotate(5 * math.pi / 180);
-    canvas.drawLine(Offset.zero, Offset(size.width * 0.4, 0), p);
-    canvas.restore();
-  }
-
-  @override
-  bool shouldRepaint(_RoadsPainter old) => false;
-}
-
-class _RoutePainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final start = Offset(size.width * 0.2, size.height * 0.45);
-    final end = Offset(size.width * 0.8, size.height * 0.75);
-    final path = Path()
-      ..moveTo(start.dx, start.dy)
-      ..cubicTo(
-        size.width * 0.35, size.height * 0.2,
-        size.width * 0.7, size.height * 0.3,
-        end.dx, end.dy,
-      );
-
-    final paint = Paint()
-      ..color = _TP.red.withValues(alpha: 0.55)
-      ..strokeWidth = 2.5
-      ..strokeCap = StrokeCap.round
-      ..style = PaintingStyle.stroke;
-
-    // Dashed path
-    const dash = 6.0, gap = 4.0;
-    final metrics = path.computeMetrics().toList();
-    for (final m in metrics) {
-      double d = 0;
-      while (d < m.length) {
-        canvas.drawPath(m.extractPath(d, d + dash), paint);
-        d += dash + gap;
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(_RoutePainter old) => false;
-}
-
-class _MapLabel extends StatelessWidget {
-  const _MapLabel({required this.text});
-  final String text;
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      text.toUpperCase(),
-      style: TextStyle(
-        fontSize: 9,
-        fontWeight: FontWeight.w600,
-        letterSpacing: 0.5,
-        color: Colors.black.withValues(alpha: 0.2),
-      ),
-    );
-  }
-}
-
-class _MapMarker extends StatelessWidget {
-  const _MapMarker({
-    required this.emoji,
-    required this.pinColor,
-    required this.label,
-  });
-  final String emoji;
-  final Color pinColor;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Stack(
-          clipBehavior: Clip.none,
-          alignment: Alignment.center,
-          children: [
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: pinColor,
-                borderRadius: BorderRadius.circular(14),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.15),
-                    blurRadius: 16,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              alignment: Alignment.center,
-              child: Text(emoji, style: const TextStyle(fontSize: 20)),
-            ),
-            Positioned(
-              bottom: -5,
-              child: Transform.rotate(
-                angle: math.pi / 4,
-                child: Container(width: 10, height: 10, color: pinColor),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 10),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(6),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.08),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          child: Text(
-            label,
-            style: const TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.w700,
-              color: _TP.g80,
-            ),
-          ),
-        ),
-      ],
-    )
-        .animate()
-        .scale(
-          duration: 500.ms,
-          curve: Curves.easeOutBack,
-          begin: const Offset(0.6, 0.6),
-          end: const Offset(1, 1),
-        )
-        .fadeIn(duration: 300.ms);
-  }
-}
-
-class _RiderMarker extends StatelessWidget {
-  const _RiderMarker({required this.name});
-  final String name;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Stack(
-          alignment: Alignment.center,
-          children: [
-            // Pulse
-            Container(
-              width: 60,
-              height: 60,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(color: _TP.red, width: 2),
-              ),
-            )
-                .animate(onPlay: (c) => c.repeat())
-                .scale(
-                  duration: 2000.ms,
-                  begin: const Offset(1, 1),
-                  end: const Offset(1.4, 1.4),
-                  curve: Curves.easeOut,
-                )
-                .fadeOut(duration: 2000.ms),
-            Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.15),
-                    blurRadius: 20,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              alignment: Alignment.center,
-              child: const Text('🏍️', style: TextStyle(fontSize: 22)),
-            ),
-          ],
-        ),
-        const SizedBox(height: 6),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-          decoration: BoxDecoration(
-            color: _TP.red,
-            borderRadius: BorderRadius.circular(8),
-            boxShadow: [
-              BoxShadow(
-                color: _TP.red.withValues(alpha: 0.3),
-                blurRadius: 10,
-                offset: const Offset(0, 3),
-              ),
-            ],
-          ),
-          child: Text(
-            name,
-            style: const TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.w700,
-              color: Colors.white,
-            ),
-          ),
-        ),
-      ],
-    )
-        .animate(onPlay: (c) => c.repeat(reverse: true))
-        .slideX(
-          begin: -0.12,
-          end: 0.12,
-          duration: 3800.ms,
-          curve: Curves.easeInOut,
-        )
-        .slideY(
-          begin: -0.06,
-          end: 0.06,
-          duration: 3800.ms,
-          curve: Curves.easeInOut,
-        );
-  }
-}
-
-class _MapBtn extends StatelessWidget {
-  const _MapBtn({required this.icon, required this.onTap});
-  final IconData icon;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(14),
-      elevation: 0,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
-        child: Container(
-          width: 42,
-          height: 42,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.1),
-                blurRadius: 12,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          child: Icon(icon, size: 20, color: _TP.g80),
-        ),
-      ),
-    );
-  }
-}
-
-class _EtaChip extends StatelessWidget {
-  const _EtaChip({required this.order});
+class _TopBar extends StatelessWidget {
+  const _TopBar({required this.order});
   final OrderSummary order;
 
   @override
   Widget build(BuildContext context) {
-    final time = _etaHeadline(order);
-    final label = order.orderStatus == OrderStatus.delivered
-        ? 'Delivered'
-        : order.orderStatus == OrderStatus.cancelled
-            ? 'Status'
-            : 'Arriving in';
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.1),
-            blurRadius: 20,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
+    final shortId = order.id.length > 6
+        ? order.id.substring(0, 6).toUpperCase()
+        : order.id.toUpperCase();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 6, 16, 6),
       child: Row(
-        mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
-            width: 8,
-            height: 8,
-            decoration: const BoxDecoration(
-              color: _TP.green,
-              shape: BoxShape.circle,
+          IconButton(
+            icon: const Icon(Icons.arrow_back_rounded, color: _TP.g80),
+            onPressed: () => context.canPop()
+                ? context.pop()
+                : context.go(AppRoutes.myEvents),
+          ),
+          const Expanded(
+            child: Text(
+              'Order details',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: _TP.black,
+              ),
             ),
-          )
-              .animate(onPlay: (c) => c.repeat(reverse: true))
-              .fadeOut(duration: 600.ms),
-          const SizedBox(width: 10),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                label,
-                style: const TextStyle(
-                  fontSize: 12,
-                  color: _TP.g40,
-                  fontWeight: FontWeight.w500,
-                ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+            decoration: BoxDecoration(
+              color: _TP.g4,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              '#DWT-$shortId',
+              style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: _TP.g40,
+                letterSpacing: 0.3,
               ),
-              Text(
-                time,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w800,
-                  color: _TP.black,
-                ),
-              ),
-            ],
+            ),
           ),
         ],
       ),
@@ -607,7 +137,7 @@ class _EtaChip extends StatelessWidget {
   }
 }
 
-// ───────────────────────── Bottom sheet ─────────────────────────
+// ───────────────────────── Order body ─────────────────────────
 
 class _BottomSheet extends StatelessWidget {
   const _BottomSheet({required this.order});
@@ -615,52 +145,21 @@ class _BottomSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Transform.translate(
-      offset: const Offset(0, -20),
-      child: Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-          boxShadow: [
-            BoxShadow(
-              color: Color(0x0F000000),
-              blurRadius: 30,
-              offset: Offset(0, -4),
-            ),
-          ],
-        ),
-        child: ListView(
-          padding: EdgeInsets.zero,
-          children: [
-            Center(
-              child: Container(
-                margin: const EdgeInsets.only(top: 12),
-                width: 36,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: _TP.g15,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
-            _StatusHeader(order: order),
-            _ProgressBar(order: order),
-            _Timeline(order: order),
-            if (order.orderStatus == OrderStatus.delivered &&
-                order.restaurantId != null)
-              _RateOrderCard(order: order),
-            const _SheetDivider(),
-            if (order.driverName != null) ...[
-              _DriverSection(order: order),
-              const _SheetDivider(),
-            ],
-            if (order.eventDate != null) _EventBadge(order: order),
-            _OrderSummaryBlock(order: order),
-            _HelpBar(order: order),
-            const SizedBox(height: 24),
-          ],
-        ),
-      ),
+    return ListView(
+      padding: EdgeInsets.zero,
+      children: [
+        _StatusHeader(order: order),
+        _ProgressBar(order: order),
+        _Timeline(order: order),
+        if (order.orderStatus == OrderStatus.delivered &&
+            order.restaurantId != null)
+          _RateOrderCard(order: order),
+        const _SheetDivider(),
+        if (order.eventDate != null) _EventBadge(order: order),
+        _OrderSummaryBlock(order: order),
+        _HelpBar(order: order),
+        const SizedBox(height: 24),
+      ],
     );
   }
 }
@@ -689,75 +188,41 @@ class _StatusHeader extends StatelessWidget {
       OrderStatus.placed => 'Order placed!',
       OrderStatus.confirmed => 'Confirmed!',
       OrderStatus.preparing => 'Being prepared',
-      OrderStatus.dispatched => 'On the way!',
+      OrderStatus.dispatched => 'On its way!',
       OrderStatus.delivered => 'Delivered 🎉',
       OrderStatus.cancelled => 'Cancelled',
     };
 
-    final shortId = order.id.length > 6
-        ? order.id.substring(0, 6).toUpperCase()
-        : order.id.toUpperCase();
+    final subtitle = switch (order.orderStatus) {
+      OrderStatus.placed => 'We\'ve received your order',
+      OrderStatus.confirmed => 'Your booking is confirmed',
+      OrderStatus.preparing => 'Your order is being prepared',
+      OrderStatus.dispatched => 'On its way to your event',
+      OrderStatus.delivered => 'Thanks for ordering with Dawat',
+      OrderStatus.cancelled => 'This order was cancelled',
+    };
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 18, 24, 14),
-      child: Row(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: GoogleFonts.instrumentSerif(
-                    fontSize: 26,
-                    fontWeight: FontWeight.w400,
-                    color: _TP.black,
-                    height: 1.1,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    Container(
-                      width: 6,
-                      height: 6,
-                      decoration: const BoxDecoration(
-                        color: _TP.green,
-                        shape: BoxShape.circle,
-                      ),
-                    )
-                        .animate(onPlay: (c) => c.repeat(reverse: true))
-                        .fadeOut(duration: 600.ms),
-                    const SizedBox(width: 6),
-                    const Text(
-                      'Live tracking • Updated just now',
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: _TP.g40,
-                        fontWeight: FontWeight.w400,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
+          Text(
+            title,
+            style: GoogleFonts.instrumentSerif(
+              fontSize: 26,
+              fontWeight: FontWeight.w400,
+              color: _TP.black,
+              height: 1.1,
             ),
           ),
-          const SizedBox(width: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-            decoration: BoxDecoration(
-              color: _TP.g4,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Text(
-              '#DWT-$shortId',
-              style: const TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-                color: _TP.g40,
-                letterSpacing: 0.3,
-              ),
+          const SizedBox(height: 4),
+          Text(
+            subtitle,
+            style: const TextStyle(
+              fontSize: 13,
+              color: _TP.g40,
+              fontWeight: FontWeight.w400,
             ),
           ),
         ],
@@ -877,33 +342,31 @@ class _Timeline extends StatelessWidget {
       ),
       _TimelineStep(
         icon: Icons.check_rounded,
-        title: 'Restaurant accepted',
-        subtitle: 'Preparing your food',
+        title: 'Booking confirmed',
+        subtitle: 'Your kitchen has accepted the order',
         time: _time(order.confirmedAt),
         state: _stateFor(1, active),
       ),
       _TimelineStep(
         icon: Icons.restaurant_rounded,
-        title: 'Food is ready',
-        subtitle: 'Packed and handed to delivery partner',
+        title: 'Being prepared',
+        subtitle: 'Your order is being prepared for the event',
         time: _time(order.preparingAt),
         state: _stateFor(2, active),
       ),
       _TimelineStep(
-        icon: Icons.flash_on_rounded,
-        title: 'Out for delivery',
-        subtitle: order.driverName == null
-            ? 'On the way to your location'
-            : '${order.driverName} is heading to your location',
+        icon: Icons.local_shipping_rounded,
+        title: 'On its way',
+        subtitle: 'Your order is on its way to the event',
         time: _time(order.dispatchedAt),
         state: _stateFor(3, active),
       ),
       _TimelineStep(
-        icon: Icons.access_time_rounded,
+        icon: Icons.celebration_rounded,
         title: 'Delivered',
         subtitle: order.deliveredAt != null
-            ? 'Enjoy your meal!'
-            : _deliveredEta(order),
+            ? 'Enjoy your event!'
+            : 'Scheduled for your event day',
         time: _time(order.deliveredAt),
         state: _stateFor(4, active),
       ),
@@ -934,14 +397,6 @@ class _Timeline extends StatelessWidget {
     final m = t.minute.toString().padLeft(2, '0');
     final ap = t.hour < 12 ? 'AM' : 'PM';
     return '$h:$m $ap';
-  }
-
-  String _deliveredEta(OrderSummary o) {
-    if (o.etaMinutesMax != null) {
-      final eta = DateTime.now().add(Duration(minutes: o.etaMinutesMax!));
-      return 'Estimated by ${_time(eta)}';
-    }
-    return 'Estimated soon';
   }
 }
 
@@ -1116,181 +571,6 @@ class _CancelledBlock extends StatelessWidget {
   }
 }
 
-// ───────────────────────── Driver section ─────────────────────────
-
-class _DriverSection extends StatelessWidget {
-  const _DriverSection({required this.order});
-  final OrderSummary order;
-
-  @override
-  Widget build(BuildContext context) {
-    final avatarBg = AppColors.fromHex(order.driverAvatarHex,
-        fallback: _TP.blueLight);
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 16, 24, 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const _SectionLabel('Delivery partner'),
-          const SizedBox(height: 14),
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: _TP.cream,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: _TP.g8, width: 1.5),
-            ),
-            child: Row(
-              children: [
-                // Avatar + rating badge
-                Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    Container(
-                      width: 52,
-                      height: 52,
-                      decoration: BoxDecoration(
-                        color: avatarBg,
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      alignment: Alignment.center,
-                      child: const Text('👨‍💼',
-                          style: TextStyle(fontSize: 26)),
-                    ),
-                    if (order.driverRating != null)
-                      Positioned(
-                        right: -4,
-                        bottom: -4,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 5, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: _TP.green,
-                            borderRadius: BorderRadius.circular(6),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.1),
-                                blurRadius: 6,
-                                offset: const Offset(0, 2),
-                              ),
-                            ],
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                order.driverRating!.toStringAsFixed(1),
-                                style: const TextStyle(
-                                  fontSize: 9,
-                                  fontWeight: FontWeight.w800,
-                                  color: Colors.white,
-                                ),
-                              ),
-                              const SizedBox(width: 1),
-                              const Icon(Icons.star_rounded,
-                                  size: 9, color: Colors.white),
-                            ],
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        order.driverName ?? 'Delivery partner',
-                        style: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w700,
-                          color: _TP.black,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Row(
-                        children: [
-                          const Text(
-                            'Honda Activa',
-                            style: TextStyle(fontSize: 12, color: _TP.g40),
-                          ),
-                          const SizedBox(width: 6),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 6, vertical: 1),
-                            decoration: BoxDecoration(
-                              color: _TP.g4,
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: const Text(
-                              'TS 09 AB 1234',
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700,
-                                color: _TP.g60,
-                                letterSpacing: 0.4,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                _DriverAction(
-                  icon: Icons.call_rounded,
-                  bg: _TP.greenLight,
-                  fg: _TP.green,
-                  onTap: () => HapticFeedback.selectionClick(),
-                ),
-                const SizedBox(width: 8),
-                _DriverAction(
-                  icon: Icons.chat_bubble_outline_rounded,
-                  bg: _TP.blueLight,
-                  fg: _TP.blue,
-                  onTap: () => HapticFeedback.selectionClick(),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _DriverAction extends StatelessWidget {
-  const _DriverAction({
-    required this.icon,
-    required this.bg,
-    required this.fg,
-    required this.onTap,
-  });
-  final IconData icon;
-  final Color bg;
-  final Color fg;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(14),
-      child: Container(
-        width: 44,
-        height: 44,
-        decoration: BoxDecoration(
-          color: bg,
-          borderRadius: BorderRadius.circular(14),
-        ),
-        alignment: Alignment.center,
-        child: Icon(icon, size: 20, color: fg),
-      ),
-    );
-  }
-}
-
 // ───────────────────────── Event badge ─────────────────────────
 
 class _EventBadge extends StatelessWidget {
@@ -1301,9 +581,8 @@ class _EventBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     final guests = order.guestCount ?? 0;
     final eventLabel = guests > 0 ? 'Event — $guests Guests' : 'Event order';
-    final when = order.eventDate == null
-        ? ''
-        : _eventDateLine(order.eventDate!);
+    final when =
+        order.eventDate == null ? '' : _eventDateLine(order.eventDate!);
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
       child: Container(
@@ -1352,8 +631,18 @@ class _EventBadge extends StatelessWidget {
   }
 
   static const _months = [
-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
   ];
   static const _weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -1439,7 +728,8 @@ class _FallbackSummary extends StatelessWidget {
         const SizedBox(height: 14),
         const Divider(color: _TP.g8, height: 1),
         const SizedBox(height: 10),
-        _BillRow(label: 'Total amount', value: Formatters.currency(order.total)),
+        _BillRow(
+            label: 'Total amount', value: Formatters.currency(order.total)),
         _TotalPaidRow(order: order),
       ],
     );
@@ -1681,9 +971,8 @@ class _ItemRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final per = item.qtyPerGuest;
-    final qtyLabel = per != null
-        ? '${_fmt(per)} × $guestCount guests'
-        : '${item.qty}';
+    final qtyLabel =
+        per != null ? '${_fmt(per)} × $guestCount guests' : '${item.qty}';
     final lineTotal = item.lineTotal(guestCount);
 
     return Padding(
@@ -1806,9 +1095,8 @@ class _BillDetailsBlock extends StatelessWidget {
                 value: Formatters.currency(detail.buffetSetup!)),
           if ((detail.serviceBoyCost ?? 0) > 0)
             _BillRow(
-                label: boyCount > 1
-                    ? 'Service boys (×$boyCount)'
-                    : 'Service boy',
+                label:
+                    boyCount > 1 ? 'Service boys (×$boyCount)' : 'Service boy',
                 value: Formatters.currency(detail.serviceBoyCost!)),
           if ((detail.waterBottleCost ?? 0) > 0)
             _BillRow(
@@ -1820,8 +1108,7 @@ class _BillDetailsBlock extends StatelessWidget {
                 value: Formatters.currency(detail.platformFee!)),
           if ((detail.gst ?? 0) > 0)
             _BillRow(
-                label: 'GST & taxes',
-                value: Formatters.currency(detail.gst!)),
+                label: 'GST & taxes', value: Formatters.currency(detail.gst!)),
         ],
       ),
     );
@@ -1959,8 +1246,8 @@ class _HelpBar extends StatelessWidget {
           Expanded(
             child: _HelpBtn(
               icon: Icons.ios_share_rounded,
-              label: 'Share ETA',
-              onTap: () => HapticFeedback.selectionClick(),
+              label: 'Share',
+              onTap: () => _shareOrder(context),
             ),
           ),
           if (!terminal) ...[
@@ -1975,6 +1262,25 @@ class _HelpBar extends StatelessWidget {
             ),
           ],
         ],
+      ),
+    );
+  }
+
+  void _shareOrder(BuildContext context) {
+    HapticFeedback.selectionClick();
+    final shortId = order.id.length > 6
+        ? order.id.substring(0, 6).toUpperCase()
+        : order.id.toUpperCase();
+    Clipboard.setData(
+      ClipboardData(
+        text:
+            'My Dawat order #DWT-$shortId — ${Formatters.currency(order.total)}',
+      ),
+    );
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Order details copied to clipboard'),
+        behavior: SnackBarBehavior.floating,
       ),
     );
   }
@@ -2047,16 +1353,6 @@ class _SectionLabel extends StatelessWidget {
       ),
     );
   }
-}
-
-String _etaHeadline(OrderSummary o) {
-  if (o.orderStatus == OrderStatus.delivered) return 'Completed';
-  if (o.orderStatus == OrderStatus.cancelled) return 'Cancelled';
-  if (o.etaMinutesMin != null && o.etaMinutesMax != null) {
-    return '${o.etaMinutesMin}–${o.etaMinutesMax} min';
-  }
-  if (o.etaMinutesMax != null) return '${o.etaMinutesMax} min';
-  return 'Tracking…';
 }
 
 // ───────────────────────── Empty / error ─────────────────────────
@@ -2158,8 +1454,7 @@ class _RateOrderCard extends ConsumerWidget {
         decoration: BoxDecoration(
           color: AppColors.catGoldLt,
           borderRadius: BorderRadius.circular(AppSizes.radiusMd),
-          border: Border.all(
-              color: AppColors.accent.withValues(alpha: 0.25)),
+          border: Border.all(color: AppColors.accent.withValues(alpha: 0.25)),
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -2204,8 +1499,7 @@ class _RateOrderCard extends ConsumerWidget {
                         vertical: AppSizes.sm,
                       ),
                       shape: RoundedRectangleBorder(
-                        borderRadius:
-                            BorderRadius.circular(AppSizes.radiusSm),
+                        borderRadius: BorderRadius.circular(AppSizes.radiusSm),
                       ),
                       minimumSize: const Size(0, 36),
                     ),
