@@ -10,5 +10,10 @@ abstract interface class TaxonomyRepository {
   Future<List<EventCategory>> fetchEventCategories();
   Future<List<Collection>> fetchCollections();
   Future<List<RestaurantOffer>> fetchOffersFor(String restaurantId);
+
+  /// Ids of every restaurant that currently has at least one active offer —
+  /// powers the home "Offers" filter chip (which previously filtered nothing).
+  Future<Set<String>> fetchOfferRestaurantIds();
+
   Future<List<TrendingSearch>> fetchTrendingSearches();
 }

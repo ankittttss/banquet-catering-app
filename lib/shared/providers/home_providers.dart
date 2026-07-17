@@ -30,8 +30,7 @@ final homeSearchProvider = StateProvider<String>((ref) => '');
 /// Home sort / filter chip selection — matches prototype's chip row.
 enum HomeSort { relevance, rating, fastest, veg, offers, budget }
 
-final homeSortProvider =
-    StateProvider<HomeSort>((ref) => HomeSort.relevance);
+final homeSortProvider = StateProvider<HomeSort>((ref) => HomeSort.relevance);
 
 extension HomeSortLabel on HomeSort {
   String get label => switch (this) {
@@ -44,11 +43,20 @@ extension HomeSortLabel on HomeSort {
       };
 }
 
+/// Ids of restaurants with at least one active offer — backs the "Offers"
+/// chip so it actually filters (it used to be identical to Relevance).
+final offerRestaurantIdsProvider = FutureProvider<Set<String>>((ref) {
+  return ref.read(taxonomyRepositoryProvider).fetchOfferRestaurantIds();
+});
+
 /// Filtered + sorted list that drives the restaurant cards on home.
-final homeRestaurantsProvider =
-    Provider<AsyncValue<List<Restaurant>>>((ref) {
+final homeRestaurantsProvider = Provider<AsyncValue<List<Restaurant>>>((ref) {
   final base = ref.watch(restaurantsProvider);
   final sort = ref.watch(homeSortProvider);
+  // Only fetch offer ids when the chip is active.
+  final offerIds = sort == HomeSort.offers
+      ? ref.watch(offerRestaurantIdsProvider).valueOrNull
+      : null;
 
   return base.whenData((list) {
     Iterable<Restaurant> result = list;
@@ -68,10 +76,18 @@ final homeRestaurantsProvider =
         break;
       case HomeSort.budget:
         result = result.toList()
-          ..sort((a, b) => (a.pricePerPlate ?? 9999)
-              .compareTo(b.pricePerPlate ?? 9999));
+          ..sort((a, b) =>
+              (a.pricePerPlate ?? 9999).compareTo(b.pricePerPlate ?? 9999));
         break;
       case HomeSort.offers:
+        // While the id set is loading, show everything rather than a flash
+        // of "no restaurants"; once loaded, keep only kitchens with offers.
+        if (offerIds != null) {
+          result = result.where((r) => offerIds.contains(r.id));
+        }
+        result = result.toList()
+          ..sort((a, b) => b.popularityScore.compareTo(a.popularityScore));
+        break;
       case HomeSort.relevance:
         result = result.toList()
           ..sort((a, b) => b.popularityScore.compareTo(a.popularityScore));

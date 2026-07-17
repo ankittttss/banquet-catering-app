@@ -23,7 +23,8 @@ final menuCategoriesProvider = FutureProvider<List<MenuCategory>>((ref) {
 /// Precedence (most → least specific):
 ///   1. Event draft has a chosen tier → `restaurants_for_event` RPC, which
 ///      filters by the tier's per-guest budget band *and* (when coords are
-///      available) a 25km radius around the resolved location.
+///      available) the service radius around the resolved location
+///      (kServiceRadiusKm — matches the checkout serviceability guard).
 ///   2. Coordinates available (event location, else saved address) →
 ///      `restaurants_near` RPC, distance sort.
 ///   3. Otherwise → full catalog, popularity sort.
@@ -62,6 +63,16 @@ final menuItemsProvider = FutureProvider<List<MenuItem>>((ref) {
   return ref.read(menuRepositoryProvider).fetchMenuItems();
 });
 
+/// One restaurant resolved directly by id, in ANY lifecycle state (null when
+/// deleted). The detail screen's source of truth — unlike the location/tier
+///-scoped [restaurantsProvider], this always finds the restaurant, letting
+/// the screen show honest "unavailable" / "out of range" states instead of
+/// a blank shell.
+final restaurantByIdProvider =
+    FutureProvider.family<Restaurant?, String>((ref, id) {
+  return ref.read(menuRepositoryProvider).fetchRestaurantById(id);
+});
+
 /// Admin catalog view — every menu item including unavailable ones. Distinct
 /// from [menuItemsProvider], which hides unavailable rows for the storefront.
 final adminMenuItemsProvider = FutureProvider<List<MenuItem>>((ref) {
@@ -80,9 +91,20 @@ final restaurantMenuItemsProvider =
 /// Currently-selected category id on the menu screen. null = "all".
 final selectedCategoryProvider = StateProvider<String?>((ref) => null);
 
+/// Menu items belonging to the restaurants currently in the customer's
+/// scope (location/tier-filtered [restaurantsProvider]). Replaces the old
+/// whole-catalog fetch on the browse-dishes screen, which downloaded 20k+
+/// rows and showed dishes from kitchens outside the customer's area.
+final scopedMenuItemsProvider = FutureProvider<List<MenuItem>>((ref) async {
+  final restaurants = await ref.watch(restaurantsProvider.future);
+  final ids = restaurants.map((r) => r.id).toSet();
+  if (ids.isEmpty) return const [];
+  return ref.read(menuRepositoryProvider).fetchMenuItemsForRestaurants(ids);
+});
+
 /// Menu items filtered by selected category + global filters.
 final filteredMenuItemsProvider = Provider<AsyncValue<List<MenuItem>>>((ref) {
-  final items = ref.watch(menuItemsProvider);
+  final items = ref.watch(scopedMenuItemsProvider);
   final cat = ref.watch(selectedCategoryProvider);
   final filters = ref.watch(menuFiltersProvider);
   return items.whenData((list) {

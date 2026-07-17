@@ -29,6 +29,12 @@ class StubTaxonomyRepository implements TaxonomyRepository {
           .toList(growable: false);
 
   @override
+  Future<Set<String>> fetchOfferRestaurantIds() async =>
+      // A meaningful subset so the home "Offers" chip visibly filters in
+      // stub mode (fetchOffersFor clones template offers for any id).
+      const {'r1', 'r3', 'r5'};
+
+  @override
   Future<List<TrendingSearch>> fetchTrendingSearches() async => _trending;
 
   static const _categories = [
@@ -157,17 +163,6 @@ class StubTaxonomyRepository implements TaxonomyRepository {
       bgHex: '#F3E8FF',
       iconHex: '#9B59B6',
       sortOrder: 3,
-    ),
-    Collection(
-      id: 'col4',
-      slug: 'live',
-      name: 'Live Counters',
-      subtitle: '12 places',
-      emoji: '🔥',
-      iconName: 'local_fire_department',
-      bgHex: '#EAFAF1',
-      iconHex: '#1BA672',
-      sortOrder: 4,
     ),
   ];
 

@@ -42,6 +42,15 @@ class SupabaseTaxonomyRepository implements TaxonomyRepository {
   }
 
   @override
+  Future<Set<String>> fetchOfferRestaurantIds() async {
+    final rows = await supabase
+        .from('restaurant_offers')
+        .select('restaurant_id')
+        .eq('is_active', true);
+    return rows.map((r) => r['restaurant_id'] as String).toSet();
+  }
+
+  @override
   Future<List<TrendingSearch>> fetchTrendingSearches() async {
     final rows = await supabase
         .from('trending_searches')

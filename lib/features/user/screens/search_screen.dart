@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -8,15 +10,20 @@ import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_sizes.dart';
 import '../../../core/constants/app_text_styles.dart';
 import '../../../core/router/app_routes.dart';
-import '../../../data/models/menu_item.dart';
+import '../../../core/utils/geo.dart';
+import '../../../data/models/dish_search_result.dart';
 import '../../../data/models/restaurant.dart';
-import '../../../shared/providers/menu_providers.dart';
 import '../../../shared/providers/search_providers.dart';
+import '../../../shared/providers/search_results_providers.dart';
 import '../../../shared/widgets/app_scaffold.dart';
 import '../../../shared/widgets/safe_net_image.dart';
 
 class SearchScreen extends ConsumerStatefulWidget {
-  const SearchScreen({super.key});
+  const SearchScreen({super.key, this.initialQuery});
+
+  /// Pre-filled search text — used by the home collection cards to land the
+  /// customer on live results (e.g. "Biryani") instead of an empty box.
+  final String? initialQuery;
 
   @override
   ConsumerState<SearchScreen> createState() => _SearchScreenState();
@@ -26,32 +33,61 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   final _ctrl = TextEditingController();
   final _focus = FocusNode();
   String _query = '';
+  Timer? _debounce;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _focus.requestFocus());
+    final q = widget.initialQuery?.trim();
+    if (q != null && q.isNotEmpty) {
+      _ctrl.text = q;
+      _query = q;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _commitNow(q);
+      });
+    } else {
+      WidgetsBinding.instance
+          .addPostFrameCallback((_) => _focus.requestFocus());
+    }
   }
 
   @override
   void dispose() {
+    _debounce?.cancel();
     _ctrl.dispose();
     _focus.dispose();
     super.dispose();
   }
 
-  void _setQuery(String v) => setState(() => _query = v);
+  /// Local state updates instantly (view switching / clear button); the
+  /// server query is committed after a debounce so we don't fire a network
+  /// round-trip per keystroke.
+  void _setQuery(String v) {
+    setState(() => _query = v);
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 350), () {
+      if (!mounted) return;
+      ref.read(searchQueryProvider.notifier).state = v;
+    });
+  }
+
+  /// Immediate commit — used by recent rows / trending chips.
+  void _commitNow(String v) {
+    _debounce?.cancel();
+    ref.read(searchQueryProvider.notifier).state = v;
+  }
 
   void _submit(String v) {
     final q = v.trim();
     if (q.isEmpty) return;
+    _commitNow(v);
     ref.read(recentSearchesProvider.notifier).add(q);
   }
 
   void _runQuery(String q) {
     _ctrl.text = q;
     _ctrl.selection = TextSelection.collapsed(offset: q.length);
-    _setQuery(q);
+    setState(() => _query = q);
     _submit(q);
   }
 
@@ -72,7 +108,8 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
           onSubmitted: _submit,
           onClear: () {
             _ctrl.clear();
-            _setQuery('');
+            setState(() => _query = '');
+            _commitNow('');
           },
         ),
       ),
@@ -189,9 +226,8 @@ class _EmptyQueryView extends ConsumerWidget {
                             .copyWith(color: AppColors.textSecondary),
                       ),
                       InkWell(
-                        onTap: () => ref
-                            .read(recentSearchesProvider.notifier)
-                            .clear(),
+                        onTap: () =>
+                            ref.read(recentSearchesProvider.notifier).clear(),
                         child: Text(
                           'Clear',
                           style: AppTextStyles.captionBold
@@ -208,9 +244,8 @@ class _EmptyQueryView extends ConsumerWidget {
                       HapticFeedback.selectionClick();
                       onRunQuery(q);
                     },
-                    onRemove: () => ref
-                        .read(recentSearchesProvider.notifier)
-                        .remove(q),
+                    onRemove: () =>
+                        ref.read(recentSearchesProvider.notifier).remove(q),
                   ),
               ],
             );
@@ -376,76 +411,190 @@ class _ResultsView extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final q = query.toLowerCase();
-    final restaurants =
-        ref.watch(restaurantsProvider).valueOrNull ?? const <Restaurant>[];
-    final items =
-        ref.watch(menuItemsProvider).valueOrNull ?? const <MenuItem>[];
+    if (query.trim().length < 2) {
+      return Center(
+        child: Text(
+          'Type at least 2 letters to search',
+          style: AppTextStyles.bodyMuted,
+        ),
+      );
+    }
 
-    final matchingRestaurants = restaurants
-        .where((r) =>
-            r.name.toLowerCase().contains(q) ||
-            (r.cuisinesDisplay?.toLowerCase().contains(q) ?? false))
-        .toList();
+    // The debounce means the committed query can briefly lag what's typed —
+    // treat that window as loading so we never flash "No results".
+    final committed = ref.watch(searchQueryProvider);
+    final pending = committed.trim() != query.trim();
+    final restA = ref.watch(restaurantSearchProvider);
+    final dishA = ref.watch(dishSearchProvider);
+    final loading = pending || restA.isLoading || dishA.isLoading;
 
-    final matchingItems = items
-        .where((i) =>
-            i.name.toLowerCase().contains(q) ||
-            (i.description?.toLowerCase().contains(q) ?? false))
-        .toList();
+    final restaurants = restA.valueOrNull;
+    final dishes = dishA.valueOrNull;
 
-    if (matchingRestaurants.isEmpty && matchingItems.isEmpty) {
+    if (restaurants == null || dishes == null) {
+      if (!loading && (restA.hasError || dishA.hasError)) {
+        return _SearchErrorView(
+          onRetry: () {
+            ref.invalidate(restaurantSearchProvider);
+            ref.invalidate(dishSearchProvider);
+          },
+        );
+      }
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (!loading && restaurants.isEmpty && dishes.isEmpty) {
       return _NoResultsView(query: query);
     }
 
-    return ListView(
-      padding: const EdgeInsets.only(
-        top: AppSizes.md,
-        bottom: AppSizes.xxxl,
-      ),
+    final coords = ref.watch(customerCoordsProvider);
+    final hasCoords = coords.lat != null && coords.lng != null;
+
+    return Column(
       children: [
-        if (matchingRestaurants.isNotEmpty) ...[
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-              AppSizes.pagePadding,
-              AppSizes.sm,
-              AppSizes.pagePadding,
-              AppSizes.sm,
-            ),
-            child: Text(
-              'Restaurants (${matchingRestaurants.length})',
-              style: AppTextStyles.captionBold
-                  .copyWith(color: AppColors.textSecondary),
-            ),
+        if (loading)
+          const LinearProgressIndicator(
+            minHeight: 2,
+            color: AppColors.primary,
+            backgroundColor: Colors.transparent,
           ),
-          for (final r in matchingRestaurants)
-            _RestaurantResultRow(restaurant: r),
-        ],
-        if (matchingItems.isNotEmpty) ...[
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-              AppSizes.pagePadding,
-              AppSizes.lg,
-              AppSizes.pagePadding,
-              AppSizes.sm,
+        Expanded(
+          child: ListView(
+            padding: const EdgeInsets.only(
+              top: AppSizes.md,
+              bottom: AppSizes.xxxl,
             ),
-            child: Text(
-              'Dishes (${matchingItems.length})',
-              style: AppTextStyles.captionBold
-                  .copyWith(color: AppColors.textSecondary),
-            ),
+            children: [
+              if (!hasCoords)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    AppSizes.pagePadding,
+                    0,
+                    AppSizes.pagePadding,
+                    AppSizes.sm,
+                  ),
+                  child: Container(
+                    padding: const EdgeInsets.all(AppSizes.sm + 2),
+                    decoration: BoxDecoration(
+                      color: AppColors.catBlueLt,
+                      borderRadius: BorderRadius.circular(AppSizes.radiusSm),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.info_outline_rounded,
+                          size: 16,
+                          color: AppColors.catBlue,
+                        ),
+                        const SizedBox(width: AppSizes.sm),
+                        Expanded(
+                          child: Text(
+                            'Set your delivery address to see which '
+                            'kitchens can serve you.',
+                            style: AppTextStyles.caption
+                                .copyWith(color: AppColors.catBlue),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              if (restaurants.isNotEmpty) ...[
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    AppSizes.pagePadding,
+                    AppSizes.sm,
+                    AppSizes.pagePadding,
+                    AppSizes.sm,
+                  ),
+                  child: Text(
+                    'Restaurants (${restaurants.length})',
+                    style: AppTextStyles.captionBold
+                        .copyWith(color: AppColors.textSecondary),
+                  ),
+                ),
+                for (final r in restaurants)
+                  _RestaurantResultRow(
+                    restaurant: r,
+                    serviceability: serviceabilityOf(
+                      r,
+                      customerLat: coords.lat,
+                      customerLng: coords.lng,
+                    ),
+                    distanceKm: distanceToRestaurantKm(
+                      r,
+                      customerLat: coords.lat,
+                      customerLng: coords.lng,
+                    ),
+                  ),
+              ],
+              if (dishes.isNotEmpty) ...[
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    AppSizes.pagePadding,
+                    AppSizes.lg,
+                    AppSizes.pagePadding,
+                    AppSizes.sm,
+                  ),
+                  child: Text(
+                    'Dishes (${dishes.length})',
+                    style: AppTextStyles.captionBold
+                        .copyWith(color: AppColors.textSecondary),
+                  ),
+                ),
+                for (final d in dishes) _DishResultRow(result: d),
+              ],
+            ],
           ),
-          for (final m in matchingItems.take(20))
-            _DishResultRow(item: m, restaurants: restaurants),
-        ],
+        ),
       ],
     );
   }
 }
 
+class _SearchErrorView extends StatelessWidget {
+  const _SearchErrorView({required this.onRetry});
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSizes.xl),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.cloud_off_rounded,
+              size: 36,
+              color: AppColors.textMuted,
+            ),
+            const SizedBox(height: AppSizes.md),
+            Text('Search is unavailable', style: AppTextStyles.heading2),
+            const SizedBox(height: AppSizes.xs),
+            Text(
+              'Check your connection and try again.',
+              style: AppTextStyles.bodyMuted,
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: AppSizes.md),
+            OutlinedButton(onPressed: onRetry, child: const Text('Retry')),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _RestaurantResultRow extends StatelessWidget {
-  const _RestaurantResultRow({required this.restaurant});
+  const _RestaurantResultRow({
+    required this.restaurant,
+    required this.serviceability,
+    required this.distanceKm,
+  });
   final Restaurant restaurant;
+  final Serviceability serviceability;
+  final double? distanceKm;
 
   @override
   Widget build(BuildContext context) {
@@ -488,6 +637,11 @@ class _RestaurantResultRow extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                     ),
                   ],
+                  const SizedBox(height: 3),
+                  _RangeLabel(
+                    serviceability: serviceability,
+                    distanceKm: distanceKm,
+                  ),
                 ],
               ),
             ),
@@ -534,22 +688,19 @@ class _RestaurantResultRow extends StatelessWidget {
 }
 
 class _DishResultRow extends StatelessWidget {
-  const _DishResultRow({required this.item, required this.restaurants});
-  final MenuItem item;
-  final List<Restaurant> restaurants;
+  const _DishResultRow({required this.result});
+  final DishSearchResult result;
 
   @override
   Widget build(BuildContext context) {
-    final r = restaurants.firstWhere(
-      (x) => x.id == item.restaurantId,
-      orElse: () => const Restaurant(id: '', name: '', deliveryCharge: 0),
-    );
+    final item = result.item;
+    final outOfRange =
+        result.distanceKm != null && result.distanceKm! > kServiceRadiusKm;
     return InkWell(
-      onTap: () {
-        if (r.id.isNotEmpty) {
-          context.push(AppRoutes.restaurantDetailFor(r.id));
-        }
-      },
+      // Always navigable — the RPC guarantees the restaurant is published,
+      // and the detail screen handles the out-of-range state itself.
+      onTap: () =>
+          context.push(AppRoutes.restaurantDetailFor(item.restaurantId)),
       child: Padding(
         padding: const EdgeInsets.symmetric(
           horizontal: AppSizes.pagePadding,
@@ -566,7 +717,8 @@ class _DishResultRow extends StatelessWidget {
                   Text(item.name, style: AppTextStyles.bodyBold, maxLines: 1),
                   const SizedBox(height: 2),
                   Text(
-                    '₹${item.price.toStringAsFixed(0)} · ${r.name}',
+                    '₹${item.price.toStringAsFixed(0)} · '
+                    '${result.restaurantName}',
                     style: AppTextStyles.caption,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -574,9 +726,75 @@ class _DishResultRow extends StatelessWidget {
                 ],
               ),
             ),
+            if (outOfRange) ...[
+              const SizedBox(width: AppSizes.sm),
+              const _OutOfRangeChip(),
+            ],
+            const SizedBox(width: AppSizes.sm),
             const Icon(Icons.north_east_rounded,
                 color: AppColors.textMuted, size: 18),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Distance / serviceability line under a restaurant result. Out-of-range
+/// kitchens stay visible and tappable — this label is the honest signal.
+class _RangeLabel extends StatelessWidget {
+  const _RangeLabel({required this.serviceability, required this.distanceKm});
+  final Serviceability serviceability;
+  final double? distanceKm;
+
+  @override
+  Widget build(BuildContext context) {
+    switch (serviceability) {
+      case Serviceability.inRange:
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.location_on_rounded,
+              size: 12,
+              color: AppColors.success,
+            ),
+            const SizedBox(width: 2),
+            Text(
+              distanceKm == null
+                  ? 'Delivers to your location'
+                  : '${distanceKm!.toStringAsFixed(1)} km away',
+              style: AppTextStyles.caption.copyWith(
+                color: AppColors.success,
+                fontSize: 11,
+              ),
+            ),
+          ],
+        );
+      case Serviceability.outOfRange:
+        return const _OutOfRangeChip();
+      case Serviceability.unknown:
+        return const SizedBox.shrink();
+    }
+  }
+}
+
+class _OutOfRangeChip extends StatelessWidget {
+  const _OutOfRangeChip();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+      decoration: BoxDecoration(
+        color: AppColors.accentSoft,
+        borderRadius: BorderRadius.circular(5),
+      ),
+      child: Text(
+        'OUT OF RANGE',
+        style: AppTextStyles.captionBold.copyWith(
+          color: AppColors.accentDark,
+          fontSize: 9,
         ),
       ),
     );
