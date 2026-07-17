@@ -120,16 +120,13 @@ class _OtpScreenState extends ConsumerState<OtpScreen> {
               onPressed: () => context.pop(),
               child: Text(
                 'Change number',
-                style: AppTextStyles.bodyBold
-                    .copyWith(color: AppColors.primary),
+                style:
+                    AppTextStyles.bodyBold.copyWith(color: AppColors.primary),
               ),
             ),
           ),
         ],
-      )
-          .animate()
-          .fadeIn(duration: 400.ms)
-          .slideY(begin: 0.08, end: 0),
+      ).animate().fadeIn(duration: 400.ms).slideY(begin: 0.08, end: 0),
     );
   }
 }

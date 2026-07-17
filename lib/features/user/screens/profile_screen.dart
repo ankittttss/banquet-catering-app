@@ -112,6 +112,13 @@ class _SignedInView extends ConsumerWidget {
           onTap: () => context.push(AppRoutes.helpSupport),
         ),
         _ProfileTile(
+          icon: Icons.auto_stories_rounded,
+          label: 'How Dawat works',
+          iconBg: AppColors.catBlueLt,
+          iconColor: AppColors.catBlue,
+          onTap: () => context.push('${AppRoutes.onboarding}?review=1'),
+        ),
+        _ProfileTile(
           icon: Icons.info_rounded,
           label: 'About',
           iconBg: AppColors.surfaceAlt,
@@ -168,8 +175,7 @@ class _Header extends StatelessWidget {
         [profile.phone, profile.email].where((e) => e != null).join(' · ');
 
     return Container(
-      margin:
-          const EdgeInsets.symmetric(horizontal: AppSizes.pagePadding),
+      margin: const EdgeInsets.symmetric(horizontal: AppSizes.pagePadding),
       padding: const EdgeInsets.all(AppSizes.md + 4),
       decoration: BoxDecoration(
         color: AppColors.surfaceAlt,
@@ -209,8 +215,7 @@ class _ProfileAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final hasPhoto =
-        profile.avatarUrl != null && profile.avatarUrl!.isNotEmpty;
+    final hasPhoto = profile.avatarUrl != null && profile.avatarUrl!.isNotEmpty;
 
     Widget placeholder() => Container(
           color: AppColors.primarySoft,

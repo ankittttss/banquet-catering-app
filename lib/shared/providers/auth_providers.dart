@@ -27,8 +27,7 @@ final currentUserIdProvider = Provider<String?>((ref) {
 /// When the row is missing we INSERT a bare row (role defaults to 'user' in
 /// the DB) — never upsert, because an upsert here can silently overwrite an
 /// admin/delivery role if RLS briefly hid the existing row.
-final currentProfileProvider =
-    FutureProvider<UserProfile?>((ref) async {
+final currentProfileProvider = FutureProvider<UserProfile?>((ref) async {
   final userId = ref.watch(currentUserIdProvider);
   if (userId == null) return null;
   final repo = ref.read(profileRepositoryProvider);

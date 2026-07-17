@@ -23,25 +23,56 @@ import '../widgets/dev_sign_in_panel.dart';
 
 class _P {
   static const red = Color(0xFFE23744);
-  static const redDark = Color(0xFF8B2033);
-  static const gold = Color(0xFFC4922A);
+  static const accent = Color(0xFFE5A100);
 
-  static const textPrimary = Color(0xFF1A1A1A);
-  static const textLabel = Color(0xFF4A3F38);
-  static const textMuted = Color(0xFF8C8078);
+  static const textPrimary = Color(0xFF1C1C1C);
+  static const textSecondary = Color(0xFF4F4F4F);
+  static const textMuted = Color(0xFF828282);
   static const textPlaceholder = Color(0xFFC4BAB2);
 
-  static const border = Color(0xFFE8E0D8);
-  static const borderSoft = Color(0xFFD0C8C0);
+  static const border = Color(0xFFE0E0E0);
+  static const divider = Color(0xFFF2F2F2);
   static const surface = Color(0xFFFDFBF9);
-  static const pullTab = Color(0xFFE0D8D0);
-
-  static const bgGrad1 = Color(0xFFFFF5F0);
-  static const bgGrad2 = Color(0xFFFFF0EC);
 
   static const green = Color(0xFF1BA672);
-  static const amber = Color(0xFFE5A100);
+
+  // Feast-photo hero — full-bleed image behind a dark-red gradient (design).
+  static const heroUrl =
+      'https://images.unsplash.com/photo-1567188040759-fb8a883dc6d8?w=900&q=80';
+  static const heroOverlay = LinearGradient(
+    begin: Alignment.topCenter,
+    end: Alignment.bottomCenter,
+    colors: [Color(0x591C0B0B), Color(0x8C78141A), Color(0xEB5A0E14)],
+    stops: [0.0, 0.55, 1.0],
+  );
+  // Shown behind the photo while it loads / if it fails.
+  static const heroFallback = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [Color(0xFF8B2033), Color(0xFF5A0E14)],
+  );
 }
+
+/// App-standard sans (Plus Jakarta Sans) — matches AppTextStyles and the rest
+/// of the app. Only the "Dawat" wordmark uses Instrument Serif.
+TextStyle _sans({
+  double fontSize = 14,
+  FontWeight fontWeight = FontWeight.w400,
+  Color color = _P.textPrimary,
+  double? height,
+  double? letterSpacing,
+  FontStyle? fontStyle,
+  TextDecoration? decoration,
+}) =>
+    GoogleFonts.plusJakartaSans(
+      fontSize: fontSize,
+      fontWeight: fontWeight,
+      color: color,
+      height: height,
+      letterSpacing: letterSpacing,
+      fontStyle: fontStyle,
+      decoration: decoration,
+    );
 
 enum _Mode { signIn, signUp, forgot }
 
@@ -57,20 +88,23 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _emailCtrl = TextEditingController();
   final _passwordCtrl = TextEditingController();
   final _nameCtrl = TextEditingController();
+  final _phoneCtrl = TextEditingController();
 
   _Mode _mode = _Mode.signIn;
   bool _loading = false;
   bool _oauthLoading = false;
   bool _obscure = true;
   String? _errorMessage;
-  bool _needsVerification = false;
-  bool _resending = false;
   bool _sendingReset = false;
 
   @override
   void initState() {
     super.initState();
-    _passwordCtrl.addListener(() => setState(() {}));
+    // Rebuild on every keystroke so the live validation cues (green check /
+    // inline error) stay in sync with what the user has typed.
+    for (final c in [_emailCtrl, _passwordCtrl, _nameCtrl, _phoneCtrl]) {
+      c.addListener(() => setState(() {}));
+    }
   }
 
   @override
@@ -78,33 +112,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     _emailCtrl.dispose();
     _passwordCtrl.dispose();
     _nameCtrl.dispose();
+    _phoneCtrl.dispose();
     super.dispose();
   }
 
-  // ────────── Auth methods (unchanged logic) ──────────
-
-  Future<void> _resendVerification() async {
-    final email = _emailCtrl.text.trim();
-    if (email.isEmpty || !AppConfig.hasSupabase) return;
-    setState(() => _resending = true);
-    try {
-      await sb.auth.resend(type: OtpType.signup, email: email);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Verification email sent to $email'),
-          backgroundColor: _P.green,
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not resend: $e')),
-      );
-    } finally {
-      if (mounted) setState(() => _resending = false);
-    }
-  }
+  // ────────── Auth ──────────
 
   Future<void> _signInWithGoogle() async {
     if (!AppConfig.hasSupabase) {
@@ -116,9 +128,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     try {
       await sb.auth.signInWithOAuth(
         OAuthProvider.google,
-        redirectTo: kIsWeb
-            ? null
-            : 'io.supabase.banquetcatering://login-callback',
+        redirectTo:
+            kIsWeb ? null : 'io.supabase.banquetcatering://login-callback',
       );
     } on AuthException catch (e) {
       if (!mounted) return;
@@ -140,7 +151,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     setState(() {
       _loading = true;
       _errorMessage = null;
-      _needsVerification = false;
     });
 
     final email = _emailCtrl.text.trim();
@@ -152,70 +162,131 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         context.go(AppRoutes.userHome);
         return;
       }
-
-      AuthResponse res;
       if (_mode == _Mode.signUp) {
-        res = await sb.auth.signUp(email: email, password: password);
+        await _createAccount(email, password);
       } else {
-        res = await sb.auth.signInWithPassword(
-          email: email,
-          password: password,
-        );
+        await _signInOrCreate(email, password);
       }
+    } on AuthException catch (e) {
+      if (!mounted) return;
+      setState(() => _errorMessage = e.message);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _errorMessage = 'Something went wrong. Please try again.');
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
 
-      final user = res.user ?? sb.auth.currentUser;
-      final hasSession =
-          res.session != null || sb.auth.currentSession != null;
-      if (user == null || !hasSession) {
-        setState(() => _needsVerification = true);
+  /// Smooth sign-in: log the user in; if no account exists yet, create it on
+  /// the spot (email confirmation is disabled, so signUp returns a session
+  /// immediately). Supabase returns the same "invalid credentials" error for
+  /// both a wrong password and a missing account, so we disambiguate by
+  /// attempting a signUp — "already registered" means the password was wrong.
+  Future<void> _signInOrCreate(String email, String password) async {
+    try {
+      await sb.auth.signInWithPassword(email: email, password: password);
+      await _routeAfterAuth();
+    } on AuthException catch (e) {
+      if (!_isInvalidCredentials(e)) rethrow;
+      // Maybe a brand-new user — try to create the account.
+      try {
+        final res = await sb.auth.signUp(email: email, password: password);
+        if (_hasSession(res)) {
+          await _routeAfterAuth();
+          return;
+        }
+        // No session despite confirmation being off — surface gracefully.
         throw const AuthException(
-          'Verify your email first. Check your inbox for the confirmation link.',
+          'Account created. Please check your email to verify, then sign in.',
+        );
+      } on AuthException catch (e2) {
+        if (_isAlreadyRegistered(e2)) {
+          throw const AuthException(
+            'Incorrect password. Try again or use "Forgot?" to reset it.',
+          );
+        }
+        rethrow;
+      }
+    }
+  }
+
+  /// Create-account form: instant signup (no verification email) + persist
+  /// the name & phone so the profile is order-ready from the first session.
+  /// If the email is already registered, fall back to validating the password.
+  Future<void> _createAccount(String email, String password) async {
+    try {
+      final res = await sb.auth.signUp(email: email, password: password);
+      if (!_hasSession(res)) {
+        throw const AuthException(
+          'Account created. Please check your email to verify, then sign in.',
         );
       }
-
-      if (_mode == _Mode.signUp && _nameCtrl.text.trim().isNotEmpty) {
+      final user = res.user ?? sb.auth.currentUser;
+      if (user != null) {
+        final name = _nameCtrl.text.trim();
+        final phone = _phoneCtrl.text.replaceAll(RegExp(r'\D'), '');
         try {
           await ref.read(profileRepositoryProvider).upsert(
                 UserProfile(
                   id: user.id,
                   role: UserRole.customer,
                   email: email,
-                  name: _nameCtrl.text.trim(),
+                  name: name.isEmpty ? null : name,
+                  phone: phone.isEmpty ? null : phone,
                 ),
               );
         } catch (_) {
-          // trigger may not have populated yet — currentProfileProvider
+          // Trigger may not have populated yet — currentProfileProvider
           // will auto-create a default row on first read.
         }
       }
-
-      ref.invalidate(currentProfileProvider);
-      final profile = await ref.read(currentProfileProvider.future);
-      if (!mounted) return;
-      final role = profile?.role ?? UserRole.customer;
-      context.go(switch (role) {
-        UserRole.admin => AppRoutes.adminHome,
-        UserRole.banquet => AppRoutes.banquetHome,
-        UserRole.restaurant => AppRoutes.restaurantHome,
-        UserRole.manager => AppRoutes.managerHome,
-        UserRole.serviceBoy => AppRoutes.serviceBoyHome,
-        UserRole.customer => AppRoutes.userHome,
-      });
+      await _routeAfterAuth();
     } on AuthException catch (e) {
-      if (!mounted) return;
-      final msg = e.message.toLowerCase();
-      setState(() {
-        _errorMessage = e.message;
-        if (msg.contains('not confirmed') || msg.contains('verify')) {
-          _needsVerification = true;
-        }
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _errorMessage = 'Sign-in failed: $e');
-    } finally {
-      if (mounted) setState(() => _loading = false);
+      if (!_isAlreadyRegistered(e)) rethrow;
+      // Email already has an account — try the password they entered.
+      try {
+        await sb.auth.signInWithPassword(email: email, password: password);
+        await _routeAfterAuth();
+      } on AuthException {
+        throw const AuthException(
+          'This email already has an account. Try signing in, or reset your '
+          'password.',
+        );
+      }
     }
+  }
+
+  Future<void> _routeAfterAuth() async {
+    ref.invalidate(currentProfileProvider);
+    final profile = await ref.read(currentProfileProvider.future);
+    if (!mounted) return;
+    final role = profile?.role ?? UserRole.customer;
+    context.go(switch (role) {
+      UserRole.admin => AppRoutes.adminHome,
+      UserRole.banquet => AppRoutes.banquetHome,
+      UserRole.restaurant => AppRoutes.restaurantHome,
+      UserRole.manager => AppRoutes.managerHome,
+      UserRole.serviceBoy => AppRoutes.serviceBoyHome,
+      UserRole.customer => AppRoutes.userHome,
+    });
+  }
+
+  bool _hasSession(AuthResponse res) =>
+      res.session != null || sb.auth.currentSession != null;
+
+  bool _isInvalidCredentials(AuthException e) {
+    final m = e.message.toLowerCase();
+    return m.contains('invalid login credentials') ||
+        m.contains('invalid credentials');
+  }
+
+  bool _isAlreadyRegistered(AuthException e) {
+    final m = e.message.toLowerCase();
+    return m.contains('already registered') ||
+        m.contains('already exists') ||
+        m.contains('user_already_exists') ||
+        e.code == 'user_already_exists';
   }
 
   Future<void> _sendReset() async {
@@ -251,35 +322,39 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     }
   }
 
+  void _switchMode(_Mode mode) {
+    setState(() {
+      _mode = mode;
+      _errorMessage = null;
+    });
+  }
+
   // ────────── Build ──────────
 
   @override
   Widget build(BuildContext context) {
+    final topInset = MediaQuery.of(context).padding.top;
     return Scaffold(
-      backgroundColor: _P.bgGrad1,
+      backgroundColor: Colors.white,
       resizeToAvoidBottomInset: true,
-      body: SafeArea(
-        child: LayoutBuilder(
-          builder: (context, constraints) => SingleChildScrollView(
-            padding: EdgeInsets.only(
-              bottom: MediaQuery.of(context).viewInsets.bottom,
+      body: SingleChildScrollView(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom,
+        ),
+        physics: const ClampingScrollPhysics(),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _PhotoHero(
+              mode: _mode,
+              topInset: topInset,
+              onBack: () => _switchMode(_Mode.signIn),
             ),
-            physics: const ClampingScrollPhysics(),
-            child: ConstrainedBox(
-              constraints: BoxConstraints(minHeight: constraints.maxHeight),
-              child: IntrinsicHeight(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const _Header(),
-                    Expanded(
-                      child: _FormCard(child: _buildFormBody()),
-                    ),
-                  ],
-                ),
-              ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 18, 24, 28),
+              child: _buildFormBody(),
             ),
-          ),
+          ],
         ),
       ),
     );
@@ -296,31 +371,41 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     }
   }
 
+  // Live-validation trailing check for non-password fields.
+  Widget? _checkFor(bool valid) => valid ? const _ValidCheck() : null;
+
   Widget _buildSignIn() {
+    final emailValid = Validators.email(_emailCtrl.text) == null;
     return Form(
       key: _formKey,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _Title('Welcome back', 'Sign in to continue hosting'),
-          const SizedBox(height: 16),
-          // Local-dev only — renders nothing in prod via AppConfig.isDev
-          // gate inside the widget. Tap any role chip to sign in
-          // instantly with the seeded test account.
+          _Title(
+              'Welcome back.', 'Sign in to plan, track and host your events.'),
+          const SizedBox(height: 20),
+          // Local-dev only — renders nothing in prod via AppConfig gate.
           const DevSignInPanel(),
-          _FieldLabel('Email'),
+          _FieldLabel('Email address'),
           _InputField(
             controller: _emailCtrl,
-            hint: 'you@example.com',
+            hint: 'you@email.com',
             leadingIcon: Icons.mail_outline_rounded,
             keyboardType: TextInputType.emailAddress,
             validator: Validators.email,
+            trailing: _checkFor(emailValid),
           ),
           const SizedBox(height: 16),
-          _FieldLabel('Password'),
+          _LabelRow(
+            label: 'Password',
+            trailing: _InlineLink(
+              'Forgot?',
+              onTap: () => _switchMode(_Mode.forgot),
+            ),
+          ),
           _InputField(
             controller: _passwordCtrl,
-            hint: 'At least 6 characters',
+            hint: 'Enter your password',
             leadingIcon: Icons.lock_outline_rounded,
             obscureText: _obscure,
             validator: _pwValidator,
@@ -329,64 +414,27 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               onTap: () => setState(() => _obscure = !_obscure),
             ),
           ),
-          const SizedBox(height: 8),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              TextButton(
-                style: TextButton.styleFrom(
-                  padding: EdgeInsets.zero,
-                  minimumSize: const Size(0, 32),
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                ),
-                onPressed: () {
-                  setState(() {
-                    _mode = _Mode.forgot;
-                    _errorMessage = null;
-                    _needsVerification = false;
-                  });
-                },
-                child: Text(
-                  'Forgot password?',
-                  style: GoogleFonts.outfit(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: _P.red,
-                  ),
-                ),
-              ),
-            ],
-          ),
           if (_errorMessage != null) ...[
-            const SizedBox(height: 12),
-            _ErrorBanner(
-              message: _errorMessage!,
-              needsVerification: _needsVerification,
-              resending: _resending,
-              onResend: _resendVerification,
-            ),
+            const SizedBox(height: 14),
+            _ErrorBanner(message: _errorMessage!),
           ],
-          const SizedBox(height: 12),
+          const SizedBox(height: 22),
           _PrimaryButton(
-            label: 'Sign in',
+            label: _loading ? 'Signing in…' : 'Sign in',
             loading: _loading,
             onPressed: _submit,
           ),
-          const _OrDivider(),
-          _SocialRow(
+          const _OrDivider('or continue with'),
+          _SocialColumn(
             googleLoading: _oauthLoading,
             onGoogle: _signInWithGoogle,
             onApple: () => _showComingSoon(context, 'Apple sign-in'),
           ),
           const SizedBox(height: 20),
           _FooterToggle(
-            prefix: 'New here? ',
-            linkText: 'Create account',
-            onTap: () => setState(() {
-              _mode = _Mode.signUp;
-              _errorMessage = null;
-              _needsVerification = false;
-            }),
+            prefix: 'New to Dawat? ',
+            linkText: 'Create an account',
+            onTap: () => _switchMode(_Mode.signUp),
           ),
           const _TermsLine(),
         ],
@@ -395,34 +443,58 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   Widget _buildSignUp() {
+    final nameValid = _nameCtrl.text.trim().length >= 2;
+    final emailValid = Validators.email(_emailCtrl.text) == null;
+    final phoneValid = Validators.phone(_phoneCtrl.text) == null;
     return Form(
       key: _formKey,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _Title('Create account', 'Start planning your first event'),
-          const SizedBox(height: 24),
-          _FieldLabel('Your name'),
+          _Title("Let's get you set up.",
+              "A few details and you're ready to host."),
+          const SizedBox(height: 20),
+          _FieldLabel('Full name'),
           _InputField(
             controller: _nameCtrl,
-            hint: 'Full name',
+            hint: 'Riya Sharma',
             leadingIcon: Icons.person_outline_rounded,
             textCapitalization: TextCapitalization.words,
+            validator: (v) => (v == null || v.trim().length < 2)
+                ? 'Please enter your name'
+                : null,
+            trailing: _checkFor(nameValid),
           ),
-          const SizedBox(height: 16),
-          _FieldLabel('Email'),
+          const SizedBox(height: 14),
+          _FieldLabel('Email address'),
           _InputField(
             controller: _emailCtrl,
-            hint: 'you@example.com',
+            hint: 'you@email.com',
             leadingIcon: Icons.mail_outline_rounded,
             keyboardType: TextInputType.emailAddress,
             validator: Validators.email,
+            trailing: _checkFor(emailValid),
           ),
-          const SizedBox(height: 16),
-          _FieldLabel('Password'),
+          const SizedBox(height: 14),
+          _FieldLabel('Mobile number'),
+          _InputField(
+            controller: _phoneCtrl,
+            hint: '98765 43210',
+            leadingIcon: Icons.phone_outlined,
+            keyboardType: TextInputType.phone,
+            prefixText: '+91',
+            inputFormatters: [
+              FilteringTextInputFormatter.digitsOnly,
+              LengthLimitingTextInputFormatter(10),
+            ],
+            validator: Validators.phone,
+            trailing: _checkFor(phoneValid),
+          ),
+          const SizedBox(height: 14),
+          _FieldLabel('Create password'),
           _InputField(
             controller: _passwordCtrl,
-            hint: 'At least 6 characters',
+            hint: 'Min. 6 characters',
             leadingIcon: Icons.lock_outline_rounded,
             obscureText: _obscure,
             validator: _pwValidator,
@@ -431,25 +503,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               onTap: () => setState(() => _obscure = !_obscure),
             ),
           ),
-          const SizedBox(height: 8),
-          _StrengthBar(password: _passwordCtrl.text),
           if (_errorMessage != null) ...[
-            const SizedBox(height: 12),
-            _ErrorBanner(
-              message: _errorMessage!,
-              needsVerification: _needsVerification,
-              resending: _resending,
-              onResend: _resendVerification,
-            ),
+            const SizedBox(height: 14),
+            _ErrorBanner(message: _errorMessage!),
           ],
-          const SizedBox(height: 20),
+          const SizedBox(height: 22),
           _PrimaryButton(
-            label: 'Create account',
+            label: _loading ? 'Creating account…' : 'Create account',
             loading: _loading,
             onPressed: _submit,
           ),
-          const _OrDivider(),
-          _SocialRow(
+          const _OrDivider('or sign up with'),
+          _SocialColumn(
             googleLoading: _oauthLoading,
             onGoogle: _signInWithGoogle,
             onApple: () => _showComingSoon(context, 'Apple sign-in'),
@@ -458,11 +523,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           _FooterToggle(
             prefix: 'Already have an account? ',
             linkText: 'Sign in',
-            onTap: () => setState(() {
-              _mode = _Mode.signIn;
-              _errorMessage = null;
-              _needsVerification = false;
-            }),
+            onTap: () => _switchMode(_Mode.signIn),
           ),
           const _TermsLine(),
         ],
@@ -474,65 +535,33 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: TextButton.icon(
-            style: TextButton.styleFrom(
-              padding: EdgeInsets.zero,
-              minimumSize: const Size(0, 32),
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              foregroundColor: _P.textMuted,
-            ),
-            onPressed: () => setState(() {
-              _mode = _Mode.signIn;
-              _errorMessage = null;
-            }),
-            icon: const Icon(Icons.arrow_back_rounded, size: 18),
-            label: Text(
-              'Back',
-              style: GoogleFonts.outfit(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: _P.textMuted,
-              ),
-            ),
-          ),
-        ),
         _Title(
           'Reset password',
-          "Enter your email and we'll send you a reset link",
+          "Enter your email and we'll send you a reset link.",
         ),
         const SizedBox(height: 24),
-        _FieldLabel('Email'),
+        _FieldLabel('Email address'),
         _InputField(
           controller: _emailCtrl,
-          hint: 'you@example.com',
+          hint: 'you@email.com',
           leadingIcon: Icons.mail_outline_rounded,
           keyboardType: TextInputType.emailAddress,
         ),
         if (_errorMessage != null) ...[
-          const SizedBox(height: 12),
-          _ErrorBanner(
-            message: _errorMessage!,
-            needsVerification: false,
-            resending: false,
-            onResend: () {},
-          ),
+          const SizedBox(height: 14),
+          _ErrorBanner(message: _errorMessage!),
         ],
-        const SizedBox(height: 20),
+        const SizedBox(height: 22),
         _PrimaryButton(
-          label: 'Send reset link',
+          label: _sendingReset ? 'Sending…' : 'Send reset link',
           loading: _sendingReset,
           onPressed: _sendReset,
         ),
-        const SizedBox(height: 28),
+        const SizedBox(height: 24),
         _FooterToggle(
           prefix: 'Remember your password? ',
           linkText: 'Sign in',
-          onTap: () => setState(() {
-            _mode = _Mode.signIn;
-            _errorMessage = null;
-          }),
+          onTap: () => _switchMode(_Mode.signIn),
         ),
         const SizedBox(height: 8),
       ],
@@ -541,7 +570,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   String? _pwValidator(String? v) {
     if (v == null || v.isEmpty) return 'Password is required';
-    if (v.length < 6) return 'Minimum 6 characters';
+    if (v.length < 6) return 'At least 6 characters';
     return null;
   }
 
@@ -552,72 +581,87 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 }
 
-// ───────────────────────── Header ─────────────────────────
+// ───────────────────────── Photo hero ─────────────────────────
 
-class _Header extends StatelessWidget {
-  const _Header();
+class _PhotoHero extends StatelessWidget {
+  const _PhotoHero({
+    required this.mode,
+    required this.topInset,
+    required this.onBack,
+  });
+
+  final _Mode mode;
+  final double topInset;
+  final VoidCallback onBack;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(28, 36, 28, 36),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: const Alignment(0, -1),
-          end: const Alignment(0, 1),
-          colors: const [_P.bgGrad1, _P.bgGrad2],
-        ),
-      ),
-      child: Column(
+    final tall = mode == _Mode.signIn;
+    final height = (tall ? 232.0 : 168.0) + topInset;
+    final (overline, wordSize) = switch (mode) {
+      _Mode.signIn => ('Banquet · Catering · One app', 52.0),
+      _Mode.signUp => ('Create your account', 40.0),
+      _Mode.forgot => ('Reset your password', 40.0),
+    };
+
+    return SizedBox(
+      height: height,
+      child: Stack(
+        fit: StackFit.expand,
         children: [
-          // Logo mark — native dawat.png.
-          SizedBox(
-            width: 80,
-            height: 80,
-            child: Image.asset(
-              'assets/images/dawat.png',
-              fit: BoxFit.contain,
-              errorBuilder: (_, __, ___) => const Center(
-                child: Text(
-                  '🍽',
-                  style: TextStyle(fontSize: 36),
-                ),
-              ),
-            ),
-          ).animate().fadeIn(duration: 360.ms).scale(
-                begin: const Offset(0.7, 0.7),
-                end: const Offset(1, 1),
-                duration: 420.ms,
-                curve: Curves.easeOutBack,
-              ),
-          const SizedBox(height: 16),
-          Text(
-            'Dawat',
-            style: GoogleFonts.instrumentSerif(
-              fontSize: 36,
-              fontWeight: FontWeight.w400,
-              color: _P.textPrimary,
-              letterSpacing: -1,
-            ),
-          ).animate().fadeIn(delay: 80.ms, duration: 320.ms),
-          const SizedBox(height: 10),
-          Container(
-            width: 32,
-            height: 2,
-            decoration: BoxDecoration(
-              color: _P.red,
-              borderRadius: BorderRadius.circular(1),
-            ),
+          // Base brand gradient — visible while the photo loads / on error.
+          const DecoratedBox(
+            decoration: BoxDecoration(gradient: _P.heroFallback),
           ),
-          const SizedBox(height: 8),
-          Text(
-            'HOST WITH HEART',
-            style: GoogleFonts.outfit(
-              fontSize: 10,
-              fontWeight: FontWeight.w700,
-              color: _P.gold,
-              letterSpacing: 3.5,
+          Image.network(
+            _P.heroUrl,
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+          ),
+          const DecoratedBox(
+            decoration: BoxDecoration(gradient: _P.heroOverlay),
+          ),
+          // Back button on sign-up / forgot.
+          if (mode != _Mode.signIn)
+            Positioned(
+              top: topInset + 12,
+              left: 12,
+              child: _CircleBack(onTap: onBack),
+            ),
+          Positioned(
+            left: 24,
+            right: 24,
+            bottom: 24,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Dawat',
+                  style: GoogleFonts.instrumentSerif(
+                    fontSize: wordSize,
+                    fontStyle: FontStyle.italic,
+                    fontWeight: FontWeight.w400,
+                    color: Colors.white,
+                    height: 1,
+                    letterSpacing: -1,
+                  ),
+                ).animate().fadeIn(duration: 320.ms),
+                const SizedBox(height: 8),
+                Text(
+                  overline.toUpperCase(),
+                  style: _sans(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    color: _P.accent,
+                    letterSpacing: 1.6,
+                  ),
+                ),
+                if (tall) ...[
+                  const SizedBox(height: 12),
+                  const _SocialProofPill(),
+                ],
+              ],
             ),
           ),
         ],
@@ -626,41 +670,75 @@ class _Header extends StatelessWidget {
   }
 }
 
-// ───────────────────────── Form card ─────────────────────────
-
-class _FormCard extends StatelessWidget {
-  const _FormCard({required this.child});
-  final Widget child;
+class _SocialProofPill extends StatelessWidget {
+  const _SocialProofPill();
 
   @override
   Widget build(BuildContext context) {
+    const dots = [Color(0xFFE5A100), Color(0xFF1BA672), Color(0xFF2B6CB0)];
     return Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-        boxShadow: [
-          BoxShadow(
-            color: Color(0x0A000000),
-            offset: Offset(0, -4),
-            blurRadius: 30,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.16),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: 18 + 12.0 * 2,
+            height: 18,
+            child: Stack(
+              children: [
+                for (var i = 0; i < dots.length; i++)
+                  Positioned(
+                    left: i * 12.0,
+                    child: Container(
+                      width: 18,
+                      height: 18,
+                      decoration: BoxDecoration(
+                        color: dots[i],
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 1.5),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            '10,000+ events hosted',
+            style: _sans(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: Colors.white,
+            ),
           ),
         ],
       ),
-      padding: const EdgeInsets.fromLTRB(28, 20, 28, 32),
-      child: Column(
-        children: [
-          // Pull tab.
-          Container(
-            width: 36,
-            height: 4,
-            decoration: BoxDecoration(
-              color: _P.pullTab,
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
-          const SizedBox(height: 16),
-          child,
-        ],
+    );
+  }
+}
+
+class _CircleBack extends StatelessWidget {
+  const _CircleBack({required this.onTap});
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white.withValues(alpha: 0.9),
+      shape: const CircleBorder(),
+      child: InkWell(
+        onTap: onTap,
+        customBorder: const CircleBorder(),
+        child: const SizedBox(
+          width: 40,
+          height: 40,
+          child:
+              Icon(Icons.arrow_back_rounded, size: 20, color: _P.textPrimary),
+        ),
       ),
     );
   }
@@ -680,17 +758,18 @@ class _Title extends StatelessWidget {
       children: [
         Text(
           title,
-          style: GoogleFonts.instrumentSerif(
-            fontSize: 28,
-            fontWeight: FontWeight.w400,
+          style: _sans(
+            fontSize: 26,
+            fontWeight: FontWeight.w800,
             color: _P.textPrimary,
-            height: 1.1,
+            height: 1.15,
+            letterSpacing: -0.5,
           ),
         ),
-        const SizedBox(height: 4),
+        const SizedBox(height: 6),
         Text(
           sub,
-          style: GoogleFonts.outfit(
+          style: _sans(
             fontSize: 14,
             color: _P.textMuted,
             fontWeight: FontWeight.w400,
@@ -711,13 +790,58 @@ class _FieldLabel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 7),
-      child: Text(
-        text,
-        style: GoogleFonts.outfit(
-          fontSize: 13,
-          fontWeight: FontWeight.w600,
-          color: _P.textLabel,
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Text(text, style: _labelStyle()),
+    );
+  }
+}
+
+/// Label row with a trailing widget (e.g. the "Forgot?" link beside Password).
+class _LabelRow extends StatelessWidget {
+  const _LabelRow({required this.label, required this.trailing});
+  final String label;
+  final Widget trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: _labelStyle()),
+          trailing,
+        ],
+      ),
+    );
+  }
+}
+
+TextStyle _labelStyle() => _sans(
+      fontSize: 13,
+      fontWeight: FontWeight.w600,
+      color: _P.textSecondary,
+    );
+
+class _InlineLink extends StatelessWidget {
+  const _InlineLink(this.text, {required this.onTap});
+  final String text;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(6),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+        child: Text(
+          text,
+          style: _sans(
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+            color: _P.red,
+          ),
         ),
       ),
     );
@@ -735,6 +859,8 @@ class _InputField extends StatefulWidget {
     this.obscureText = false,
     this.validator,
     this.trailing,
+    this.prefixText,
+    this.inputFormatters,
     this.textCapitalization = TextCapitalization.none,
   });
 
@@ -745,6 +871,8 @@ class _InputField extends StatefulWidget {
   final bool obscureText;
   final FormFieldValidator<String>? validator;
   final Widget? trailing;
+  final String? prefixText;
+  final List<TextInputFormatter>? inputFormatters;
   final TextCapitalization textCapitalization;
 
   @override
@@ -758,9 +886,7 @@ class _InputFieldState extends State<_InputField> {
   @override
   void initState() {
     super.initState();
-    _focus.addListener(() {
-      setState(() => _focused = _focus.hasFocus);
-    });
+    _focus.addListener(() => setState(() => _focused = _focus.hasFocus));
   }
 
   @override
@@ -772,10 +898,10 @@ class _InputFieldState extends State<_InputField> {
   @override
   Widget build(BuildContext context) {
     return AnimatedContainer(
-      duration: const Duration(milliseconds: 180),
+      duration: const Duration(milliseconds: 150),
       decoration: BoxDecoration(
         color: _focused ? Colors.white : _P.surface,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: _focused ? _P.red : _P.border,
           width: 1.5,
@@ -796,35 +922,50 @@ class _InputFieldState extends State<_InputField> {
         keyboardType: widget.keyboardType,
         obscureText: widget.obscureText,
         textCapitalization: widget.textCapitalization,
+        inputFormatters: widget.inputFormatters,
         validator: widget.validator,
-        style: GoogleFonts.outfit(
+        autovalidateMode: AutovalidateMode.onUserInteraction,
+        style: _sans(
           fontSize: 15,
-          fontWeight: FontWeight.w400,
+          fontWeight: FontWeight.w500,
           color: _P.textPrimary,
         ),
         decoration: InputDecoration(
           isDense: true,
-          contentPadding: const EdgeInsets.symmetric(vertical: 15),
+          contentPadding: const EdgeInsets.symmetric(vertical: 16),
           hintText: widget.hint,
-          hintStyle: GoogleFonts.outfit(
+          hintStyle: _sans(
             fontSize: 15,
             color: _P.textPlaceholder,
             fontWeight: FontWeight.w400,
           ),
           prefixIcon: Padding(
-            padding: const EdgeInsets.only(left: 16, right: 12),
+            padding: const EdgeInsets.only(left: 14, right: 10),
             child: Icon(
               widget.leadingIcon,
-              size: 20,
-              color: _focused ? _P.red : _P.textPlaceholder,
+              size: 18,
+              color: _focused ? _P.red : _P.textMuted,
             ),
           ),
           prefixIconConstraints:
               const BoxConstraints(minWidth: 0, minHeight: 0),
+          prefix: widget.prefixText == null
+              ? null
+              : Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: Text(
+                    widget.prefixText!,
+                    style: _sans(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: _P.textSecondary,
+                    ),
+                  ),
+                ),
           suffixIcon: widget.trailing == null
               ? null
               : Padding(
-                  padding: const EdgeInsets.only(right: 10),
+                  padding: const EdgeInsets.only(right: 12),
                   child: widget.trailing,
                 ),
           suffixIconConstraints:
@@ -834,7 +975,7 @@ class _InputFieldState extends State<_InputField> {
           focusedBorder: InputBorder.none,
           errorBorder: InputBorder.none,
           focusedErrorBorder: InputBorder.none,
-          errorStyle: GoogleFonts.outfit(
+          errorStyle: _sans(
             color: _P.red,
             fontSize: 12,
             fontWeight: FontWeight.w500,
@@ -842,6 +983,15 @@ class _InputFieldState extends State<_InputField> {
         ),
       ),
     );
+  }
+}
+
+class _ValidCheck extends StatelessWidget {
+  const _ValidCheck();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Icon(Icons.check_circle_rounded, size: 18, color: _P.green);
   }
 }
 
@@ -856,62 +1006,14 @@ class _EyeToggle extends StatelessWidget {
       onTap: onTap,
       customBorder: const CircleBorder(),
       child: Padding(
-        padding: const EdgeInsets.all(4),
+        padding: const EdgeInsets.all(2),
         child: Icon(
-          obscure
-              ? Icons.visibility_outlined
-              : Icons.visibility_off_outlined,
+          obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined,
           size: 20,
           color: _P.textMuted,
         ),
       ),
     );
-  }
-}
-
-// ───────────────────────── Strength bar ─────────────────────────
-
-class _StrengthBar extends StatelessWidget {
-  const _StrengthBar({required this.password});
-  final String password;
-
-  @override
-  Widget build(BuildContext context) {
-    final score = _score(password);
-    Color c;
-    if (score <= 1) {
-      c = _P.red;
-    } else if (score <= 2) {
-      c = _P.amber;
-    } else {
-      c = _P.green;
-    }
-
-    return Row(
-      children: List.generate(4, (i) {
-        final on = password.isNotEmpty && i < score;
-        return Expanded(
-          child: Container(
-            margin: EdgeInsets.only(right: i == 3 ? 0 : 4),
-            height: 3,
-            decoration: BoxDecoration(
-              color: on ? c : _P.border,
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
-        );
-      }),
-    );
-  }
-
-  int _score(String v) {
-    if (v.isEmpty) return 0;
-    var s = 0;
-    if (v.length >= 6) s++;
-    if (v.length >= 8) s++;
-    if (RegExp(r'[A-Z]').hasMatch(v) && RegExp(r'[0-9]').hasMatch(v)) s++;
-    if (RegExp(r'[^A-Za-z0-9]').hasMatch(v)) s++;
-    return s;
   }
 }
 
@@ -959,17 +1061,17 @@ class _PrimaryButton extends StatelessWidget {
                 : Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.arrow_forward_rounded,
-                          color: Colors.white, size: 18),
-                      const SizedBox(width: 8),
                       Text(
                         label,
-                        style: GoogleFonts.outfit(
+                        style: _sans(
                           fontSize: 16,
                           fontWeight: FontWeight.w700,
                           color: Colors.white,
                         ),
                       ),
+                      const SizedBox(width: 8),
+                      const Icon(Icons.arrow_forward_rounded,
+                          color: Colors.white, size: 18),
                     ],
                   ),
           ),
@@ -982,7 +1084,8 @@ class _PrimaryButton extends StatelessWidget {
 // ───────────────────────── OR divider ─────────────────────────
 
 class _OrDivider extends StatelessWidget {
-  const _OrDivider();
+  const _OrDivider(this.label);
+  final String label;
 
   @override
   Widget build(BuildContext context) {
@@ -990,29 +1093,28 @@ class _OrDivider extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 22),
       child: Row(
         children: [
-          const Expanded(child: Divider(color: _P.border, thickness: 1)),
-          const SizedBox(width: 14),
+          const Expanded(child: Divider(color: _P.divider, thickness: 1)),
+          const SizedBox(width: 12),
           Text(
-            'OR',
-            style: GoogleFonts.outfit(
+            label,
+            style: _sans(
               fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: _P.textPlaceholder,
-              letterSpacing: 1,
+              fontWeight: FontWeight.w500,
+              color: _P.textMuted,
             ),
           ),
-          const SizedBox(width: 14),
-          const Expanded(child: Divider(color: _P.border, thickness: 1)),
+          const SizedBox(width: 12),
+          const Expanded(child: Divider(color: _P.divider, thickness: 1)),
         ],
       ),
     );
   }
 }
 
-// ───────────────────────── Social row ─────────────────────────
+// ───────────────────────── Social buttons (stacked) ─────────────────────────
 
-class _SocialRow extends StatelessWidget {
-  const _SocialRow({
+class _SocialColumn extends StatelessWidget {
+  const _SocialColumn({
     required this.googleLoading,
     required this.onGoogle,
     required this.onApple,
@@ -1024,32 +1126,25 @@ class _SocialRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
+    return Column(
       children: [
-        Expanded(
-          child: _SocialButton(
-            onTap: onGoogle,
-            loading: googleLoading,
-            label: 'Google',
-            leading: SvgPicture.asset(
-              'assets/icons/google_g.svg',
-              width: 20,
-              height: 20,
-            ),
+        _SocialButton(
+          onTap: onGoogle,
+          loading: googleLoading,
+          label: 'Continue with Google',
+          leading: SvgPicture.asset(
+            'assets/icons/google_g.svg',
+            width: 20,
+            height: 20,
           ),
         ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: _SocialButton(
-            onTap: onApple,
-            loading: false,
-            label: 'Apple',
-            leading: const Icon(
-              Icons.apple_rounded,
-              size: 22,
-              color: _P.textPrimary,
-            ),
-          ),
+        const SizedBox(height: 10),
+        _SocialButton(
+          onTap: onApple,
+          loading: false,
+          label: 'Continue with Apple',
+          leading:
+              const Icon(Icons.apple_rounded, size: 22, color: _P.textPrimary),
         ),
       ],
     );
@@ -1072,6 +1167,7 @@ class _SocialButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
+      width: double.infinity,
       height: 52,
       child: Material(
         color: Colors.white,
@@ -1098,10 +1194,10 @@ class _SocialButton extends StatelessWidget {
                       const SizedBox(width: 10),
                       Text(
                         label,
-                        style: GoogleFonts.outfit(
+                        style: _sans(
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
-                          color: _P.textLabel,
+                          color: _P.textSecondary,
                         ),
                       ),
                     ],
@@ -1116,17 +1212,8 @@ class _SocialButton extends StatelessWidget {
 // ───────────────────────── Error banner ─────────────────────────
 
 class _ErrorBanner extends StatelessWidget {
-  const _ErrorBanner({
-    required this.message,
-    required this.needsVerification,
-    required this.resending,
-    required this.onResend,
-  });
-
+  const _ErrorBanner({required this.message});
   final String message;
-  final bool needsVerification;
-  final bool resending;
-  final VoidCallback onResend;
 
   @override
   Widget build(BuildContext context) {
@@ -1138,58 +1225,22 @@ class _ErrorBanner extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: _P.red.withValues(alpha: 0.35)),
       ),
-      child: Column(
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Icon(Icons.error_outline_rounded,
-                  color: _P.red, size: 18),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  message,
-                  style: GoogleFonts.outfit(
-                    fontSize: 13,
-                    color: _P.red,
-                    fontWeight: FontWeight.w500,
-                    height: 1.4,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          if (needsVerification) ...[
-            const SizedBox(height: 6),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton.icon(
-                style: TextButton.styleFrom(
-                  padding: EdgeInsets.zero,
-                  minimumSize: const Size(0, 28),
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                ),
-                onPressed: resending ? null : onResend,
-                icon: resending
-                    ? const SizedBox(
-                        width: 14,
-                        height: 14,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.send_rounded,
-                        size: 14, color: _P.red),
-                label: Text(
-                  resending ? 'Sending…' : 'Resend verification email',
-                  style: GoogleFonts.outfit(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: _P.red,
-                  ),
-                ),
+          const Icon(Icons.error_outline_rounded, color: _P.red, size: 18),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              message,
+              style: _sans(
+                fontSize: 13,
+                color: _P.red,
+                fontWeight: FontWeight.w500,
+                height: 1.4,
               ),
             ),
-          ],
+          ),
         ],
       ),
     );
@@ -1217,14 +1268,11 @@ class _FooterToggle extends StatelessWidget {
           children: [
             TextSpan(
               text: prefix,
-              style: GoogleFonts.outfit(
-                fontSize: 14,
-                color: _P.textMuted,
-              ),
+              style: _sans(fontSize: 14, color: _P.textSecondary),
             ),
             TextSpan(
               text: linkText,
-              style: GoogleFonts.outfit(
+              style: _sans(
                 fontSize: 14,
                 fontWeight: FontWeight.w700,
                 color: _P.red,
@@ -1245,17 +1293,39 @@ class _TermsLine extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.only(top: 16),
       child: Center(
-        child: Text(
-          'By continuing you agree to our Terms & Privacy Policy',
-          textAlign: TextAlign.center,
-          style: GoogleFonts.outfit(
-            fontSize: 11,
-            color: _P.textPlaceholder,
-            fontWeight: FontWeight.w400,
-            height: 1.5,
+        child: Text.rich(
+          TextSpan(
+            style: _sans(
+              fontSize: 11,
+              color: _P.textMuted,
+              fontWeight: FontWeight.w400,
+              height: 1.5,
+            ),
+            children: [
+              const TextSpan(text: 'By continuing, you agree to our '),
+              TextSpan(
+                text: 'Terms',
+                style: _sans(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: _P.textPrimary,
+                ),
+              ),
+              const TextSpan(text: ' & '),
+              TextSpan(
+                text: 'Privacy Policy',
+                style: _sans(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: _P.textPrimary,
+                ),
+              ),
+              const TextSpan(text: '.'),
+            ],
           ),
+          textAlign: TextAlign.center,
         ),
       ),
     );

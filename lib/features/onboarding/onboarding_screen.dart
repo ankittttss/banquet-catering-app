@@ -75,7 +75,12 @@ const _slides = <_Slide>[
 // ───────────────────────── Onboarding screen ─────────────────────────
 
 class OnboardingScreen extends StatefulWidget {
-  const OnboardingScreen({super.key});
+  const OnboardingScreen({super.key, this.review = false});
+
+  /// True when reopened from Profile ("View intro") — the user is already
+  /// past first-launch, so finishing/skipping just pops back instead of
+  /// routing to login, and we don't re-touch the seen flag.
+  final bool review;
 
   @override
   State<OnboardingScreen> createState() => _OnboardingScreenState();
@@ -93,10 +98,20 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         curve: Curves.easeOutCubic,
       );
     } else {
-      await markOnboardingSeen();
-      if (!mounted) return;
-      context.go(AppRoutes.login);
+      await _finish();
     }
+  }
+
+  /// Exit the flow: on first-launch, mark seen + go to login; in review mode,
+  /// just pop back to where it was opened from (e.g. Profile).
+  Future<void> _finish() async {
+    if (widget.review) {
+      if (mounted) context.pop();
+      return;
+    }
+    await markOnboardingSeen();
+    if (!mounted) return;
+    context.go(AppRoutes.login);
   }
 
   Future<void> _back() async {
@@ -108,11 +123,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     );
   }
 
-  Future<void> _skip() async {
-    await markOnboardingSeen();
-    if (!mounted) return;
-    context.go(AppRoutes.login);
-  }
+  Future<void> _skip() async => _finish();
 
   @override
   void dispose() {
@@ -128,7 +139,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _TopBar(onSkip: _skip),
+            _TopBar(onSkip: _skip, label: widget.review ? 'Close' : 'Skip'),
             Expanded(
               child: PageView.builder(
                 controller: _ctrl,
@@ -141,6 +152,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               total: _slides.length,
               index: _page,
               isLast: _page == _slides.length - 1,
+              lastLabel: widget.review ? 'Done' : 'Get started',
               onNext: _next,
               onBack: _back,
             ),
@@ -154,8 +166,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 // ───────────────────────── Top bar ─────────────────────────
 
 class _TopBar extends StatelessWidget {
-  const _TopBar({required this.onSkip});
+  const _TopBar({required this.onSkip, this.label = 'Skip'});
   final VoidCallback onSkip;
+  final String label;
 
   @override
   Widget build(BuildContext context) {
@@ -178,10 +191,9 @@ class _TopBar extends StatelessWidget {
             onTap: onSkip,
             borderRadius: BorderRadius.circular(999),
             child: Padding(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               child: Text(
-                'Skip',
+                label,
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
@@ -263,8 +275,7 @@ class _HeroImage extends StatelessWidget {
               imageUrl: slide.imageUrl,
               fit: BoxFit.cover,
               placeholder: (_, __) => _Fallback(tint: slide.fallbackTint),
-              errorWidget: (_, __, ___) =>
-                  _Fallback(tint: slide.fallbackTint),
+              errorWidget: (_, __, ___) => _Fallback(tint: slide.fallbackTint),
               fadeInDuration: const Duration(milliseconds: 240),
             ),
             // Subtle bottom-left scrim so the audience tag stays legible
@@ -329,6 +340,7 @@ class _BottomNav extends StatelessWidget {
     required this.total,
     required this.index,
     required this.isLast,
+    required this.lastLabel,
     required this.onNext,
     required this.onBack,
   });
@@ -336,6 +348,7 @@ class _BottomNav extends StatelessWidget {
   final int total;
   final int index;
   final bool isLast;
+  final String lastLabel;
   final VoidCallback onNext;
   final VoidCallback onBack;
 
@@ -393,7 +406,7 @@ class _BottomNav extends StatelessWidget {
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Text(
-                          isLast ? 'Get started' : 'Next',
+                          isLast ? lastLabel : 'Next',
                           style: GoogleFonts.plusJakartaSans(
                             fontSize: 16,
                             fontWeight: FontWeight.w700,
