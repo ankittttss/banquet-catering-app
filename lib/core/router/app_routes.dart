@@ -15,7 +15,6 @@ class AppRoutes {
   static const eventVenueType = '/user/event/venue';
   static const eventProperty = '/user/event/property';
   static const eventSetup = '/user/event/setup';
-  static const eventRecce = '/user/event/recce';
   static const menu = '/user/menu';
   static const restaurantDetail = '/user/restaurants/:id'; // template
   static const search = '/user/search';
@@ -31,12 +30,19 @@ class AppRoutes {
 
   static String restaurantDetailFor(String id) => '/user/restaurants/$id';
 
-  // Admin
+  // Admin — deliberately small: onboard/manage restaurants + charges.
+  // (Global orders manager, global menu editor and delivery partners were
+  // retired; statuses flow automatically and menus are per-restaurant.)
   static const adminHome = '/admin';
-  static const adminOrders = '/admin/orders';
-  static const adminMenu = '/admin/menu';
   static const adminCharges = '/admin/charges';
-  static const adminPartners = '/admin/partners';
+  static const adminRestaurants = '/admin/restaurants';
+  static const adminRestaurantNew = '/admin/restaurants/new';
+  static const adminRestaurantDetail = '/admin/restaurants/:id'; // template
+  static const adminRestaurantEdit = '/admin/restaurants/:id/edit'; // template
+
+  static String adminRestaurantFor(String id) => '/admin/restaurants/$id';
+  static String adminRestaurantEditFor(String id) =>
+      '/admin/restaurants/$id/edit';
 
   // Banquet operator
   static const banquetHome = '/banquet';
