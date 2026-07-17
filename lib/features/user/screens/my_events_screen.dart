@@ -10,7 +10,9 @@ import '../../../core/constants/app_text_styles.dart';
 import '../../../core/router/app_routes.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../data/models/order.dart';
+import '../../../shared/providers/cart_providers.dart';
 import '../../../shared/providers/order_providers.dart';
+import '../../../shared/providers/repositories_providers.dart';
 import '../../../shared/widgets/app_scaffold.dart';
 import '../../../shared/widgets/empty_state.dart';
 import '../../../shared/widgets/user_bottom_nav.dart';
@@ -451,7 +453,7 @@ class _EventGroupsList extends StatelessWidget {
 
 // ───────────────────────── Event group card ─────────────────────────
 
-class _EventGroupCard extends StatelessWidget {
+class _EventGroupCard extends ConsumerWidget {
   const _EventGroupCard({required this.group});
   final _EventGroup group;
 
@@ -471,8 +473,62 @@ class _EventGroupCard extends StatelessWidget {
     return group.orders.first;
   }
 
+  /// Rebuild the cart from this event's order and land on the cart screen.
+  /// Only dishes that are still orderable come back (at CURRENT prices);
+  /// anything gone is reported. Previously "Reorder" just opened home.
+  Future<void> _reorder(BuildContext context, WidgetRef ref) async {
+    HapticFeedback.selectionClick();
+    try {
+      final lines = await ref
+          .read(orderRepositoryProvider)
+          .fetchReorderLines(_primaryOrder.id);
+      if (!context.mounted) return;
+      if (lines.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'None of the dishes from this order are available anymore.',
+            ),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        return;
+      }
+      final cart = ref.read(cartProvider.notifier);
+      cart.clear();
+      for (final line in lines) {
+        cart.add(
+          line.item,
+          customization: CartCustomization(
+            portion: line.portion,
+            spice: line.spice,
+            notes: line.notes,
+          ),
+        );
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '${lines.length} dish${lines.length == 1 ? '' : 'es'} added back '
+            'to your cart at current prices.',
+          ),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      context.push(AppRoutes.cart);
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Could not reorder: ${e.toString().split('\n').first}'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final s = group.rolledUpStatus;
     final cancelled = s == OrderStatus.cancelled;
     final reorderable = s == OrderStatus.delivered || cancelled;
@@ -628,10 +684,7 @@ class _EventGroupCard extends StatelessWidget {
                         label: 'Reorder',
                         icon: Icons.add_rounded,
                         filled: true,
-                        onTap: () {
-                          HapticFeedback.selectionClick();
-                          context.push(AppRoutes.userHome);
-                        },
+                        onTap: () => _reorder(context, ref),
                       )
                     else
                       _FooterButton(
@@ -644,18 +697,16 @@ class _EventGroupCard extends StatelessWidget {
                         },
                       ),
                     const SizedBox(width: 6),
+                    // "Invoice" removed — there is no invoice backend yet and
+                    // the button only showed a "coming soon" snackbar.
                     _FooterButton(
-                      label: 'Invoice',
+                      label: 'Details',
                       icon: Icons.receipt_long_rounded,
                       filled: false,
                       onTap: () {
                         HapticFeedback.selectionClick();
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Invoices are coming soon'),
-                            behavior: SnackBarBehavior.floating,
-                          ),
-                        );
+                        context
+                            .push(AppRoutes.orderDetailFor(_primaryOrder.id));
                       },
                     ),
                   ],

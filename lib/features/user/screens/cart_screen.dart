@@ -16,10 +16,10 @@ import '../../../data/models/event_draft.dart';
 import '../../../data/models/restaurant.dart';
 import '../../../data/models/venue_type.dart';
 import '../../../shared/providers/addon_providers.dart';
+import '../../../shared/providers/cart_health_providers.dart';
 import '../../../shared/providers/cart_providers.dart';
 import '../../../shared/providers/charges_providers.dart';
 import '../../../shared/providers/event_providers.dart';
-import '../../../shared/providers/menu_providers.dart';
 import '../../../shared/widgets/app_scaffold.dart';
 import '../../../shared/widgets/service_tax_tile.dart';
 import '../../../shared/widgets/user_bottom_nav.dart';
@@ -30,8 +30,11 @@ class CartScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final cart = ref.watch(cartProvider);
-    final restaurants =
-        ref.watch(restaurantsProvider).valueOrNull ?? const <Restaurant>[];
+    // By-id resolution (any lifecycle state): real names + real delivery
+    // charges even for restaurants outside the nearby/tier scope.
+    final restaurants = ref.watch(cartRestaurantsProvider).valueOrNull ??
+        const <String, Restaurant>{};
+    final health = ref.watch(cartHealthProvider);
     final charges = ref.watch(chargesConfigProvider);
     final event = ref.watch(eventDraftProvider);
 
@@ -51,6 +54,7 @@ class CartScreen extends ConsumerWidget {
           : _CartBody(
               cart: cart,
               restaurants: restaurants,
+              health: health,
               charges: charges,
               event: event,
             ),
@@ -62,12 +66,14 @@ class _CartBody extends ConsumerWidget {
   const _CartBody({
     required this.cart,
     required this.restaurants,
+    required this.health,
     required this.charges,
     required this.event,
   });
 
   final List<CartItem> cart;
-  final List<Restaurant> restaurants;
+  final Map<String, Restaurant> restaurants;
+  final CartHealth health;
   final AsyncValue<ChargesConfig> charges;
   final EventDraft event;
 
@@ -82,16 +88,16 @@ class _CartBody extends ConsumerWidget {
     return Stack(
       children: [
         ListView(
-          padding: const EdgeInsets.only(bottom: 110),
+          padding: const EdgeInsets.only(bottom: 130),
           children: [
+            if (health.hasBlockingIssue) const _CartIssuesBanner(),
             for (final entry in byRestaurant.entries)
               _RestaurantGroup(
-                restaurant: restaurants.firstWhere(
-                  (r) => r.id == entry.key,
-                  orElse: () => const Restaurant(
-                      id: '', name: 'Restaurant', deliveryCharge: 0),
-                ),
+                restaurant: restaurants[entry.key] ??
+                    const Restaurant(
+                        id: '', name: 'Restaurant', deliveryCharge: 0),
                 lines: entry.value,
+                health: health,
               ),
             _EventDetailsBlock(event: event),
             charges.when(
@@ -133,7 +139,10 @@ class _CartBody extends ConsumerWidget {
               left: 0,
               right: 0,
               bottom: 0,
-              child: _CheckoutBar(total: totals.total),
+              child: _CheckoutBar(
+                total: totals.total,
+                blocked: health.hasBlockingIssue,
+              ),
             );
           },
         ),
@@ -144,7 +153,7 @@ class _CartBody extends ConsumerWidget {
   CheckoutTotals _totalsFor(
     List<CartItem> cart,
     ChargesConfig cfg,
-    List<Restaurant> restaurants,
+    Map<String, Restaurant> restaurants,
     int guestCount,
     int serviceBoyCount,
     bool includeServiceTax,
@@ -152,15 +161,11 @@ class _CartBody extends ConsumerWidget {
     double addonsTotal,
   ) {
     final uniq = cart.map((c) => c.item.restaurantId).toSet();
-    final delivery = <String, double>{};
-    for (final id in uniq) {
-      delivery[id] = restaurants
-          .firstWhere(
-            (r) => r.id == id,
-            orElse: () => const Restaurant(id: '', name: '', deliveryCharge: 0),
-          )
-          .deliveryCharge;
-    }
+    final delivery = <String, double>{
+      // By-id map carries the REAL charge even for out-of-scope restaurants
+      // (the old nearby-list fallback silently zeroed it to "FREE").
+      for (final id in uniq) id: restaurants[id]?.deliveryCharge ?? 0,
+    };
     return CheckoutTotals.compute(
       cart: cart,
       charges: cfg,
@@ -177,9 +182,14 @@ class _CartBody extends ConsumerWidget {
 // ───────────────────────── Restaurant group ─────────────────────────
 
 class _RestaurantGroup extends ConsumerWidget {
-  const _RestaurantGroup({required this.restaurant, required this.lines});
+  const _RestaurantGroup({
+    required this.restaurant,
+    required this.lines,
+    required this.health,
+  });
   final Restaurant restaurant;
   final List<CartItem> lines;
+  final CartHealth health;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -231,15 +241,58 @@ class _RestaurantGroup extends ConsumerWidget {
             ],
           ),
         ),
-        for (final line in lines) _CartLineRow(line: line),
+        for (final line in lines)
+          _CartLineRow(line: line, issue: health.issueFor(line)),
       ],
     );
   }
 }
 
+/// Top-of-cart summary shown when any line has a problem — the details are
+/// on the lines themselves.
+class _CartIssuesBanner extends StatelessWidget {
+  const _CartIssuesBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(
+        AppSizes.pagePadding,
+        AppSizes.md,
+        AppSizes.pagePadding,
+        AppSizes.xs,
+      ),
+      padding: const EdgeInsets.all(AppSizes.md),
+      decoration: BoxDecoration(
+        color: AppColors.primarySoft,
+        borderRadius: BorderRadius.circular(AppSizes.radiusSm),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.error_outline_rounded,
+              size: 18, color: AppColors.primary),
+          const SizedBox(width: AppSizes.sm),
+          Expanded(
+            child: Text(
+              'Some items in your cart can\'t be ordered right now. '
+              'Remove the marked items to continue to checkout.',
+              style: AppTextStyles.caption
+                  .copyWith(color: AppColors.primaryDark, height: 1.35),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _CartLineRow extends ConsumerWidget {
-  const _CartLineRow({required this.line});
+  const _CartLineRow({required this.line, required this.issue});
   final CartItem line;
+
+  /// Non-null when this line can't be ordered right now (see [CartHealth]).
+  final CartLineIssue? issue;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -255,41 +308,115 @@ class _CartLineRow extends ConsumerWidget {
         AppSizes.pagePadding,
         AppSizes.md,
       ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Padding(
-            padding: const EdgeInsets.only(top: 3),
-            child: _VegDot(isVeg: line.item.isVeg),
-          ),
-          const SizedBox(width: AppSizes.sm),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(line.item.name, style: AppTextStyles.bodyBold),
-                const SizedBox(height: 2),
-                Text(
-                  '${line.qty} per guest  ·  $billed portions for $guestCount guests',
-                  style: AppTextStyles.caption,
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(top: 3),
+                child: _VegDot(isVeg: line.item.isVeg),
+              ),
+              const SizedBox(width: AppSizes.sm),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(line.item.name, style: AppTextStyles.bodyBold),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${line.qty} per guest  ·  $billed portions for $guestCount guests',
+                      style: AppTextStyles.caption,
+                    ),
+                  ],
                 ),
-              ],
+              ),
+              _QtyControl(
+                qty: line.qty,
+                onMinus: () => ref
+                    .read(cartProvider.notifier)
+                    .bumpLine(line.signature, -1),
+                onPlus: () =>
+                    ref.read(cartProvider.notifier).bumpLine(line.signature, 1),
+              ),
+              const SizedBox(width: AppSizes.md),
+              SizedBox(
+                width: 72,
+                child: Text(
+                  Formatters.currency(line.billedLineTotal(guestCount)),
+                  style: AppTextStyles.bodyBold,
+                  textAlign: TextAlign.end,
+                ),
+              ),
+            ],
+          ),
+          if (issue != null)
+            Padding(
+              padding: const EdgeInsets.only(top: AppSizes.sm),
+              child: _LineIssueStrip(
+                issue: issue!,
+                onRemove: () {
+                  HapticFeedback.selectionClick();
+                  ref.read(cartProvider.notifier).removeLine(line.signature);
+                },
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Inline problem strip on an unorderable cart line, with a one-tap fix.
+class _LineIssueStrip extends StatelessWidget {
+  const _LineIssueStrip({required this.issue, required this.onRemove});
+  final CartLineIssue issue;
+  final VoidCallback onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    final (label, bg, fg) = switch (issue) {
+      CartLineIssue.restaurantUnavailable => (
+          'This restaurant is no longer taking orders',
+          AppColors.primarySoft,
+          AppColors.primaryDark,
+        ),
+      CartLineIssue.itemUnavailable => (
+          'This dish is no longer available',
+          AppColors.primarySoft,
+          AppColors.primaryDark,
+        ),
+      CartLineIssue.outOfRange => (
+          'Doesn\'t deliver to your selected location',
+          AppColors.accentSoft,
+          AppColors.accentDark,
+        ),
+    };
+    return Container(
+      padding: const EdgeInsets.fromLTRB(AppSizes.sm + 2, 4, 4, 4),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(AppSizes.radiusXs),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              style: AppTextStyles.caption.copyWith(color: fg, fontSize: 11),
             ),
           ),
-          _QtyControl(
-            qty: line.qty,
-            onMinus: () =>
-                ref.read(cartProvider.notifier).bumpLine(line.signature, -1),
-            onPlus: () =>
-                ref.read(cartProvider.notifier).bumpLine(line.signature, 1),
-          ),
-          const SizedBox(width: AppSizes.md),
-          SizedBox(
-            width: 72,
+          TextButton(
+            onPressed: onRemove,
+            style: TextButton.styleFrom(
+              foregroundColor: fg,
+              visualDensity: VisualDensity.compact,
+              padding: const EdgeInsets.symmetric(horizontal: AppSizes.sm),
+            ),
             child: Text(
-              Formatters.currency(line.billedLineTotal(guestCount)),
-              style: AppTextStyles.bodyBold,
-              textAlign: TextAlign.end,
+              'Remove',
+              style: AppTextStyles.captionBold.copyWith(color: fg),
             ),
           ),
         ],
@@ -575,21 +702,15 @@ class _BillDetails extends ConsumerWidget {
   });
   final List<CartItem> cart;
   final ChargesConfig charges;
-  final List<Restaurant> restaurants;
+  final Map<String, Restaurant> restaurants;
   final EventDraft event;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final uniq = cart.map((c) => c.item.restaurantId).toSet();
-    final delivery = <String, double>{};
-    for (final id in uniq) {
-      delivery[id] = restaurants
-          .firstWhere(
-            (r) => r.id == id,
-            orElse: () => const Restaurant(id: '', name: '', deliveryCharge: 0),
-          )
-          .deliveryCharge;
-    }
+    final delivery = <String, double>{
+      for (final id in uniq) id: restaurants[id]?.deliveryCharge ?? 0,
+    };
     final includeServiceTax = ref.watch(includeServiceTaxProvider);
     final addonsTotal = ref.watch(addonsTotalProvider);
     final totals = CheckoutTotals.compute(
@@ -894,8 +1015,12 @@ class DashedDivider extends StatelessWidget {
 // ───────────────────────── Bottom checkout bar ─────────────────────────
 
 class _CheckoutBar extends StatelessWidget {
-  const _CheckoutBar({required this.total});
+  const _CheckoutBar({required this.total, required this.blocked});
   final double total;
+
+  /// True when the cart has unorderable lines — checkout stays disabled
+  /// until the customer removes them (see [_LineIssueStrip]).
+  final bool blocked;
 
   @override
   Widget build(BuildContext context) {
@@ -923,15 +1048,24 @@ class _CheckoutBar extends StatelessWidget {
                     style: AppTextStyles.display
                         .copyWith(fontSize: 20, color: AppColors.textPrimary),
                   ),
-                  Text('Incl. all taxes',
-                      style: AppTextStyles.caption.copyWith(fontSize: 11)),
+                  Text(
+                    blocked
+                        ? 'Remove unavailable items first'
+                        : 'Incl. all taxes',
+                    style: AppTextStyles.caption.copyWith(
+                      fontSize: 11,
+                      color: blocked ? AppColors.error : null,
+                    ),
+                  ),
                 ],
               ),
             ),
             FilledButton(
-              onPressed: () => context.push(AppRoutes.checkout),
+              onPressed:
+                  blocked ? null : () => context.push(AppRoutes.checkout),
               style: FilledButton.styleFrom(
                 backgroundColor: AppColors.primary,
+                disabledBackgroundColor: AppColors.border,
                 padding: const EdgeInsets.symmetric(
                   horizontal: AppSizes.xl,
                   vertical: AppSizes.md,

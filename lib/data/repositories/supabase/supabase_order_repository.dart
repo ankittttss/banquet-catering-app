@@ -1,11 +1,11 @@
-import 'package:supabase_flutter/supabase_flutter.dart';
-
 import '../../../core/supabase/supabase_client.dart';
 import '../../models/cart_item.dart';
 import '../../models/checkout_totals.dart';
 import '../../models/event_draft.dart';
 import '../../models/manager_event_detail.dart';
+import '../../models/menu_item.dart';
 import '../../models/order.dart';
+import '../order_payloads.dart';
 import '../order_repository.dart';
 
 class SupabaseOrderRepository implements OrderRepository {
@@ -16,107 +16,76 @@ class SupabaseOrderRepository implements OrderRepository {
     required List<CartItem> cart,
     required CheckoutTotals totals,
   }) async {
-    final eventPayload = event.toInsertMap(userId);
-    Map<String, dynamic> eventRow;
-    try {
-      eventRow =
-          await supabase.from('events').insert(eventPayload).select().single();
-    } on PostgrestException catch (e) {
-      // The optional `name` column may not be migrated yet on older schemas.
-      // Drop it and retry so order placement never fails on that alone.
-      final missingName = eventPayload.containsKey('name') &&
-          e.message.toLowerCase().contains('name');
-      if (!missingName) rethrow;
-      eventPayload.remove('name');
-      eventRow =
-          await supabase.from('events').insert(eventPayload).select().single();
-    }
-    final eventId = eventRow['id'] as String;
+    // ONE transactional RPC (phase38) replaces the old 4-step client-side
+    // insert sequence that could strand a partial booking. The server
+    // re-validates availability / publish state / min-guests / venue
+    // capacity / date-time ordering and computes pricing authoritatively
+    // from DB prices + charges_config; `totals` only supplies the inputs
+    // the server can't derive (service boys, tax opt-in, add-on total).
+    // The signed-in user is taken from auth.uid() server-side — `userId`
+    // is intentionally not sent.
+    final res = await supabase.rpc<dynamic>(
+      'place_order',
+      params: {
+        'p_event': orderEventPayload(event),
+        'p_items': orderItemsPayload(cart),
+        'p_service_boy_count': totals.serviceBoyCount,
+        'p_include_service_tax': totals.serviceTax > 0,
+        'p_addons_total': totals.setupEquipment,
+      },
+    );
+    return (res as Map)['order_id'] as String;
+  }
 
-    // Group cart lines by restaurant — becomes one vendor lot per kitchen.
-    final byRestaurant = <String, List<CartItem>>{};
-    final orderedRestaurants = <String>[];
-    for (final line in cart) {
-      final rid = line.item.restaurantId;
-      if (!byRestaurant.containsKey(rid)) {
-        orderedRestaurants.add(rid);
-        byRestaurant[rid] = <CartItem>[];
+  @override
+  Future<void> cancelOrder(String orderId) async {
+    // Server-enforced: only the owner, only placed/confirmed, and the
+    // cancellation cascades to pending vendor lots (phase38 trigger).
+    await supabase.rpc<dynamic>(
+      'cancel_my_order',
+      params: {'p_order_id': orderId},
+    );
+  }
+
+  @override
+  Future<List<CartItem>> fetchReorderLines(String orderId) async {
+    final rows = await supabase
+        .from('order_items')
+        .select('qty_per_guest, qty, portion, spice, notes, menu_items(*)')
+        .eq('order_id', orderId);
+    final lines = <CartItem>[];
+    for (final r in rows) {
+      final mi = r['menu_items'];
+      if (mi is! Map<String, dynamic>) continue;
+      // Skip dishes that are no longer orderable — the cart re-checks too,
+      // but there's no point resurrecting a dead line.
+      if (mi['deleted_at'] != null) continue;
+      final MenuItem item;
+      try {
+        item = MenuItem.fromMap(mi);
+      } catch (_) {
+        continue; // malformed/partial row — skip rather than crash reorder
       }
-      byRestaurant[rid]!.add(line);
+      if (!item.isAvailable) continue;
+      final qtyPerGuest =
+          (r['qty_per_guest'] as num?) ?? (r['qty'] as num?) ?? 1;
+      lines.add(
+        CartItem(
+          item: item,
+          qty: qtyPerGuest.round().clamp(1, 99),
+          portion: Portion.values.firstWhere(
+            (p) => p.name == r['portion'],
+            orElse: () => Portion.regular,
+          ),
+          spice: SpiceLevel.values.firstWhere(
+            (s) => s.name == r['spice'],
+            orElse: () => SpiceLevel.medium,
+          ),
+          notes: (r['notes'] ?? '') as String,
+        ),
+      );
     }
-
-    // orders.restaurant_id is kept as a "primary kitchen" hint for legacy
-    // review lookups. For multi-vendor orders we just take the first.
-    final primaryRestaurantId =
-        orderedRestaurants.isNotEmpty ? orderedRestaurants.first : null;
-
-    final orderRow = await supabase
-        .from('orders')
-        .insert({
-          'event_id': eventId,
-          'user_id': userId,
-          if (primaryRestaurantId != null) 'restaurant_id': primaryRestaurantId,
-          'food_cost': totals.foodCost,
-          'banquet_charge': totals.banquetCharge,
-          'delivery_charge': totals.deliveryCharge,
-          'buffet_setup': totals.buffetSetup,
-          'service_boy_cost': totals.serviceBoyCost,
-          'service_boy_count': totals.serviceBoyCount,
-          'water_bottle_cost': totals.waterBottleCost,
-          'platform_fee': totals.platformFee,
-          'subtotal': totals.subtotal,
-          // Persist GST + service tax in the single gst column so
-          // total = subtotal + gst stays internally consistent without
-          // requiring a service_tax column migration.
-          'gst': totals.gst + totals.serviceTax,
-          'total': totals.total,
-          'payment_status': PaymentStatus.pending.dbValue,
-          'order_status': OrderStatus.placed.dbValue,
-        })
-        .select()
-        .single();
-    final orderId = orderRow['id'] as String;
-
-    // Create one vendor lot per restaurant, compute its subtotal from the
-    // group's billed (per-guest × guest count) line totals.
-    final guestCount = event.guestCount;
-    final lotIdByRestaurant = <String, String>{};
-    for (final rid in orderedRestaurants) {
-      final lines = byRestaurant[rid]!;
-      final lotSubtotal =
-          lines.fold<double>(0, (s, c) => s + c.billedLineTotal(guestCount));
-      final lotRow = await supabase
-          .from('order_vendor_lots')
-          .insert({
-            'order_id': orderId,
-            'restaurant_id': rid,
-            'subtotal': lotSubtotal,
-            'status': 'pending',
-          })
-          .select()
-          .single();
-      lotIdByRestaurant[rid] = lotRow['id'] as String;
-    }
-
-    // Line items carry:
-    //   qty            = portions per guest (legacy absolute for old carts)
-    //   qty_per_guest  = explicit per-guest multiplier (always = qty in v1)
-    //   vendor_lot_id  = kitchen slice this line belongs to
-    final items = cart.map((c) {
-      final rid = c.item.restaurantId;
-      return {
-        'order_id': orderId,
-        'menu_item_id': c.item.id,
-        'qty': c.qty,
-        'qty_per_guest': c.qty,
-        'price_at_order': c.unitPrice,
-        if (lotIdByRestaurant.containsKey(rid))
-          'vendor_lot_id': lotIdByRestaurant[rid],
-      };
-    }).toList();
-    await supabase.from('order_items').insert(items);
-
-    return orderId;
+    return lines;
   }
 
   @override

@@ -114,6 +114,26 @@ class CartController extends Notifier<List<CartItem>> {
   }
 
   void clear() => _update(const []);
+
+  /// Update cart-line prices to the current catalog prices ([currentPrices]:
+  /// item id → price). Cart lines snapshot the price at add-time, so an admin
+  /// price change would otherwise bill the stale amount. Returns the item ids
+  /// whose price actually changed (empty when the cart is already current).
+  Set<String> syncPrices(Map<String, double> currentPrices) {
+    final changed = <String>{};
+    final next = <CartItem>[];
+    for (final line in state) {
+      final now = currentPrices[line.item.id];
+      if (now != null && now != line.item.price) {
+        changed.add(line.item.id);
+        next.add(line.copyWith(item: line.item.copyWith(price: now)));
+      } else {
+        next.add(line);
+      }
+    }
+    if (changed.isNotEmpty) _update(next);
+    return changed;
+  }
 }
 
 // ---------------------------------------------------------------------------

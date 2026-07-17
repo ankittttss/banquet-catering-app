@@ -29,5 +29,11 @@ class StubOrderRepository implements OrderRepository {
   Future<void> updateStatus(String orderId, OrderStatus status) async {}
 
   @override
+  Future<void> cancelOrder(String orderId) async {}
+
+  @override
+  Future<List<CartItem>> fetchReorderLines(String orderId) async => const [];
+
+  @override
   Future<ManagerEventDetail?> fetchEventDetail(String eventId) async => null;
 }

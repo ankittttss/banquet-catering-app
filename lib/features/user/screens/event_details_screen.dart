@@ -73,18 +73,23 @@ class _EventDetailsScreenState extends ConsumerState<EventDetailsScreen> {
     _nameCtrl = TextEditingController(
       text: ref.read(eventDraftProvider).eventName ?? '',
     );
+    // Pre-select the occasion the customer chose on the home grid.
+    _categorySlug = ref.read(eventDraftProvider).categorySlug;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      // Pre-fill the event location from the default saved address if empty,
-      // carrying its coordinates so the restaurant list can sort nearest to
-      // it until the user picks a specific event location.
+      // Pre-fill the event location from the ACTIVE address (the one the
+      // customer selected in the home header chip — falls back to their
+      // default), carrying its coordinates so the restaurant list can sort
+      // nearest to it until the user picks a specific event location.
+      // Previously this read the default address, silently disagreeing with
+      // the address the rest of the app was using.
       final draft = ref.read(eventDraftProvider);
       if (draft.location == null || draft.location!.trim().isEmpty) {
-        final def = ref.read(defaultAddressProvider);
-        if (def != null) {
+        final active = ref.read(activeAddressProvider);
+        if (active != null) {
           ref.read(eventDraftProvider.notifier).setEventLocation(
-                address: def.fullAddress,
-                latitude: def.hasCoords ? def.latitude : null,
-                longitude: def.hasCoords ? def.longitude : null,
+                address: active.fullAddress,
+                latitude: active.hasCoords ? active.latitude : null,
+                longitude: active.hasCoords ? active.longitude : null,
               );
         }
       }
@@ -119,13 +124,8 @@ class _EventDetailsScreenState extends ConsumerState<EventDetailsScreen> {
     }
   }
 
-  Future<void> _pickTime() async {
-    final now = DateTime.now();
-    final draft = ref.read(eventDraftProvider);
-    final initial = draft.startTime == null
-        ? const TimeOfDay(hour: 19, minute: 0)
-        : TimeOfDay.fromDateTime(draft.startTime!);
-    final picked = await showTimePicker(
+  Future<TimeOfDay?> _showBrandTimePicker(TimeOfDay initial) {
+    return showTimePicker(
       context: context,
       initialTime: initial,
       builder: (ctx, child) => Theme(
@@ -137,23 +137,54 @@ class _EventDetailsScreenState extends ConsumerState<EventDetailsScreen> {
         child: child!,
       ),
     );
-    if (picked != null) {
-      final date = draft.date ?? now;
-      final start = DateTime(
-        date.year,
-        date.month,
-        date.day,
-        picked.hour,
-        picked.minute,
-      );
-      ref.read(eventDraftProvider.notifier).setStartTime(start);
-      // Default 3-hour duration if end not set.
-      if (draft.endTime == null) {
-        ref
-            .read(eventDraftProvider.notifier)
-            .setEndTime(start.add(const Duration(hours: 3)));
-      }
+  }
+
+  void _timeError(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
+    );
+  }
+
+  Future<void> _pickStartTime() async {
+    final draft = ref.read(eventDraftProvider);
+    final initial = draft.startTime == null
+        ? const TimeOfDay(hour: 19, minute: 0)
+        : TimeOfDay.fromDateTime(draft.startTime!);
+    final picked = await _showBrandTimePicker(initial);
+    if (picked == null || !mounted) return;
+
+    final date = draft.date ?? DateTime.now();
+    final start =
+        DateTime(date.year, date.month, date.day, picked.hour, picked.minute);
+    // A same-day event can't start at a time that's already passed.
+    if (!start.isAfter(DateTime.now())) {
+      _timeError('That time has already passed — pick a later start time.');
+      return;
     }
+    // End time auto-follows: the controller preserves the previous duration
+    // (or defaults to 3 hours) so end can never land before start.
+    ref.read(eventDraftProvider.notifier).setStartTime(start);
+  }
+
+  Future<void> _pickEndTime() async {
+    final draft = ref.read(eventDraftProvider);
+    if (draft.startTime == null) {
+      _timeError('Pick the start time first.');
+      return;
+    }
+    final initial = draft.endTime == null
+        ? TimeOfDay.fromDateTime(draft.startTime!.add(const Duration(hours: 3)))
+        : TimeOfDay.fromDateTime(draft.endTime!);
+    final picked = await _showBrandTimePicker(initial);
+    if (picked == null || !mounted) return;
+
+    final s = draft.startTime!;
+    final end = DateTime(s.year, s.month, s.day, picked.hour, picked.minute);
+    if (!end.isAfter(s)) {
+      _timeError('End time must be after the start time.');
+      return;
+    }
+    ref.read(eventDraftProvider.notifier).setEndTime(end);
   }
 
   Future<void> _pickEventLocation() async {
@@ -175,8 +206,7 @@ class _EventDetailsScreenState extends ConsumerState<EventDetailsScreen> {
   void _applyCategory(EventCategory cat) {
     HapticFeedback.selectionClick();
     setState(() => _categorySlug = cat.slug);
-    ref.read(eventDraftProvider.notifier).setSession(cat.defaultSession);
-    ref.read(eventDraftProvider.notifier).setGuestCount(cat.defaultGuestCount);
+    ref.read(eventDraftProvider.notifier).setCategory(cat);
   }
 
   @override
@@ -258,9 +288,17 @@ class _EventDetailsScreenState extends ConsumerState<EventDetailsScreen> {
                 _PickerRow(
                   icon: Icons.schedule_rounded,
                   value: draft.startTime == null
-                      ? 'Pick a time'
-                      : _formatTime(draft.startTime!),
-                  onTap: _pickTime,
+                      ? 'Pick a start time'
+                      : 'Starts ${_formatTime(draft.startTime!)}',
+                  onTap: _pickStartTime,
+                ),
+                const SizedBox(height: AppSizes.sm),
+                _PickerRow(
+                  icon: Icons.schedule_rounded,
+                  value: draft.endTime == null
+                      ? 'Pick an end time'
+                      : 'Ends ${_formatTime(draft.endTime!)}',
+                  onTap: _pickEndTime,
                 ),
               ],
             ),
@@ -274,10 +312,17 @@ class _EventDetailsScreenState extends ConsumerState<EventDetailsScreen> {
             padding:
                 const EdgeInsets.symmetric(horizontal: AppSizes.pagePadding),
             child: FilledButton(
+              // Every planning essential is now required up front (name,
+              // date, start time, location, package) — previously location
+              // and time could be skipped and were silently backfilled with
+              // defaults at checkout.
               onPressed: (draft.date == null ||
+                      draft.startTime == null ||
                       draft.tierId == null ||
                       draft.eventName == null ||
-                      draft.eventName!.trim().isEmpty)
+                      draft.eventName!.trim().isEmpty ||
+                      draft.location == null ||
+                      draft.location!.trim().isEmpty)
                   ? null
                   : () => context.push(AppRoutes.eventVenueType),
               style: FilledButton.styleFrom(

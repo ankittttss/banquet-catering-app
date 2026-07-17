@@ -9,6 +9,7 @@ import '../../../core/constants/app_sizes.dart';
 import '../../../core/constants/app_text_styles.dart';
 import '../../../core/router/app_routes.dart';
 import '../../../core/utils/formatters.dart';
+import '../../../core/utils/geo.dart';
 import '../../../data/models/cart_item.dart';
 import '../../../data/models/charges_config.dart';
 import '../../../data/models/checkout_totals.dart';
@@ -19,11 +20,12 @@ import '../../../data/models/venue_type.dart';
 import '../../../shared/providers/addon_providers.dart';
 import '../../../shared/providers/address_providers.dart';
 import '../../../shared/providers/auth_providers.dart';
+import '../../../shared/providers/cart_health_providers.dart';
 import '../../../shared/providers/cart_providers.dart';
 import '../../../shared/providers/charges_providers.dart';
 import '../../../shared/providers/event_providers.dart';
-import '../../../shared/providers/menu_providers.dart';
 import '../../../shared/providers/repositories_providers.dart';
+import '../../../shared/providers/search_results_providers.dart';
 import '../../../shared/widgets/app_error_view.dart';
 import '../../../shared/widgets/app_scaffold.dart';
 import '../../../shared/widgets/service_tax_tile.dart';
@@ -59,7 +61,10 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     }
 
     final draft = ref.read(eventDraftProvider);
-    final address = ref.read(defaultAddressProvider);
+    // Active address (header-chip selection, falls back to default) — the
+    // same source the home feed and search use, so the fallback delivery
+    // location can never silently disagree with what the customer sees.
+    final address = ref.read(activeAddressProvider);
 
     // Gate: the event must actually be planned before an order is placed.
     // Otherwise the checkout would fabricate a nameless event with a default
@@ -97,6 +102,85 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     try {
       final userId = ref.read(currentUserIdProvider) ?? 'local-user';
       final cart = ref.read(cartProvider);
+
+      // Gate: final server-side re-check of the whole cart. The admin can
+      // suspend a restaurant or turn a dish off while items sit in a cart,
+      // and the customer can switch to an address the kitchen can't serve —
+      // without this the order would bill a dead kitchen or dish.
+      final repo = ref.read(menuRepositoryProvider);
+      final deadRestaurants = await repo.fetchInactiveRestaurantIds(
+        cart.map((c) => c.item.restaurantId).toSet(),
+      );
+      final deadItems = await repo.fetchUnavailableItemIds(
+        cart.map((c) => c.item.id).toSet(),
+      );
+      // Range check against the CURRENT catalog rows (fresh coords).
+      final coords = ref.read(customerCoordsProvider);
+      final cartRestaurants = await repo.fetchRestaurantsByIds(
+        cart.map((c) => c.item.restaurantId).toSet(),
+      );
+      final outOfRange = cartRestaurants
+          .where(
+            (r) =>
+                serviceabilityOf(
+                  r,
+                  customerLat: coords.lat,
+                  customerLng: coords.lng,
+                ) ==
+                Serviceability.outOfRange,
+          )
+          .map((r) => r.id)
+          .toSet();
+
+      final affected = cart
+          .where(
+            (c) =>
+                deadRestaurants.contains(c.item.restaurantId) ||
+                deadItems.contains(c.item.id) ||
+                outOfRange.contains(c.item.restaurantId),
+          )
+          .map((c) => c.item.name)
+          .toSet();
+      if (affected.isNotEmpty) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '${affected.length} item(s) in your cart '
+              '(${affected.take(2).join(', ')}'
+              '${affected.length > 2 ? '…' : ''}) can\'t be ordered right '
+              'now — the restaurant is unavailable or out of delivery '
+              'range. Please review your cart.',
+            ),
+            duration: const Duration(seconds: 6),
+          ),
+        );
+        return;
+      }
+
+      // Price re-check: cart lines snapshot the price at add-time. If the
+      // admin changed a price since, refresh the cart to the current price
+      // and make the customer review the new total before paying (the
+      // `totals` passed in were computed from the stale prices).
+      final currentPrices = await repo.fetchItemPrices(
+        cart.map((c) => c.item.id).toSet(),
+      );
+      final repriced =
+          ref.read(cartProvider.notifier).syncPrices(currentPrices);
+      if (repriced.isNotEmpty) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Some prices changed since you added these items. Your total '
+              'has been updated — please review it and place the order again.',
+            ),
+            duration: Duration(seconds: 6),
+          ),
+        );
+        return;
+      }
+
       final orderId = await ref.read(orderRepositoryProvider).placeOrder(
             userId: userId,
             event: filled,
@@ -161,10 +245,12 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   Widget build(BuildContext context) {
     final charges = ref.watch(chargesConfigProvider);
     final cart = ref.watch(cartProvider);
-    final restaurants =
-        ref.watch(restaurantsProvider).valueOrNull ?? <Restaurant>[];
+    // By-id map (any lifecycle state) → real delivery charges even for
+    // restaurants outside the nearby/tier scope.
+    final restaurants = ref.watch(cartRestaurantsProvider).valueOrNull ??
+        const <String, Restaurant>{};
     final event = ref.watch(eventDraftProvider);
-    final address = ref.watch(defaultAddressProvider);
+    final address = ref.watch(activeAddressProvider);
 
     return AppScaffold(
       padded: false,
@@ -304,7 +390,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   CheckoutTotals _totalsFor(
     List<CartItem> cart,
     ChargesConfig charges,
-    List<Restaurant> restaurants,
+    Map<String, Restaurant> restaurants,
     int guestCount,
     int serviceBoyCount,
     bool includeServiceTax,
@@ -312,15 +398,11 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     double addonsTotal,
   ) {
     final uniq = cart.map((c) => c.item.restaurantId).toSet();
-    final delivery = <String, double>{};
-    for (final id in uniq) {
-      delivery[id] = restaurants
-          .firstWhere(
-            (r) => r.id == id,
-            orElse: () => const Restaurant(id: '', name: '', deliveryCharge: 0),
-          )
-          .deliveryCharge;
-    }
+    final delivery = <String, double>{
+      // By-id map carries the REAL charge even for out-of-scope restaurants
+      // (the old nearby-list fallback silently zeroed it to "FREE").
+      for (final id in uniq) id: restaurants[id]?.deliveryCharge ?? 0,
+    };
     return CheckoutTotals.compute(
       cart: cart,
       charges: charges,

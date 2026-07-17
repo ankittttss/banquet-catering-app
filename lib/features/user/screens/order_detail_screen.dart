@@ -16,6 +16,7 @@ import '../../../data/models/order_vendor_lot.dart';
 import '../../../data/models/restaurant.dart';
 import '../../../shared/providers/menu_providers.dart';
 import '../../../shared/providers/order_providers.dart';
+import '../../../shared/providers/repositories_providers.dart';
 import '../../../shared/providers/review_providers.dart';
 import '../widgets/rate_order_sheet.dart';
 
@@ -1223,14 +1224,16 @@ class _PaymentPill extends StatelessWidget {
 
 // ───────────────────────── Help bar ─────────────────────────
 
-class _HelpBar extends StatelessWidget {
+class _HelpBar extends ConsumerWidget {
   const _HelpBar({required this.order});
   final OrderSummary order;
 
   @override
-  Widget build(BuildContext context) {
-    final terminal = order.orderStatus == OrderStatus.delivered ||
-        order.orderStatus == OrderStatus.cancelled;
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Cancellation is only possible before the kitchens start cooking —
+    // mirrors the server-side rule in cancel_my_order (placed/confirmed).
+    final cancellable = order.orderStatus == OrderStatus.placed ||
+        order.orderStatus == OrderStatus.confirmed;
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 20, 24, 8),
       child: Row(
@@ -1239,7 +1242,10 @@ class _HelpBar extends StatelessWidget {
             child: _HelpBtn(
               icon: Icons.help_outline_rounded,
               label: 'Help',
-              onTap: () => HapticFeedback.selectionClick(),
+              onTap: () {
+                HapticFeedback.selectionClick();
+                context.push(AppRoutes.helpSupport);
+              },
             ),
           ),
           const SizedBox(width: 8),
@@ -1250,20 +1256,66 @@ class _HelpBar extends StatelessWidget {
               onTap: () => _shareOrder(context),
             ),
           ),
-          if (!terminal) ...[
+          if (cancellable) ...[
             const SizedBox(width: 8),
             Expanded(
               child: _HelpBtn(
                 icon: Icons.cancel_outlined,
                 label: 'Cancel',
                 danger: true,
-                onTap: () => HapticFeedback.selectionClick(),
+                onTap: () => _confirmCancel(context, ref),
               ),
             ),
           ],
         ],
       ),
     );
+  }
+
+  Future<void> _confirmCancel(BuildContext context, WidgetRef ref) async {
+    HapticFeedback.selectionClick();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Cancel this order?'),
+        content: const Text(
+          'The kitchens will be notified and your booking will be '
+          'cancelled. This can\'t be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Keep order'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: _TP.red),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Cancel order'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !context.mounted) return;
+    try {
+      await ref.read(orderRepositoryProvider).cancelOrder(order.id);
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Order cancelled — the kitchens have been notified.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Could not cancel: ${e.toString().split('\n').first}',
+          ),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
   }
 
   void _shareOrder(BuildContext context) {

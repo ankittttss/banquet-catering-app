@@ -43,7 +43,6 @@ class _SetupEquipmentScreenState extends ConsumerState<SetupEquipmentScreen> {
   Widget build(BuildContext context) {
     final draft = ref.watch(eventDraftProvider);
     final catalog = ref.watch(addonCatalogProvider);
-    final bundles = ref.watch(addonBundlesProvider);
     final total = ref.watch(addonsTotalProvider);
     final count = ref.watch(addonsCountProvider);
     final guests = draft.guestCount;
@@ -77,8 +76,6 @@ class _SetupEquipmentScreenState extends ConsumerState<SetupEquipmentScreen> {
                 children: [
                   _PrefilledBanner(guests: guests),
                   const SizedBox(height: AppSizes.lg),
-                  _BundlesRow(bundles: bundles),
-                  const SizedBox(height: AppSizes.lg),
                   for (final group in byGroup.keys) ...[
                     _GroupHeader(label: group),
                     const SizedBox(height: AppSizes.sm),
@@ -95,18 +92,12 @@ class _SetupEquipmentScreenState extends ConsumerState<SetupEquipmentScreen> {
               buttonLabel: 'Pick the menu',
               onPressed: () {
                 HapticFeedback.lightImpact();
-                // After setup we route the user to a recce booking if
-                // they haven't already done one, otherwise straight to
-                // restaurants.
-                if (draft.recce?.isComplete == true) {
-                  final t = DateTime.now().millisecondsSinceEpoch;
-                  // Push so the back stack preserves the planning steps.
-                  context.push(
-                    '${AppRoutes.userHome}?scrollTo=restaurants&t=$t',
-                  );
-                } else {
-                  context.push(AppRoutes.eventRecce);
-                }
+                // Setup is the final planning step — go straight to the menu.
+                final t = DateTime.now().millisecondsSinceEpoch;
+                // Push so the back stack preserves the planning steps.
+                context.push(
+                  '${AppRoutes.userHome}?scrollTo=restaurants&t=$t',
+                );
               },
             ),
           ],
@@ -166,100 +157,6 @@ class _PrefilledBanner extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-// ───────────────────────── Bundles row ─────────────────────────
-
-class _BundlesRow extends ConsumerWidget {
-  const _BundlesRow({required this.bundles});
-  final List<AddonBundle> bundles;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'QUICK BUNDLES',
-          style: AppTextStyles.overline.copyWith(
-            color: AppColors.accentDark,
-            fontSize: 11,
-          ),
-        ),
-        const SizedBox(height: AppSizes.sm),
-        SizedBox(
-          height: 96,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            itemCount: bundles.length,
-            separatorBuilder: (_, __) => const SizedBox(width: AppSizes.sm),
-            itemBuilder: (_, i) => _BundleCard(
-              bundle: bundles[i],
-              onTap: () {
-                HapticFeedback.lightImpact();
-                ref
-                    .read(eventDraftProvider.notifier)
-                    .applyAddonBundle(bundles[i].quantities);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    duration: const Duration(seconds: 2),
-                    content: Text('${bundles[i].name} applied'),
-                  ),
-                );
-              },
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _BundleCard extends StatelessWidget {
-  const _BundleCard({required this.bundle, required this.onTap});
-  final AddonBundle bundle;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final tint = AppColors.fromHex(bundle.tintHex);
-    final color = AppColors.fromHex(bundle.colorHex);
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(AppSizes.radiusMd),
-      child: Container(
-        width: 260,
-        padding: const EdgeInsets.all(AppSizes.md),
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          border: Border.all(color: tint),
-          borderRadius: BorderRadius.circular(AppSizes.radiusMd),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              bundle.name,
-              style: AppTextStyles.captionBold.copyWith(
-                color: color,
-                fontSize: 12,
-                letterSpacing: 1.0,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Expanded(
-              child: Text(
-                bundle.description,
-                style: AppTextStyles.bodyMuted.copyWith(fontSize: 13),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }

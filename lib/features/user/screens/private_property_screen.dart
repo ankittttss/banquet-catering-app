@@ -20,8 +20,7 @@ class PrivatePropertyScreen extends ConsumerStatefulWidget {
       _PrivatePropertyScreenState();
 }
 
-class _PrivatePropertyScreenState
-    extends ConsumerState<PrivatePropertyScreen> {
+class _PrivatePropertyScreenState extends ConsumerState<PrivatePropertyScreen> {
   late final TextEditingController _line1Ctrl;
   late final TextEditingController _landmarkCtrl;
   late final TextEditingController _cityCtrl;
@@ -220,8 +219,7 @@ class _PropertyTile extends StatelessWidget {
           children: [
             Icon(
               materialIconByName(type.iconName),
-              color:
-                  selected ? AppColors.primary : AppColors.textSecondary,
+              color: selected ? AppColors.primary : AppColors.textSecondary,
               size: 24,
             ),
             const SizedBox(height: 6),
@@ -229,9 +227,7 @@ class _PropertyTile extends StatelessWidget {
               type.label,
               textAlign: TextAlign.center,
               style: AppTextStyles.bodyBold.copyWith(
-                color: selected
-                    ? AppColors.primary
-                    : AppColors.textPrimary,
+                color: selected ? AppColors.primary : AppColors.textPrimary,
                 fontSize: 13,
               ),
               maxLines: 1,
@@ -293,41 +289,9 @@ class _AddressCard extends StatelessWidget {
                   ],
                 ),
               ),
-              InkWell(
-                onTap: () {
-                  // Map picker would open here. No-op for the MVP build —
-                  // the form already supports typing the address.
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      duration: Duration(seconds: 2),
-                      content: Text('Map picker is coming soon'),
-                    ),
-                  );
-                },
-                borderRadius: BorderRadius.circular(AppSizes.radiusSm),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 6,
-                    vertical: 4,
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(
-                        Icons.location_on_rounded,
-                        color: AppColors.primary,
-                        size: 18,
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        'Use map',
-                        style: AppTextStyles.bodyBold
-                            .copyWith(color: AppColors.primary),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
+              // "Use map" removed — no map picker exists yet; the button was
+              // a no-op that only showed a coming-soon snackbar. The typed
+              // address form below is the real input.
             ],
           ),
           const SizedBox(height: AppSizes.md),
