@@ -39,14 +39,12 @@ class _State extends ConsumerState<DeliveryEarningsScreen> {
           onRetry: () => ref.invalidate(deliveryHistoryProvider),
         ),
         data: (all) {
-          final delivered = all
-              .where((a) => a.status == DeliveryStatus.delivered)
-              .toList();
-          final inRange =
-              delivered.where((a) => _inRange(a, _tab)).toList();
+          final delivered =
+              all.where((a) => a.status == DeliveryStatus.delivered).toList();
+          final inRange = delivered.where((a) => _inRange(a, _tab)).toList();
 
-          final totalEarned = delivered.fold<double>(
-              0, (sum, a) => sum + a.earningAmount);
+          final totalEarned =
+              delivered.fold<double>(0, (sum, a) => sum + a.earningAmount);
           final rangeEarned =
               inRange.fold<double>(0, (sum, a) => sum + a.earningAmount);
           final rangeDistance =
@@ -72,8 +70,7 @@ class _State extends ConsumerState<DeliveryEarningsScreen> {
                           style: AppTextStyles.display,
                         ),
                         const SizedBox(height: 4),
-                        Text('All-time earned',
-                            style: AppTextStyles.caption),
+                        Text('All-time earned', style: AppTextStyles.caption),
                       ],
                     ),
                   ),
@@ -119,8 +116,7 @@ class _State extends ConsumerState<DeliveryEarningsScreen> {
                       const SizedBox(width: AppSizes.sm),
                       Expanded(
                         child: _Mini(
-                          value:
-                              '${rangeDistance.toStringAsFixed(1)} km',
+                          value: '${rangeDistance.toStringAsFixed(1)} km',
                           label: 'Distance',
                         ),
                       ),
@@ -147,8 +143,7 @@ class _State extends ConsumerState<DeliveryEarningsScreen> {
                             fg: AppColors.success,
                             title: 'Delivery fees',
                             subtitle: '${inRange.length} deliveries',
-                            amount:
-                                '+${Formatters.currency(rangeEarned)}',
+                            amount: '+${Formatters.currency(rangeEarned)}',
                           ),
                         ],
                       ),
@@ -175,8 +170,7 @@ class _State extends ConsumerState<DeliveryEarningsScreen> {
       _Range.today =>
         ts.year == now.year && ts.month == now.month && ts.day == now.day,
       _Range.week => ts.isAfter(now.subtract(const Duration(days: 7))),
-      _Range.month =>
-        ts.year == now.year && ts.month == now.month,
+      _Range.month => ts.year == now.year && ts.month == now.month,
     };
   }
 }
@@ -268,8 +262,7 @@ class _EmptyCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding:
-          const EdgeInsets.symmetric(horizontal: AppSizes.pagePaddingSm),
+      padding: const EdgeInsets.symmetric(horizontal: AppSizes.pagePaddingSm),
       child: AppCard(
         padding: const EdgeInsets.all(AppSizes.lg),
         child: Row(
@@ -279,8 +272,7 @@ class _EmptyCard extends StatelessWidget {
               height: 38,
               decoration: BoxDecoration(
                 color: AppColors.surfaceAlt,
-                borderRadius:
-                    BorderRadius.circular(AppSizes.radiusSm),
+                borderRadius: BorderRadius.circular(AppSizes.radiusSm),
               ),
               child: const Icon(PhosphorIconsDuotone.currencyInr,
                   color: AppColors.textMuted, size: 18),
@@ -337,8 +329,7 @@ class _EarnRow extends StatelessWidget {
           ),
           Text(
             amount,
-            style: AppTextStyles.heading3
-                .copyWith(color: AppColors.success),
+            style: AppTextStyles.heading3.copyWith(color: AppColors.success),
           ),
         ],
       ),

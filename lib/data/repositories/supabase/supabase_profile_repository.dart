@@ -9,11 +9,8 @@ import '../profile_repository.dart';
 class SupabaseProfileRepository implements ProfileRepository {
   @override
   Future<UserProfile?> fetchById(String userId) async {
-    final row = await supabase
-        .from('profiles')
-        .select()
-        .eq('id', userId)
-        .maybeSingle();
+    final row =
+        await supabase.from('profiles').select().eq('id', userId).maybeSingle();
     if (row == null) return null;
     return UserProfile.fromMap(row);
   }
@@ -47,8 +44,7 @@ class SupabaseProfileRepository implements ProfileRepository {
     // Bust the CDN cache so a re-upload appears immediately. The previous
     // file is overwritten in place, so without ?v= clients would keep
     // showing the cached old image.
-    final busted =
-        '$publicUrl?v=${DateTime.now().millisecondsSinceEpoch}';
+    final busted = '$publicUrl?v=${DateTime.now().millisecondsSinceEpoch}';
     await supabase
         .from('profiles')
         .update({'avatar_url': busted}).eq('id', userId);
@@ -66,5 +62,17 @@ class SupabaseProfileRepository implements ProfileRepository {
     await supabase
         .from('profiles')
         .update({'avatar_url': null}).eq('id', userId);
+  }
+
+  @override
+  Future<void> requestAccountDeletion(String userId) async {
+    try {
+      await supabase
+          .from('account_deletion_requests')
+          .insert({'user_id': userId});
+    } on PostgrestException catch (e) {
+      // 23505 = unique violation — a request already exists; treat as done.
+      if (e.code != '23505') rethrow;
+    }
   }
 }

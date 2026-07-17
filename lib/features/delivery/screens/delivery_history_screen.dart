@@ -52,8 +52,7 @@ class _State extends ConsumerState<DeliveryHistoryScreen> {
           ),
           Expanded(
             child: async.when(
-              loading: () =>
-                  const Center(child: CircularProgressIndicator()),
+              loading: () => const Center(child: CircularProgressIndicator()),
               error: (e, _) => AppErrorView(
                 error: e,
                 onRetry: () => ref.invalidate(deliveryHistoryProvider),
@@ -63,8 +62,7 @@ class _State extends ConsumerState<DeliveryHistoryScreen> {
                 if (filtered.isEmpty) {
                   return const EmptyState(
                     title: 'No deliveries yet',
-                    message:
-                        'Completed deliveries will show up here.',
+                    message: 'Completed deliveries will show up here.',
                     icon: PhosphorIconsDuotone.clockCounterClockwise,
                   );
                 }
@@ -87,12 +85,8 @@ class _State extends ConsumerState<DeliveryHistoryScreen> {
 
   List<DeliveryAssignment> _filter(List<DeliveryAssignment> list) {
     return switch (_tab) {
-      1 => list
-          .where((a) => a.status == DeliveryStatus.delivered)
-          .toList(),
-      2 => list
-          .where((a) => a.status == DeliveryStatus.cancelled)
-          .toList(),
+      1 => list.where((a) => a.status == DeliveryStatus.delivered).toList(),
+      2 => list.where((a) => a.status == DeliveryStatus.cancelled).toList(),
       _ => list,
     };
   }
@@ -151,25 +145,19 @@ class _Tile extends StatelessWidget {
                 height: 38,
                 decoration: BoxDecoration(
                   color: AppColors.catGoldLt,
-                  borderRadius:
-                      BorderRadius.circular(AppSizes.radiusSm),
+                  borderRadius: BorderRadius.circular(AppSizes.radiusSm),
                 ),
                 child: const Icon(PhosphorIconsFill.forkKnife,
                     color: AppColors.accent, size: 18),
               ),
               const SizedBox(width: AppSizes.md),
               Expanded(
-                child: Text(a.restaurantName,
-                    style: AppTextStyles.bodyBold),
+                child: Text(a.restaurantName, style: AppTextStyles.bodyBold),
               ),
               _Pill(
                 label: delivered ? 'Delivered' : 'Cancelled',
-                color: delivered
-                    ? AppColors.success
-                    : AppColors.primary,
-                bg: delivered
-                    ? AppColors.catGreenLt
-                    : AppColors.primarySoft,
+                color: delivered ? AppColors.success : AppColors.primary,
+                bg: delivered ? AppColors.catGreenLt : AppColors.primarySoft,
               ),
             ],
           ),
@@ -203,9 +191,8 @@ class _Tile extends StatelessWidget {
                           ? '+${Formatters.currency(a.earningAmount)}'
                           : '₹0',
                       style: AppTextStyles.bodyBold.copyWith(
-                        color: delivered
-                            ? AppColors.success
-                            : AppColors.textMuted,
+                        color:
+                            delivered ? AppColors.success : AppColors.textMuted,
                       ),
                     ),
                   ],

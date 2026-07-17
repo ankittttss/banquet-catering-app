@@ -1,6 +1,9 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../data/models/restaurant.dart';
+import 'repositories_providers.dart';
+
 /// Local-only favorite menu item IDs. Persists with SharedPreferences.
 /// When you later want favorites synced to Supabase, swap the backing impl.
 class FavoritesController extends AsyncNotifier<Set<String>> {
@@ -34,4 +37,21 @@ final favoritesProvider =
 final isFavoriteProvider = Provider.family<bool, String>((ref, id) {
   final s = ref.watch(favoritesProvider).valueOrNull ?? const <String>{};
   return s.contains(id);
+});
+
+/// Favorited restaurants resolved BY ID (any lifecycle state), so a favorite
+/// never silently vanishes just because it's outside the current nearby/tier
+/// scope. Non-published rows come back too — the screen labels them
+/// "unavailable" instead of dropping them.
+final favoriteRestaurantsProvider =
+    FutureProvider<List<Restaurant>>((ref) async {
+  final favSet = ref.watch(favoritesProvider).valueOrNull ?? const <String>{};
+  // Guard against legacy empty-string ids from the old blank-shell bug.
+  final ids = favSet.where((id) => id.isNotEmpty).toSet();
+  if (ids.isEmpty) return const [];
+  final list = await ref.read(menuRepositoryProvider).fetchRestaurantsByIds(
+        ids,
+      );
+  list.sort((a, b) => a.name.compareTo(b.name));
+  return list;
 });

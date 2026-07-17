@@ -5,8 +5,7 @@ import '../../data/models/user_profile.dart';
 import 'repositories_providers.dart';
 
 /// Venues owned by the currently signed-in banquet operator.
-final myBanquetVenuesProvider =
-    FutureProvider<List<BanquetVenue>>((ref) async {
+final myBanquetVenuesProvider = FutureProvider<List<BanquetVenue>>((ref) async {
   final repo = ref.watch(banquetRepositoryProvider);
   return repo.fetchMyVenues();
 });
@@ -26,8 +25,9 @@ final banquetInboxProvider =
 });
 
 /// Inventory for a single venue.
-final banquetInventoryProvider = FutureProvider.family<
-    List<BanquetInventoryItem>, String>((ref, venueId) async {
+final banquetInventoryProvider =
+    FutureProvider.family<List<BanquetInventoryItem>, String>(
+        (ref, venueId) async {
   final repo = ref.watch(banquetRepositoryProvider);
   return repo.fetchInventory(venueId);
 });

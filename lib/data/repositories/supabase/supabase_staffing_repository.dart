@@ -13,7 +13,7 @@ class SupabaseStaffingRepository implements StaffingRepository {
         .select(
             // Disambiguate the FK embed: event_assignments has TWO FKs to profiles
 // (profile_id + assigned_by), so PostgREST needs the constraint name.
-'*, events(event_date, location, session, guest_count, user_id), '
+            '*, events(event_date, location, session, guest_count, user_id), '
             'assignee:profiles!event_assignments_profile_id_fkey(name)')
         .eq('profile_id', uid)
         .order('assigned_at', ascending: false);
@@ -31,8 +31,7 @@ class SupabaseStaffingRepository implements StaffingRepository {
   ) async {
     final ids = <String>{
       for (final a in assignments)
-        if (a.eventUserId != null && a.eventUserId!.isNotEmpty)
-          a.eventUserId!,
+        if (a.eventUserId != null && a.eventUserId!.isNotEmpty) a.eventUserId!,
     }.toList(growable: false);
     if (ids.isEmpty) return assignments;
     Map<String, Map<String, dynamic>> byId = {};
@@ -74,8 +73,7 @@ class SupabaseStaffingRepository implements StaffingRepository {
       if (uid == null) return;
       final stream = supabase
           .from('event_assignments')
-          .stream(primaryKey: ['id'])
-          .eq('profile_id', uid);
+          .stream(primaryKey: ['id']).eq('profile_id', uid);
       await for (final _ in stream) {
         yield await fetchMyAssignments();
       }
@@ -85,14 +83,13 @@ class SupabaseStaffingRepository implements StaffingRepository {
   }
 
   @override
-  Future<List<EventAssignment>> fetchAssignmentsForEvent(
-      String eventId) async {
+  Future<List<EventAssignment>> fetchAssignmentsForEvent(String eventId) async {
     final rows = await supabase
         .from('event_assignments')
         .select(
             // Disambiguate the FK embed: event_assignments has TWO FKs to profiles
 // (profile_id + assigned_by), so PostgREST needs the constraint name.
-'*, events(event_date, location, session, guest_count, user_id), '
+            '*, events(event_date, location, session, guest_count, user_id), '
             'assignee:profiles!event_assignments_profile_id_fkey(name)')
         .eq('event_id', eventId)
         .order('role_on_event');
@@ -111,9 +108,7 @@ class SupabaseStaffingRepository implements StaffingRepository {
         .select()
         .eq('reports_to_manager_id', uid)
         .order('name');
-    return rows
-        .map<UserProfile>(UserProfile.fromMap)
-        .toList(growable: false);
+    return rows.map<UserProfile>(UserProfile.fromMap).toList(growable: false);
   }
 
   @override
@@ -131,26 +126,22 @@ class SupabaseStaffingRepository implements StaffingRepository {
 
   @override
   Future<void> removeAssignment(String assignmentId) async {
-    await supabase
-        .from('event_assignments')
-        .delete()
-        .eq('id', assignmentId);
+    await supabase.from('event_assignments').delete().eq('id', assignmentId);
   }
 
   @override
   Future<void> checkIn(String assignmentId) async {
     await supabase
         .from('event_assignments')
-        .update({'checked_in_at': DateTime.now().toUtc().toIso8601String()})
-        .eq('id', assignmentId);
+        .update({'checked_in_at': DateTime.now().toUtc().toIso8601String()}).eq(
+            'id', assignmentId);
   }
 
   @override
   Future<void> checkOut(String assignmentId) async {
-    await supabase
-        .from('event_assignments')
-        .update({'checked_out_at': DateTime.now().toUtc().toIso8601String()})
-        .eq('id', assignmentId);
+    await supabase.from('event_assignments').update({
+      'checked_out_at': DateTime.now().toUtc().toIso8601String()
+    }).eq('id', assignmentId);
   }
 
   @override

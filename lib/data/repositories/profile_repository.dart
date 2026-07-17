@@ -18,4 +18,9 @@ abstract interface class ProfileRepository {
   /// Removes the user's avatar — clears the file in storage and nulls
   /// `profiles.avatar_url`. Safe to call when no avatar exists.
   Future<void> clearAvatar(String userId);
+
+  /// Files a real account-deletion request (account_deletion_requests table)
+  /// for the admin team to act on. Idempotent — calling twice keeps the
+  /// original request. Previously the UI showed a fake success snackbar.
+  Future<void> requestAccountDeletion(String userId);
 }

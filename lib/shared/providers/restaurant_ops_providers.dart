@@ -9,8 +9,7 @@ final myRestaurantsProvider = FutureProvider<List<Restaurant>>((ref) async {
   return repo.fetchMyRestaurants();
 });
 
-final myVendorLotsProvider =
-    StreamProvider<List<OrderVendorLot>>((ref) async* {
+final myVendorLotsProvider = StreamProvider<List<OrderVendorLot>>((ref) async* {
   final repo = ref.watch(restaurantOpsRepositoryProvider);
   yield* repo.streamMyLots();
 });

@@ -169,7 +169,8 @@ class _NavItem extends StatelessWidget {
                       constraints: const BoxConstraints(minWidth: 16),
                       decoration: BoxDecoration(
                         color: AppColors.primary,
-                        borderRadius: BorderRadius.circular(AppSizes.radiusPill),
+                        borderRadius:
+                            BorderRadius.circular(AppSizes.radiusPill),
                         border: Border.all(
                           color: AppColors.surface,
                           width: 1.5,

@@ -26,8 +26,7 @@ class AddressSearchSheet extends ConsumerStatefulWidget {
   }
 
   @override
-  ConsumerState<AddressSearchSheet> createState() =>
-      _AddressSearchSheetState();
+  ConsumerState<AddressSearchSheet> createState() => _AddressSearchSheetState();
 }
 
 class _AddressSearchSheetState extends ConsumerState<AddressSearchSheet> {
@@ -109,8 +108,7 @@ class _AddressSearchSheetState extends ConsumerState<AddressSearchSheet> {
                 height: 4,
                 decoration: BoxDecoration(
                   color: AppColors.border,
-                  borderRadius:
-                      BorderRadius.circular(AppSizes.radiusPill),
+                  borderRadius: BorderRadius.circular(AppSizes.radiusPill),
                 ),
               ),
               Padding(
@@ -122,8 +120,7 @@ class _AddressSearchSheetState extends ConsumerState<AddressSearchSheet> {
                 ),
                 child: Row(
                   children: [
-                    Text('Search an address',
-                        style: AppTextStyles.heading1),
+                    Text('Search an address', style: AppTextStyles.heading1),
                     const Spacer(),
                     IconButton(
                       onPressed: () => Navigator.of(context).pop(),
@@ -142,8 +139,8 @@ class _AddressSearchSheetState extends ConsumerState<AddressSearchSheet> {
                   onChanged: _onChanged,
                   decoration: InputDecoration(
                     hintText: 'Search "Banjara Hills" or "Paradise Biryani"',
-                    hintStyle: AppTextStyles.body
-                        .copyWith(color: AppColors.textMuted),
+                    hintStyle:
+                        AppTextStyles.body.copyWith(color: AppColors.textMuted),
                     prefixIcon: const Icon(
                       PhosphorIconsBold.magnifyingGlass,
                       color: AppColors.textMuted,
@@ -152,8 +149,7 @@ class _AddressSearchSheetState extends ConsumerState<AddressSearchSheet> {
                     filled: true,
                     fillColor: AppColors.surfaceAlt,
                     border: OutlineInputBorder(
-                      borderRadius:
-                          BorderRadius.circular(AppSizes.radiusMd),
+                      borderRadius: BorderRadius.circular(AppSizes.radiusMd),
                       borderSide: BorderSide.none,
                     ),
                   ),
@@ -216,8 +212,7 @@ class _AddressSearchSheetState extends ConsumerState<AddressSearchSheet> {
     }
     return ListView.separated(
       controller: scrollCtl,
-      padding: const EdgeInsets.symmetric(
-          horizontal: AppSizes.pagePaddingSm),
+      padding: const EdgeInsets.symmetric(horizontal: AppSizes.pagePaddingSm),
       itemCount: _results.length,
       separatorBuilder: (_, __) =>
           const Divider(height: 1, color: AppColors.divider),

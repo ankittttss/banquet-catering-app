@@ -120,8 +120,8 @@ class _BackBtn extends StatelessWidget {
         borderRadius: BorderRadius.circular(AppSizes.radiusMd),
         child: const Padding(
           padding: EdgeInsets.all(10),
-          child: Icon(PhosphorIconsBold.arrowLeft,
-              color: AppColors.textSecondary),
+          child:
+              Icon(PhosphorIconsBold.arrowLeft, color: AppColors.textSecondary),
         ),
       ),
     );
@@ -153,8 +153,7 @@ class _StatusStrip extends StatelessWidget {
           if (a.etaMinutes != null)
             Text(
               'ETA ${a.etaMinutes} min',
-              style: AppTextStyles.bodyBold
-                  .copyWith(color: AppColors.success),
+              style: AppTextStyles.bodyBold.copyWith(color: AppColors.success),
             ),
         ],
       ),
@@ -170,8 +169,7 @@ class _StepsCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding:
-          const EdgeInsets.symmetric(horizontal: AppSizes.pagePaddingSm),
+      padding: const EdgeInsets.symmetric(horizontal: AppSizes.pagePaddingSm),
       child: AppCard(
         padding: const EdgeInsets.symmetric(
             horizontal: AppSizes.lg, vertical: AppSizes.sm),
@@ -184,16 +182,11 @@ class _StepsCard extends StatelessWidget {
               title: a.restaurantName,
               subtitle: a.pickupAddress,
               actionLabel: pickedUp ? 'Done' : 'Picked up',
-              actionColor: pickedUp
-                  ? AppColors.textMuted
-                  : AppColors.accent,
-              actionBg: pickedUp
-                  ? AppColors.surfaceAlt
-                  : AppColors.catGoldLt,
+              actionColor: pickedUp ? AppColors.textMuted : AppColors.accent,
+              actionBg: pickedUp ? AppColors.surfaceAlt : AppColors.catGoldLt,
               onAction: pickedUp
                   ? null
-                  : () => context
-                      .push(AppRoutes.deliveryPickupFor(a.id)),
+                  : () => context.push(AppRoutes.deliveryPickupFor(a.id)),
             ),
             const Divider(height: 1, color: AppColors.divider),
             _StepRow(
@@ -203,14 +196,10 @@ class _StepsCard extends StatelessWidget {
               title: a.dropAddress,
               subtitle: '${a.customerName} · ${a.customerPhone}',
               actionLabel: 'Deliver',
-              actionColor:
-                  pickedUp ? AppColors.success : AppColors.textMuted,
-              actionBg: pickedUp
-                  ? AppColors.catGreenLt
-                  : AppColors.surfaceAlt,
+              actionColor: pickedUp ? AppColors.success : AppColors.textMuted,
+              actionBg: pickedUp ? AppColors.catGreenLt : AppColors.surfaceAlt,
               onAction: pickedUp
-                  ? () => context
-                      .push(AppRoutes.deliveryDeliverFor(a.id))
+                  ? () => context.push(AppRoutes.deliveryDeliverFor(a.id))
                   : null,
             ),
           ],
@@ -327,8 +316,7 @@ class _CustomerCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding:
-          const EdgeInsets.symmetric(horizontal: AppSizes.pagePaddingSm),
+      padding: const EdgeInsets.symmetric(horizontal: AppSizes.pagePaddingSm),
       child: AppCard(
         color: const Color(0xFFFDFBF9),
         padding: const EdgeInsets.all(AppSizes.md),
@@ -412,8 +400,7 @@ class _OrderItemsCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding:
-          const EdgeInsets.symmetric(horizontal: AppSizes.pagePaddingSm),
+      padding: const EdgeInsets.symmetric(horizontal: AppSizes.pagePaddingSm),
       child: AppCard(
         padding: const EdgeInsets.all(AppSizes.md),
         child: Column(
@@ -426,8 +413,7 @@ class _OrderItemsCard extends StatelessWidget {
                   height: 38,
                   decoration: BoxDecoration(
                     color: AppColors.catGoldLt,
-                    borderRadius:
-                        BorderRadius.circular(AppSizes.radiusSm),
+                    borderRadius: BorderRadius.circular(AppSizes.radiusSm),
                   ),
                   child: const Icon(PhosphorIconsFill.forkKnife,
                       color: AppColors.accent, size: 18),
@@ -437,8 +423,7 @@ class _OrderItemsCard extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(a.restaurantName,
-                          style: AppTextStyles.bodyBold),
+                      Text(a.restaurantName, style: AppTextStyles.bodyBold),
                       Text('#${a.orderId} · ${a.itemCount} items',
                           style: AppTextStyles.caption),
                     ],
@@ -503,8 +488,7 @@ class _SlideAction extends StatelessWidget {
         ? () => context.push(AppRoutes.deliveryDeliverFor(a.id))
         : () => context.push(AppRoutes.deliveryPickupFor(a.id));
     return Padding(
-      padding:
-          const EdgeInsets.symmetric(horizontal: AppSizes.pagePaddingSm),
+      padding: const EdgeInsets.symmetric(horizontal: AppSizes.pagePaddingSm),
       child: Material(
         color: AppColors.surfaceAlt,
         borderRadius: BorderRadius.circular(AppSizes.radiusLg),
@@ -530,8 +514,7 @@ class _SlideAction extends StatelessWidget {
                     height: 48,
                     decoration: BoxDecoration(
                       color: color,
-                      borderRadius:
-                          BorderRadius.circular(AppSizes.radiusMd),
+                      borderRadius: BorderRadius.circular(AppSizes.radiusMd),
                       boxShadow: [
                         BoxShadow(
                           color: color.withValues(alpha: 0.3),

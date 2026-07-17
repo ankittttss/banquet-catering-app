@@ -87,8 +87,7 @@ class _FiltersSheet extends ConsumerWidget {
                 ),
                 decoration: BoxDecoration(
                   color: AppColors.primarySoft,
-                  borderRadius:
-                      BorderRadius.circular(AppSizes.radiusPill),
+                  borderRadius: BorderRadius.circular(AppSizes.radiusPill),
                 ),
                 child: Text(
                   '\u20B9 ${f.maxPrice.toStringAsFixed(0)}',
@@ -189,14 +188,12 @@ class _VegOnlyCard extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(AppSizes.md),
         decoration: BoxDecoration(
-          color: value
-              ? AppColors.veg.withValues(alpha: 0.08)
-              : AppColors.surface,
+          color:
+              value ? AppColors.veg.withValues(alpha: 0.08) : AppColors.surface,
           borderRadius: BorderRadius.circular(AppSizes.radiusLg),
           border: Border.all(
-            color: value
-                ? AppColors.veg.withValues(alpha: 0.6)
-                : AppColors.border,
+            color:
+                value ? AppColors.veg.withValues(alpha: 0.6) : AppColors.border,
             width: value ? 1.6 : 1,
           ),
         ),

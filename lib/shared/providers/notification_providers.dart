@@ -11,7 +11,6 @@ final notificationsStreamProvider =
 });
 
 final unreadNotificationCountProvider = Provider<int>((ref) {
-  final list =
-      ref.watch(notificationsStreamProvider).valueOrNull ?? const [];
+  final list = ref.watch(notificationsStreamProvider).valueOrNull ?? const [];
   return list.where((n) => n.isUnread).length;
 });

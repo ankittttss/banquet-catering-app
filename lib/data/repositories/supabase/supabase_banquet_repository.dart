@@ -97,8 +97,7 @@ class SupabaseBanquetRepository implements BanquetRepository {
     try {
       final stream = supabase
           .from('events')
-          .stream(primaryKey: ['id'])
-          .order('created_at', ascending: false);
+          .stream(primaryKey: ['id']).order('created_at', ascending: false);
       await for (final rows in stream) {
         final events = rows
             .where((r) => r['banquet_venue_id'] != null)
@@ -133,8 +132,7 @@ class SupabaseBanquetRepository implements BanquetRepository {
     // operator-update RLS policy was written to allow).
     await supabase
         .from('events')
-        .update({'banquet_notes': notes})
-        .eq('id', eventId);
+        .update({'banquet_notes': notes}).eq('id', eventId);
   }
 
   @override
@@ -144,9 +142,7 @@ class SupabaseBanquetRepository implements BanquetRepository {
         .select()
         .eq('role', 'manager')
         .order('name');
-    return rows
-        .map<UserProfile>(UserProfile.fromMap)
-        .toList(growable: false);
+    return rows.map<UserProfile>(UserProfile.fromMap).toList(growable: false);
   }
 
   @override

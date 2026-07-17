@@ -431,7 +431,6 @@ class _StatsRow extends StatelessWidget {
       ],
     );
   }
-
 }
 
 class _Stats {
@@ -626,8 +625,7 @@ class _ActionGrid extends StatelessWidget {
         label: 'Assign\nmanagers',
         icon: PhosphorIconsDuotone.userCircleGear,
         color: AppColors.primary,
-        onTap: () =>
-            context.push('${AppRoutes.banquetInbox}?filter=accepted'),
+        onTap: () => context.push('${AppRoutes.banquetInbox}?filter=accepted'),
       ),
       _Action(
         label: 'My\nvenues',
@@ -747,9 +745,8 @@ class _RecentBookings extends StatelessWidget {
       data: (rows) {
         // Show the three most recently received pending bookings —
         // falls back to any recent ones when nothing is pending.
-        var pool = rows
-            .where((r) => r.status == BanquetEventStatus.pending)
-            .toList();
+        var pool =
+            rows.where((r) => r.status == BanquetEventStatus.pending).toList();
         if (pool.isEmpty) pool = List.of(rows);
         // Newest received first (matches the inbox sort). Falls back
         // to event date if a row is missing created_at for any reason.
@@ -771,8 +768,7 @@ class _RecentBookings extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('No bookings yet',
-                          style: AppTextStyles.bodyBold),
+                      Text('No bookings yet', style: AppTextStyles.bodyBold),
                       const SizedBox(height: 2),
                       Text(
                         'New event requests routed to your venues will show up here.',
@@ -819,8 +815,7 @@ class _RecentTile extends StatelessWidget {
   Widget build(BuildContext context) {
     return AppCard(
       padding: const EdgeInsets.all(AppSizes.md),
-      onTap: () =>
-          context.push(AppRoutes.banquetBookingDetailFor(event.id)),
+      onTap: () => context.push(AppRoutes.banquetBookingDetailFor(event.id)),
       child: Row(
         children: [
           Container(
@@ -899,8 +894,7 @@ class _RecentTileV2 extends StatelessWidget {
     final urgency = _urgencyLabel(event.eventDate);
     return AppCard(
       padding: EdgeInsets.zero,
-      onTap: () =>
-          context.push(AppRoutes.banquetBookingDetailFor(event.id)),
+      onTap: () => context.push(AppRoutes.banquetBookingDetailFor(event.id)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

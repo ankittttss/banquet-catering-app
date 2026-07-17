@@ -135,8 +135,7 @@ class ManagerEventDetail {
       startTime: map['start_time'] as String?,
       endTime: map['end_time'] as String?,
       guestCount: (map['guest_count'] as num?)?.toInt(),
-      banquetVenueName:
-          venue is Map ? venue['name'] as String? : null,
+      banquetVenueName: venue is Map ? venue['name'] as String? : null,
       banquetStatus: map['banquet_status'] is String
           ? BanquetEventStatus.fromString(map['banquet_status'] as String?)
           : null,

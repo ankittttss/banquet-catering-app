@@ -92,8 +92,8 @@ class _ReviewTile extends StatelessWidget {
               ),
               Text(
                 _formatDate(review.createdAt),
-                style: AppTextStyles.caption
-                    .copyWith(color: AppColors.textMuted),
+                style:
+                    AppTextStyles.caption.copyWith(color: AppColors.textMuted),
               ),
             ],
           ),
@@ -168,8 +168,8 @@ class _EmptyState extends StatelessWidget {
           Expanded(
             child: Text(
               'No reviews yet. Be the first to share your experience after your next order.',
-              style: AppTextStyles.body
-                  .copyWith(color: AppColors.textSecondary),
+              style:
+                  AppTextStyles.body.copyWith(color: AppColors.textSecondary),
             ),
           ),
         ],
@@ -207,8 +207,7 @@ class _ErrorBox extends StatelessWidget {
             onPressed: onRetry,
             child: Text(
               'Retry',
-              style: AppTextStyles.bodyBold
-                  .copyWith(color: AppColors.primary),
+              style: AppTextStyles.bodyBold.copyWith(color: AppColors.primary),
             ),
           ),
         ],

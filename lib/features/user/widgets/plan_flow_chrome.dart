@@ -6,8 +6,8 @@ import '../../../core/constants/app_sizes.dart';
 import '../../../core/constants/app_text_styles.dart';
 import '../../../core/router/app_routes.dart';
 
-/// Sticky header used across the 3-step plan-your-event flow. Renders the
-/// back button, screen title, "Step N of 3 · Label", and a 3-segment
+/// Sticky header used across the 2-step plan-your-event flow. Renders the
+/// back button, screen title, "Step N of 2 · Label", and a 2-segment
 /// progress bar that fills based on [step].
 class PlanFlowHeader extends StatelessWidget {
   const PlanFlowHeader({
@@ -21,6 +21,7 @@ class PlanFlowHeader extends StatelessWidget {
   final String title;
   final int step;
   final String stepLabel;
+
   /// When set, replaces the default "Step N of 3 · {stepLabel}" line —
   /// used by sub-screens that aren't a top-level step (e.g. the recce
   /// booking, which is auxiliary to the main flow).
@@ -68,9 +69,8 @@ class PlanFlowHeader extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      subtitleOverride ?? 'Step $step of 3 · $stepLabel',
-                      style:
-                          AppTextStyles.bodyMuted.copyWith(fontSize: 13),
+                      subtitleOverride ?? 'Step $step of 2 · $stepLabel',
+                      style: AppTextStyles.bodyMuted.copyWith(fontSize: 13),
                     ),
                   ],
                 ),
@@ -80,7 +80,7 @@ class PlanFlowHeader extends StatelessWidget {
           const SizedBox(height: AppSizes.md),
           Row(
             children: [
-              for (var i = 1; i <= 3; i++) ...[
+              for (var i = 1; i <= 2; i++) ...[
                 if (i > 1) const SizedBox(width: AppSizes.sm),
                 Expanded(
                   child: AnimatedContainer(
@@ -90,8 +90,7 @@ class PlanFlowHeader extends StatelessWidget {
                       color: i <= step
                           ? AppColors.primary
                           : AppColors.primary.withValues(alpha: 0.14),
-                      borderRadius:
-                          BorderRadius.circular(AppSizes.radiusPill),
+                      borderRadius: BorderRadius.circular(AppSizes.radiusPill),
                     ),
                   ),
                 ),
@@ -179,8 +178,7 @@ class PlanFlowFooter extends StatelessWidget {
                     horizontal: AppSizes.lg,
                   ),
                   shape: RoundedRectangleBorder(
-                    borderRadius:
-                        BorderRadius.circular(AppSizes.radiusMd),
+                    borderRadius: BorderRadius.circular(AppSizes.radiusMd),
                   ),
                 ),
                 child: Row(

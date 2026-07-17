@@ -59,8 +59,7 @@ AppException asAppException(Object error) {
       s.contains('connection')) {
     return NetworkException(message: error.toString(), cause: error);
   }
-  if (s.contains('not authenticated') ||
-      s.contains('jwt')) {
+  if (s.contains('not authenticated') || s.contains('jwt')) {
     return AuthRequiredException(message: error.toString(), cause: error);
   }
   if (s.contains('row-level security') ||

@@ -34,31 +34,7 @@ final addonCatalogProvider = Provider<List<Addon>>((ref) {
       unitLabel: 'table',
       defaultQty: 19,
     ),
-    Addon(
-      id: 'cushioned_chair',
-      group: 'SHELTER & SEATING',
-      label: 'Cushioned chair',
-      subtitle: 'Banquet style · gold trim',
-      iconName: 'celebration',
-      iconBgHex: '#FFF1F2',
-      iconHex: '#D63384',
-      unitPrice: 60,
-      unitLabel: 'chair',
-      defaultQty: 150,
-    ),
     // ─── Kitchen & equipment ──────────────────────────────────────────
-    Addon(
-      id: 'live_counter_station',
-      group: 'KITCHEN & EQUIPMENT',
-      label: 'Live counter station',
-      subtitle: 'Chef + burner + counter',
-      iconName: 'set_meal',
-      iconBgHex: '#FFF1F2',
-      iconHex: '#E23744',
-      unitPrice: 4500,
-      unitLabel: 'station',
-      defaultQty: 2,
-    ),
     Addon(
       id: 'water_dispenser',
       group: 'KITCHEN & EQUIPMENT',
@@ -74,35 +50,6 @@ final addonCatalogProvider = Provider<List<Addon>>((ref) {
   ];
 });
 
-/// Quick-apply bundles surfaced on the Setup & equipment screen.
-final addonBundlesProvider = Provider<List<AddonBundle>>((ref) {
-  return const [
-    AddonBundle(
-      id: 'open_lawn',
-      name: 'OPEN LAWN',
-      description: 'Tent · 250 chairs · lights',
-      tintHex: '#EAFAF1',
-      colorHex: '#1BA672',
-      quantities: {
-        'mughal_pole_tent': 1,
-        'cushioned_chair': 250,
-      },
-    ),
-    AddonBundle(
-      id: 'home_dinner',
-      name: 'HOME DINNER',
-      description: 'Tables · servers · florals',
-      tintHex: '#FFF1F2',
-      colorHex: '#E23744',
-      quantities: {
-        'round_dining_table': 8,
-        'cushioned_chair': 64,
-        'water_dispenser': 2,
-      },
-    ),
-  ];
-});
-
 /// Default add-on selection sized to the current guest count. Used to
 /// seed the Setup screen the first time the user lands on it.
 final defaultAddonSelectionProvider = Provider<Map<String, int>>((ref) {
@@ -110,13 +57,10 @@ final defaultAddonSelectionProvider = Provider<Map<String, int>>((ref) {
   final guests = ref.watch(eventDraftProvider).guestCount;
   return {
     for (final a in catalog)
-      a.id: a.id == 'cushioned_chair'
-          // Chairs scale per guest, rounded to nearest 5 above.
-          ? ((guests + 4) ~/ 5) * 5
-          : a.id == 'round_dining_table'
-              // 1 table per 8 guests, rounded up.
-              ? ((guests + 7) ~/ 8)
-              : a.defaultQty,
+      a.id: a.id == 'round_dining_table'
+          // 1 table per 8 guests, rounded up.
+          ? ((guests + 7) ~/ 8)
+          : a.defaultQty,
   };
 });
 

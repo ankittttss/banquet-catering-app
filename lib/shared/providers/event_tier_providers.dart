@@ -46,8 +46,9 @@ class RestaurantsForTierArgs {
 }
 
 /// Restaurants whose per-guest price band overlaps the chosen tier.
-final restaurantsForTierProvider = FutureProvider.family<
-    List<Restaurant>, RestaurantsForTierArgs>((ref, args) async {
+final restaurantsForTierProvider =
+    FutureProvider.family<List<Restaurant>, RestaurantsForTierArgs>(
+        (ref, args) async {
   final repo = ref.watch(eventTierRepositoryProvider);
   return repo.restaurantsForTier(
     tierId: args.tierId,

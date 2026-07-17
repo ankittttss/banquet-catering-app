@@ -24,8 +24,7 @@ class DeliveryHomeScreen extends ConsumerStatefulWidget {
   const DeliveryHomeScreen({super.key});
 
   @override
-  ConsumerState<DeliveryHomeScreen> createState() =>
-      _DeliveryHomeScreenState();
+  ConsumerState<DeliveryHomeScreen> createState() => _DeliveryHomeScreenState();
 }
 
 class _DeliveryHomeScreenState extends ConsumerState<DeliveryHomeScreen> {
@@ -190,9 +189,7 @@ class _OnlineToggle extends ConsumerWidget {
             child: Row(
               children: [
                 Icon(
-                  online
-                      ? PhosphorIconsFill.circle
-                      : PhosphorIconsBold.pause,
+                  online ? PhosphorIconsFill.circle : PhosphorIconsBold.pause,
                   color: online ? AppColors.success : AppColors.primary,
                   size: 16,
                 ),
@@ -201,8 +198,7 @@ class _OnlineToggle extends ConsumerWidget {
                   child: Text(
                     online ? "You're online" : "You're offline",
                     style: AppTextStyles.heading2.copyWith(
-                      color:
-                          online ? AppColors.success : AppColors.primary,
+                      color: online ? AppColors.success : AppColors.primary,
                     ),
                   ),
                 ),
@@ -294,9 +290,7 @@ class _StatsRow extends StatelessWidget {
   static bool _isToday(DeliveryAssignment a) {
     final ts = a.deliveredAt ?? a.offeredAt;
     final now = DateTime.now();
-    return ts.year == now.year &&
-        ts.month == now.month &&
-        ts.day == now.day;
+    return ts.year == now.year && ts.month == now.month && ts.day == now.day;
   }
 }
 
@@ -341,8 +335,7 @@ class _ActiveOrderCard extends StatelessWidget {
         AppSizes.md,
       ),
       child: AppCard(
-        onTap: () =>
-            context.push(AppRoutes.deliveryActiveFor(assignment.id)),
+        onTap: () => context.push(AppRoutes.deliveryActiveFor(assignment.id)),
         border: Border(
           left: BorderSide(
             color: inTransit ? AppColors.info : AppColors.accent,
@@ -360,9 +353,7 @@ class _ActiveOrderCard extends StatelessWidget {
                 _Pill(
                   label: inTransit ? 'In transit' : 'Heading to pickup',
                   color: inTransit ? AppColors.info : AppColors.accent,
-                  bg: inTransit
-                      ? AppColors.catBlueLt
-                      : AppColors.catGoldLt,
+                  bg: inTransit ? AppColors.catBlueLt : AppColors.catGoldLt,
                 ),
                 const Spacer(),
                 Text(
@@ -471,8 +462,8 @@ class _TodayDeliveries extends StatelessWidget {
             padding: EdgeInsets.all(AppSizes.lg),
             child: Center(child: CircularProgressIndicator()),
           ),
-          error: (_, __) => const _EmptyToday(
-              message: 'Could not load your deliveries.'),
+          error: (_, __) =>
+              const _EmptyToday(message: 'Could not load your deliveries.'),
           data: (all) {
             final today = all
                 .where(_StatsRow._isToday)
@@ -557,8 +548,7 @@ class _EmptyToday extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding:
-          const EdgeInsets.symmetric(horizontal: AppSizes.pagePaddingSm),
+      padding: const EdgeInsets.symmetric(horizontal: AppSizes.pagePaddingSm),
       child: AppCard(
         padding: const EdgeInsets.all(AppSizes.lg),
         child: Row(
@@ -568,8 +558,7 @@ class _EmptyToday extends StatelessWidget {
               height: 38,
               decoration: BoxDecoration(
                 color: AppColors.surfaceAlt,
-                borderRadius:
-                    BorderRadius.circular(AppSizes.radiusSm),
+                borderRadius: BorderRadius.circular(AppSizes.radiusSm),
               ),
               child: const Icon(PhosphorIconsDuotone.package,
                   color: AppColors.textMuted, size: 18),

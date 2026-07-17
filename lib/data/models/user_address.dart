@@ -32,6 +32,7 @@ class UserAddress {
   final bool isDefault;
   final double? latitude;
   final double? longitude;
+
   /// Compact version of the full address, e.g. "Banjara Hills, Hyderabad".
   final String? shortLabel;
 

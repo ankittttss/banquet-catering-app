@@ -50,8 +50,7 @@ class SupabaseRestaurantOpsRepository implements RestaurantOpsRepository {
     try {
       final stream = supabase
           .from('order_vendor_lots')
-          .stream(primaryKey: ['id'])
-          .order('created_at', ascending: false);
+          .stream(primaryKey: ['id']).order('created_at', ascending: false);
       await for (final _ in stream) {
         // Re-fetch with restaurant name join — the realtime payload doesn't
         // include the join, so we can't emit it directly.
@@ -83,9 +82,6 @@ class SupabaseRestaurantOpsRepository implements RestaurantOpsRepository {
       default:
         break;
     }
-    await supabase
-        .from('order_vendor_lots')
-        .update(payload)
-        .eq('id', lotId);
+    await supabase.from('order_vendor_lots').update(payload).eq('id', lotId);
   }
 }

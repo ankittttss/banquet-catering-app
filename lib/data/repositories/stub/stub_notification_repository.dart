@@ -13,8 +13,7 @@ class StubNotificationRepository implements NotificationRepository {
       userId: 'local',
       kind: 'order_delivered',
       title: 'Order delivered!',
-      body:
-          'Your order from Spice Route Catering has been delivered. Rate it.',
+      body: 'Your order from Spice Route Catering has been delivered. Rate it.',
       iconName: 'celebration',
       accentHex: '#1BA672',
       bgHex: '#EAFAF1',

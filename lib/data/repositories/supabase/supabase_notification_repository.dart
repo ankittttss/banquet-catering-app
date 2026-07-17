@@ -21,8 +21,7 @@ class SupabaseNotificationRepository implements NotificationRepository {
     try {
       final stream = supabase
           .from('notifications')
-          .stream(primaryKey: ['id'])
-          .order('created_at', ascending: false);
+          .stream(primaryKey: ['id']).order('created_at', ascending: false);
       await for (final rows in stream) {
         yield rows
             .where((r) => r['user_id'] == userId)

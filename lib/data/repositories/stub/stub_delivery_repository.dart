@@ -13,8 +13,7 @@ class StubDeliveryRepository implements DeliveryRepository {
 
   final Map<String, DriverProfile> _drivers = {};
   final Map<String, DeliveryAssignment> _assignments = {};
-  final _offersCtl =
-      StreamController<List<DeliveryAssignment>>.broadcast();
+  final _offersCtl = StreamController<List<DeliveryAssignment>>.broadcast();
   final Map<String, StreamController<DriverProfile>> _driverCtls = {};
   final Map<String, StreamController<DeliveryAssignment?>> _activeCtls = {};
 
@@ -145,8 +144,8 @@ class StubDeliveryRepository implements DeliveryRepository {
             (a.status == DeliveryStatus.delivered ||
                 a.status == DeliveryStatus.cancelled))
         .toList()
-      ..sort((a, b) =>
-          (b.deliveredAt ?? b.offeredAt).compareTo(a.deliveredAt ?? a.offeredAt));
+      ..sort((a, b) => (b.deliveredAt ?? b.offeredAt)
+          .compareTo(a.deliveredAt ?? a.offeredAt));
   }
 
   @override
@@ -160,8 +159,7 @@ class StubDeliveryRepository implements DeliveryRepository {
     );
     final d = _drivers[driverId];
     if (d != null) {
-      _drivers[driverId] =
-          d.copyWith(activeAssignmentId: assignmentId);
+      _drivers[driverId] = d.copyWith(activeAssignmentId: assignmentId);
       _pushDriver(driverId);
     }
     _pushOffers();
@@ -187,8 +185,7 @@ class StubDeliveryRepository implements DeliveryRepository {
   }
 
   @override
-  Future<void> markDelivered(String assignmentId,
-      {required String otp}) async {
+  Future<void> markDelivered(String assignmentId, {required String otp}) async {
     final a = _assignments[assignmentId];
     if (a == null) return;
     if (otp != a.deliveryOtp) {

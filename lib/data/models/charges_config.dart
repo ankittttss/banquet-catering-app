@@ -12,11 +12,13 @@ class ChargesConfig {
 
   final double banquetCharge;
   final double buffetSetup;
+
   /// Per-service-boy cost — multiplied by the customer-chosen count.
   final double serviceBoyCost;
   final double waterBottleCost;
   final double platformFee;
   final double gstPercent;
+
   /// Service tax shown as a separate line on the bill, on top of GST.
   final double serviceTaxPercent;
 
@@ -31,13 +33,10 @@ class ChargesConfig {
   );
 
   factory ChargesConfig.fromMap(Map<String, dynamic> map) => ChargesConfig(
-        banquetCharge:
-            (map['banquet_charge'] as num?)?.toDouble() ?? 0,
+        banquetCharge: (map['banquet_charge'] as num?)?.toDouble() ?? 0,
         buffetSetup: (map['buffet_setup'] as num?)?.toDouble() ?? 0,
-        serviceBoyCost:
-            (map['service_boy_cost'] as num?)?.toDouble() ?? 0,
-        waterBottleCost:
-            (map['water_bottle_cost'] as num?)?.toDouble() ?? 0,
+        serviceBoyCost: (map['service_boy_cost'] as num?)?.toDouble() ?? 0,
+        waterBottleCost: (map['water_bottle_cost'] as num?)?.toDouble() ?? 0,
         platformFee: (map['platform_fee'] as num?)?.toDouble() ?? 0,
         gstPercent: (map['gst_percent'] as num?)?.toDouble() ?? 5,
         serviceTaxPercent:

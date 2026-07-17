@@ -7,9 +7,7 @@ import 'repositories_providers.dart';
 /// Recent reviews for a restaurant (newest first). Family key = restaurantId.
 final restaurantReviewsProvider =
     FutureProvider.family<List<Review>, String>((ref, restaurantId) {
-  return ref
-      .read(reviewRepositoryProvider)
-      .fetchForRestaurant(restaurantId);
+  return ref.read(reviewRepositoryProvider).fetchForRestaurant(restaurantId);
 });
 
 /// The current user's review for a specific order, if any. Family key = orderId.

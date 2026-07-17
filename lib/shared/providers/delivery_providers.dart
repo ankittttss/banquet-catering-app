@@ -19,13 +19,11 @@ final currentDriverProvider = StreamProvider<DriverProfile>((ref) {
   return ref.watch(deliveryRepositoryProvider).streamDriver(id);
 });
 
-final deliveryOffersProvider =
-    StreamProvider<List<DeliveryAssignment>>((ref) {
+final deliveryOffersProvider = StreamProvider<List<DeliveryAssignment>>((ref) {
   return ref.watch(deliveryRepositoryProvider).streamOffers();
 });
 
-final activeDeliveryProvider =
-    StreamProvider<DeliveryAssignment?>((ref) {
+final activeDeliveryProvider = StreamProvider<DeliveryAssignment?>((ref) {
   final id = ref.watch(currentDriverIdProvider);
   return ref.watch(deliveryRepositoryProvider).streamActive(id);
 });

@@ -66,8 +66,7 @@ class _State extends ConsumerState<DeliveryOtpScreen> {
               height: 80,
               decoration: BoxDecoration(
                 color: AppColors.catGreenLt,
-                borderRadius:
-                    BorderRadius.circular(AppSizes.radiusXl + 16),
+                borderRadius: BorderRadius.circular(AppSizes.radiusXl + 16),
               ),
               child: const Icon(PhosphorIconsFill.checkCircle,
                   color: AppColors.success, size: 40),
@@ -75,13 +74,11 @@ class _State extends ConsumerState<DeliveryOtpScreen> {
           ),
           const SizedBox(height: AppSizes.lg),
           Center(
-            child: Text('Enter delivery OTP',
-                style: AppTextStyles.displaySm),
+            child: Text('Enter delivery OTP', style: AppTextStyles.displaySm),
           ),
           const SizedBox(height: AppSizes.xs),
           Padding(
-            padding:
-                const EdgeInsets.symmetric(horizontal: AppSizes.xxxl),
+            padding: const EdgeInsets.symmetric(horizontal: AppSizes.xxxl),
             child: Text(
               'Ask the customer for the 4-digit OTP sent to their phone',
               style: AppTextStyles.caption,
@@ -121,18 +118,14 @@ class _State extends ConsumerState<DeliveryOtpScreen> {
           ],
           const SizedBox(height: AppSizes.xl),
           Padding(
-            padding: const EdgeInsets.symmetric(
-                horizontal: AppSizes.pagePadding),
+            padding:
+                const EdgeInsets.symmetric(horizontal: AppSizes.pagePadding),
             child: AppCard(
               onTap: () => setState(() => _photoCaptured = !_photoCaptured),
               padding: const EdgeInsets.all(AppSizes.md),
-              color: _photoCaptured
-                  ? AppColors.catGreenLt
-                  : AppColors.surface,
+              color: _photoCaptured ? AppColors.catGreenLt : AppColors.surface,
               border: Border.all(
-                color: _photoCaptured
-                    ? AppColors.success
-                    : AppColors.border,
+                color: _photoCaptured ? AppColors.success : AppColors.border,
                 width: _photoCaptured ? 1.5 : 1,
                 style: BorderStyle.solid,
               ),
@@ -153,9 +146,7 @@ class _State extends ConsumerState<DeliveryOtpScreen> {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      _photoCaptured
-                          ? 'Photo captured'
-                          : 'Take delivery photo',
+                      _photoCaptured ? 'Photo captured' : 'Take delivery photo',
                       style: AppTextStyles.captionBold.copyWith(
                         color: _photoCaptured
                             ? AppColors.success
@@ -169,15 +160,14 @@ class _State extends ConsumerState<DeliveryOtpScreen> {
           ),
           const SizedBox(height: AppSizes.md),
           Padding(
-            padding: const EdgeInsets.symmetric(
-                horizontal: AppSizes.pagePadding),
+            padding:
+                const EdgeInsets.symmetric(horizontal: AppSizes.pagePadding),
             child: Column(
               children: [
                 _Check(
                   label: 'Food handed to customer',
                   checked: _handedOver,
-                  onTap: () =>
-                      setState(() => _handedOver = !_handedOver),
+                  onTap: () => setState(() => _handedOver = !_handedOver),
                 ),
                 _Check(
                   label: 'Setup assistance provided',
@@ -189,8 +179,8 @@ class _State extends ConsumerState<DeliveryOtpScreen> {
           ),
           const SizedBox(height: AppSizes.xl),
           Padding(
-            padding: const EdgeInsets.symmetric(
-                horizontal: AppSizes.pagePadding),
+            padding:
+                const EdgeInsets.symmetric(horizontal: AppSizes.pagePadding),
             child: SizedBox(
               height: AppSizes.buttonHeight,
               width: double.infinity,
@@ -201,8 +191,7 @@ class _State extends ConsumerState<DeliveryOtpScreen> {
                   disabledBackgroundColor:
                       AppColors.success.withValues(alpha: 0.4),
                   shape: RoundedRectangleBorder(
-                    borderRadius:
-                        BorderRadius.circular(AppSizes.radiusSm),
+                    borderRadius: BorderRadius.circular(AppSizes.radiusSm),
                   ),
                 ),
                 child: Row(
@@ -289,8 +278,7 @@ class _OtpBox extends StatelessWidget {
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(AppSizes.radiusSm + 2),
-            borderSide:
-                const BorderSide(color: AppColors.success, width: 2),
+            borderSide: const BorderSide(color: AppColors.success, width: 2),
           ),
         ),
       ),
@@ -330,8 +318,7 @@ class _Check extends StatelessWidget {
                   color: checked ? AppColors.success : AppColors.border,
                   width: 2,
                 ),
-                borderRadius:
-                    BorderRadius.circular(AppSizes.radiusXs + 2),
+                borderRadius: BorderRadius.circular(AppSizes.radiusXs + 2),
               ),
               child: checked
                   ? const Icon(PhosphorIconsBold.check,

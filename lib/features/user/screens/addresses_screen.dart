@@ -28,9 +28,8 @@ class AddressesScreen extends ConsumerWidget {
         title: const Text('Saved addresses'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () => context.canPop()
-              ? context.pop()
-              : context.go(AppRoutes.profile),
+          onPressed: () =>
+              context.canPop() ? context.pop() : context.go(AppRoutes.profile),
         ),
         actions: [
           IconButton(
@@ -86,8 +85,7 @@ class AddressesScreen extends ConsumerWidget {
                     foregroundColor: AppColors.primary,
                     side: const BorderSide(color: AppColors.border),
                     shape: RoundedRectangleBorder(
-                      borderRadius:
-                          BorderRadius.circular(AppSizes.radiusSm),
+                      borderRadius: BorderRadius.circular(AppSizes.radiusSm),
                     ),
                   ),
                 ),
@@ -124,8 +122,7 @@ class AddressesScreen extends ConsumerWidget {
             child: const Text('Cancel'),
           ),
           FilledButton(
-            style:
-                FilledButton.styleFrom(backgroundColor: AppColors.primary),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.primary),
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('Remove'),
           ),
@@ -225,8 +222,7 @@ class _AddressRow extends StatelessWidget {
                 children: [
                   Row(
                     children: [
-                      Text(address.label.label,
-                          style: AppTextStyles.bodyBold),
+                      Text(address.label.label, style: AppTextStyles.bodyBold),
                       if (address.isDefault) ...[
                         const SizedBox(width: AppSizes.sm),
                         Container(
@@ -318,8 +314,7 @@ class _EditorState extends ConsumerState<_Editor> {
   void initState() {
     super.initState();
     _label = widget.existing?.label ?? AddressLabel.home;
-    _addrCtrl =
-        TextEditingController(text: widget.existing?.fullAddress ?? '');
+    _addrCtrl = TextEditingController(text: widget.existing?.fullAddress ?? '');
     _isDefault = widget.existing?.isDefault ?? false;
     _lat = widget.existing?.latitude;
     _lng = widget.existing?.longitude;
@@ -400,9 +395,7 @@ class _EditorState extends ConsumerState<_Editor> {
                   selectedColor: AppColors.primarySoft,
                   backgroundColor: AppColors.surfaceAlt,
                   side: BorderSide(
-                    color: _label == l
-                        ? AppColors.primary
-                        : AppColors.border,
+                    color: _label == l ? AppColors.primary : AppColors.border,
                   ),
                   labelStyle: AppTextStyles.captionBold.copyWith(
                     color: _label == l
@@ -419,22 +412,18 @@ class _EditorState extends ConsumerState<_Editor> {
             style: OutlinedButton.styleFrom(
               alignment: Alignment.centerLeft,
               foregroundColor: AppColors.primary,
-              side: BorderSide(
-                  color: AppColors.primary.withValues(alpha: 0.4)),
+              side: BorderSide(color: AppColors.primary.withValues(alpha: 0.4)),
               padding: const EdgeInsets.symmetric(
                   horizontal: AppSizes.md, vertical: AppSizes.md),
               shape: RoundedRectangleBorder(
-                borderRadius:
-                    BorderRadius.circular(AppSizes.radiusSm),
+                borderRadius: BorderRadius.circular(AppSizes.radiusSm),
               ),
             ),
             icon: const Icon(Icons.search_rounded, size: 18),
             label: Text(
-              _lat == null
-                  ? 'Search an address'
-                  : 'Change searched address',
-              style: AppTextStyles.captionBold
-                  .copyWith(color: AppColors.primary),
+              _lat == null ? 'Search an address' : 'Change searched address',
+              style:
+                  AppTextStyles.captionBold.copyWith(color: AppColors.primary),
             ),
           ),
           if (_lat != null && _shortLabel != null) ...[
@@ -510,8 +499,8 @@ class _EditorState extends ConsumerState<_Editor> {
                   )
                 : Text(
                     widget.existing == null ? 'Add address' : 'Save',
-                    style: AppTextStyles.buttonLabel
-                        .copyWith(color: Colors.white),
+                    style:
+                        AppTextStyles.buttonLabel.copyWith(color: Colors.white),
                   ),
           ),
         ],

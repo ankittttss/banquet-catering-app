@@ -40,8 +40,7 @@ class BanquetInboxScreen extends ConsumerStatefulWidget {
   final String? initialFilter;
 
   @override
-  ConsumerState<BanquetInboxScreen> createState() =>
-      _BanquetInboxScreenState();
+  ConsumerState<BanquetInboxScreen> createState() => _BanquetInboxScreenState();
 }
 
 class _BanquetInboxScreenState extends ConsumerState<BanquetInboxScreen> {
@@ -480,8 +479,7 @@ class _InboxCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final statusColor = _statusColor();
     return AppCard(
-      onTap: () =>
-          context.push(AppRoutes.banquetBookingDetailFor(event.id)),
+      onTap: () => context.push(AppRoutes.banquetBookingDetailFor(event.id)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -509,8 +507,7 @@ class _InboxCard extends ConsumerWidget {
                 ),
                 child: Text(
                   event.status.label,
-                  style: AppTextStyles.captionBold
-                      .copyWith(color: statusColor),
+                  style: AppTextStyles.captionBold.copyWith(color: statusColor),
                 ),
               ),
             ],
@@ -586,8 +583,8 @@ class _ManagerRow extends ConsumerWidget {
     // load errored — lets us catch RLS / embed problems during demo.
     if (staff.hasError) {
       return Container(
-        padding: const EdgeInsets.symmetric(
-            horizontal: AppSizes.md, vertical: 10),
+        padding:
+            const EdgeInsets.symmetric(horizontal: AppSizes.md, vertical: 10),
         decoration: BoxDecoration(
           color: AppColors.primary.withValues(alpha: 0.08),
           borderRadius: BorderRadius.circular(AppSizes.radiusSm),
@@ -621,8 +618,7 @@ class _ManagerRow extends ConsumerWidget {
     );
 
     final hasManager = manager != null && manager.id.isNotEmpty;
-    final color =
-        hasManager ? AppColors.success : AppColors.warning;
+    final color = hasManager ? AppColors.success : AppColors.warning;
     final label = hasManager
         ? 'Manager: ${manager.profileName ?? 'Assigned'}'
         : 'Manager not yet assigned';
@@ -686,8 +682,7 @@ class _InboxCardV2 extends ConsumerWidget {
 
     return AppCard(
       padding: EdgeInsets.zero,
-      onTap: () =>
-          context.push(AppRoutes.banquetBookingDetailFor(event.id)),
+      onTap: () => context.push(AppRoutes.banquetBookingDetailFor(event.id)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -908,4 +903,3 @@ String _urgencyLabel(DateTime eventDate) {
   if (days < 30) return 'in ${(days / 7).round()}w';
   return 'in ${(days / 30).round()}mo';
 }
-

@@ -82,8 +82,7 @@ class _NewOrderSheetState extends State<NewOrderSheet> {
                 height: 4,
                 decoration: BoxDecoration(
                   color: AppColors.border,
-                  borderRadius:
-                      BorderRadius.circular(AppSizes.radiusPill),
+                  borderRadius: BorderRadius.circular(AppSizes.radiusPill),
                 ),
               ),
             ),
@@ -91,8 +90,7 @@ class _NewOrderSheetState extends State<NewOrderSheet> {
             _Timer(remaining: _remaining, total: _totalSeconds),
             const SizedBox(height: AppSizes.md),
             Center(
-              child: Text('New order request!',
-                  style: AppTextStyles.heading2),
+              child: Text('New order request!', style: AppTextStyles.heading2),
             ),
             const SizedBox(height: AppSizes.lg),
             _Route(pickup: o.pickupAddress, drop: o.dropAddress),
@@ -172,8 +170,7 @@ class _NewOrderSheetState extends State<NewOrderSheet> {
                               BorderRadius.circular(AppSizes.radiusSm),
                         ),
                       ),
-                      child: Text('Decline',
-                          style: AppTextStyles.buttonLabel),
+                      child: Text('Decline', style: AppTextStyles.buttonLabel),
                     ),
                   ),
                 ),
@@ -240,8 +237,8 @@ class _Timer extends StatelessWidget {
               ),
               Text(
                 '$remaining',
-                style: AppTextStyles.heading2
-                    .copyWith(color: AppColors.primary),
+                style:
+                    AppTextStyles.heading2.copyWith(color: AppColors.primary),
               ),
             ],
           ),

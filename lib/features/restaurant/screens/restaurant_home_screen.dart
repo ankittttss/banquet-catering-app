@@ -41,8 +41,7 @@ class RestaurantHomeScreen extends ConsumerWidget {
         color: AppColors.primary,
         onRefresh: () async => ref.invalidate(myVendorLotsProvider),
         child: lots.when(
-          loading: () =>
-              const Center(child: CircularProgressIndicator()),
+          loading: () => const Center(child: CircularProgressIndicator()),
           error: (e, _) => ListView(children: [
             const SizedBox(height: AppSizes.xl),
             Text('Could not load orders: $e',
@@ -50,7 +49,8 @@ class RestaurantHomeScreen extends ConsumerWidget {
           ]),
           data: (rows) {
             final active = rows
-                .where((r) => r.status != VendorLotStatus.delivered &&
+                .where((r) =>
+                    r.status != VendorLotStatus.delivered &&
                     r.status != VendorLotStatus.cancelled)
                 .toList();
             return ListView(
@@ -161,16 +161,15 @@ class _LotCard extends ConsumerWidget {
                 ),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 10, vertical: 4),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
                   color: statusColor.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(100),
                 ),
                 child: Text(
                   lot.status.label,
-                  style: AppTextStyles.captionBold
-                      .copyWith(color: statusColor),
+                  style: AppTextStyles.captionBold.copyWith(color: statusColor),
                 ),
               ),
             ],

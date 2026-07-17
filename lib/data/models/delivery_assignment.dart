@@ -1,10 +1,10 @@
 enum DeliveryStatus {
-  offered,    // broadcast to online drivers, awaiting accept
-  accepted,   // driver accepted, heading to pickup
-  pickedUp,   // food collected, heading to customer
-  delivered,  // complete
-  cancelled,  // driver abandoned or admin cancelled
-  declined;   // driver declined / timed out
+  offered, // broadcast to online drivers, awaiting accept
+  accepted, // driver accepted, heading to pickup
+  pickedUp, // food collected, heading to customer
+  delivered, // complete
+  cancelled, // driver abandoned or admin cancelled
+  declined; // driver declined / timed out
 
   static DeliveryStatus fromString(String? v) => switch (v) {
         'accepted' => DeliveryStatus.accepted,

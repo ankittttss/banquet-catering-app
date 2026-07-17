@@ -61,7 +61,8 @@ class MenuScreen extends ConsumerWidget {
                 itemBuilder: (_, i) {
                   if (i == 0) {
                     return Padding(
-                      padding: const EdgeInsets.symmetric(vertical: AppSizes.sm),
+                      padding:
+                          const EdgeInsets.symmetric(vertical: AppSizes.sm),
                       child: CategoryChip(
                         label: 'All',
                         selected: selectedCat == null,
@@ -79,15 +80,13 @@ class MenuScreen extends ConsumerWidget {
                       selected: selectedCat == c.id,
                       onTap: () {
                         HapticFeedback.selectionClick();
-                        ref
-                            .read(selectedCategoryProvider.notifier)
-                            .state = c.id;
+                        ref.read(selectedCategoryProvider.notifier).state =
+                            c.id;
                       },
                     ),
                   );
                 },
-                separatorBuilder: (_, __) =>
-                    const SizedBox(width: AppSizes.sm),
+                separatorBuilder: (_, __) => const SizedBox(width: AppSizes.sm),
                 itemCount: list.length + 1,
               ),
             ),
@@ -217,8 +216,7 @@ class _MenuItemCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final qty =
-        ref.watch(cartProvider.select((list) {
+    final qty = ref.watch(cartProvider.select((list) {
       final idx = list.indexWhere((c) => c.item.id == item.id);
       return idx == -1 ? 0 : list[idx].qty;
     }));
@@ -278,8 +276,7 @@ class _MenuItemCard extends ConsumerWidget {
                       ),
                       PickToggle(
                         selected: qty > 0,
-                        onAdd: () =>
-                            ref.read(cartProvider.notifier).add(item),
+                        onAdd: () => ref.read(cartProvider.notifier).add(item),
                         onRemove: () =>
                             ref.read(cartProvider.notifier).remove(item),
                       ),
@@ -294,5 +291,3 @@ class _MenuItemCard extends ConsumerWidget {
     );
   }
 }
-
-

@@ -10,7 +10,6 @@ import '../../../core/constants/app_text_styles.dart';
 import '../../../core/router/app_routes.dart';
 import '../../../data/models/restaurant.dart';
 import '../../../shared/providers/favorites_providers.dart';
-import '../../../shared/providers/menu_providers.dart';
 import '../../../shared/widgets/app_scaffold.dart';
 import '../../../shared/widgets/empty_state.dart';
 import '../../../shared/widgets/safe_net_image.dart';
@@ -20,11 +19,9 @@ class FavoritesScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final favSet = ref.watch(favoritesProvider).valueOrNull ?? const <String>{};
-    final restaurants =
-        ref.watch(restaurantsProvider).valueOrNull ?? const <Restaurant>[];
-    final favorites =
-        restaurants.where((r) => favSet.contains(r.id)).toList();
+    // Resolved by id (any lifecycle state) — a favorite outside the nearby
+    // radius or currently suspended stays listed instead of vanishing.
+    final favAsync = ref.watch(favoriteRestaurantsProvider);
 
     return AppScaffold(
       padded: false,
@@ -32,27 +29,36 @@ class FavoritesScreen extends ConsumerWidget {
         title: const Text('Favorites'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () => context.canPop()
-              ? context.pop()
-              : context.go(AppRoutes.profile),
+          onPressed: () =>
+              context.canPop() ? context.pop() : context.go(AppRoutes.profile),
         ),
       ),
-      body: favorites.isEmpty
-          ? EmptyState(
-              icon: Icons.favorite_border_rounded,
-              title: 'No favorites yet',
-              message:
-                  'Tap the heart on any restaurant to save it here for quick reorders.',
-              actionLabel: 'Browse restaurants',
-              onAction: () => context.go(AppRoutes.userHome),
-            )
-          : ListView.builder(
-              padding: const EdgeInsets.symmetric(vertical: AppSizes.sm),
-              itemCount: favorites.length,
-              itemBuilder: (_, i) => _FavRow(restaurant: favorites[i])
-                  .animate()
-                  .fadeIn(duration: 220.ms, delay: (30 * i).ms),
-            ),
+      body: favAsync.when(
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (_, __) => EmptyState(
+          icon: Icons.cloud_off_rounded,
+          title: 'Couldn\'t load favorites',
+          message: 'Check your connection and try again.',
+          actionLabel: 'Retry',
+          onAction: () => ref.invalidate(favoriteRestaurantsProvider),
+        ),
+        data: (favorites) => favorites.isEmpty
+            ? EmptyState(
+                icon: Icons.favorite_border_rounded,
+                title: 'No favorites yet',
+                message:
+                    'Tap the heart on any restaurant to save it here for quick reorders.',
+                actionLabel: 'Browse restaurants',
+                onAction: () => context.go(AppRoutes.userHome),
+              )
+            : ListView.builder(
+                padding: const EdgeInsets.symmetric(vertical: AppSizes.sm),
+                itemCount: favorites.length,
+                itemBuilder: (_, i) => _FavRow(restaurant: favorites[i])
+                    .animate()
+                    .fadeIn(duration: 220.ms, delay: (30 * i).ms),
+              ),
+      ),
     );
   }
 }
@@ -96,7 +102,38 @@ class _FavRow extends ConsumerWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(restaurant.name, style: AppTextStyles.bodyBold),
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          restaurant.name,
+                          style: AppTextStyles.bodyBold,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      if (restaurant.status != RestaurantStatus.published) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppColors.surfaceAlt,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            'UNAVAILABLE',
+                            style: AppTextStyles.captionBold.copyWith(
+                              color: AppColors.textMuted,
+                              fontSize: 9,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
                   if (restaurant.cuisinesDisplay != null) ...[
                     const SizedBox(height: 2),
                     Text(

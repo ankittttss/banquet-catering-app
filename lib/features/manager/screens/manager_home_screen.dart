@@ -39,20 +39,17 @@ class ManagerHomeScreen extends ConsumerWidget {
       myAssignmentsProvider,
       (prev, next) {
         final prevCount = prev?.valueOrNull
-                ?.where((a) =>
-                    a.roleOnEvent == EventAssignmentRole.manager)
+                ?.where((a) => a.roleOnEvent == EventAssignmentRole.manager)
                 .length ??
             0;
         final nextCount = next.valueOrNull
-                ?.where((a) =>
-                    a.roleOnEvent == EventAssignmentRole.manager)
+                ?.where((a) => a.roleOnEvent == EventAssignmentRole.manager)
                 .length ??
             0;
         if (nextCount > prevCount) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content:
-                  Text('New event assigned to you — check your list.'),
+              content: Text('New event assigned to you — check your list.'),
               behavior: SnackBarBehavior.floating,
             ),
           );
@@ -771,8 +768,7 @@ class _EventCard extends ConsumerWidget {
     final date = assignment.eventDate;
     final staff = ref.watch(eventStaffProvider(assignment.eventId));
     final serviceBoyCount = staff.valueOrNull
-            ?.where(
-                (a) => a.roleOnEvent == EventAssignmentRole.serviceBoy)
+            ?.where((a) => a.roleOnEvent == EventAssignmentRole.serviceBoy)
             .length ??
         0;
     return AppCard(
@@ -1199,8 +1195,7 @@ class _AddServiceBoySheet extends ConsumerWidget {
     final reports = ref.watch(myReportsProvider);
     final existingStaff = ref.watch(eventStaffProvider(eventId));
     final alreadyAssigned = existingStaff.valueOrNull
-            ?.where(
-                (a) => a.roleOnEvent == EventAssignmentRole.serviceBoy)
+            ?.where((a) => a.roleOnEvent == EventAssignmentRole.serviceBoy)
             .map((a) => a.profileId)
             .toSet() ??
         const <String>{};
