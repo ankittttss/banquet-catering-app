@@ -12,19 +12,20 @@ import '../../../core/utils/material_icon_map.dart';
 import '../../../data/models/collection.dart';
 import '../../../data/models/event_category.dart';
 import '../../../data/models/event_draft.dart';
-import '../../../data/models/restaurant.dart';
+import '../../../data/models/venue_type.dart';
 import '../../../shared/providers/address_providers.dart';
 import '../../../shared/providers/auth_providers.dart';
 import '../../../shared/providers/event_providers.dart';
-import '../../../shared/providers/favorites_providers.dart';
 import '../../../shared/providers/home_providers.dart';
 import '../../../shared/providers/menu_providers.dart';
 import '../../../shared/providers/notification_providers.dart';
 import '../../../shared/widgets/app_scaffold.dart';
 import '../../../shared/widgets/double_back_exit.dart';
 import '../../../shared/widgets/empty_state.dart';
+import '../../../shared/widgets/restaurant_card.dart';
 import '../../../shared/widgets/safe_net_image.dart';
 import '../../../shared/widgets/user_bottom_nav.dart';
+import '../planning_next_step.dart';
 import '../widgets/address_picker_sheet.dart';
 
 class UserHomeScreen extends ConsumerStatefulWidget {
@@ -69,6 +70,15 @@ class _UserHomeScreenState extends ConsumerState<UserHomeScreen> {
   Widget build(BuildContext context) {
     WidgetsBinding.instance
         .addPostFrameCallback((_) => _maybeScrollToRestaurants());
+    // The restaurant list is sorted by the event location while planning, so
+    // the section title reflects that instead of the generic "nearby". Same
+    // "an event location is set" signal the header uses, so they stay in sync.
+    final draft = ref.watch(eventDraftProvider);
+    final eventLocation = draft.location?.trim();
+    final planningEvent = eventLocation != null && eventLocation.isNotEmpty;
+    final restaurantsTitle = planningEvent
+        ? 'Restaurants serving your event location'
+        : 'Restaurants nearby';
     return DoubleBackToExit(
       child: AppScaffold(
         padded: false,
@@ -94,7 +104,7 @@ class _UserHomeScreenState extends ConsumerState<UserHomeScreen> {
               const SliverToBoxAdapter(child: _FilterChipsRow()),
               _SectionHeader(
                 key: _restaurantsHeaderKey,
-                title: 'Restaurants nearby',
+                title: restaurantsTitle,
               ),
               const _RestaurantList(),
               const SliverToBoxAdapter(child: SizedBox(height: AppSizes.xxxl)),
@@ -115,8 +125,35 @@ class _LocationHeader extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final def = ref.watch(activeAddressProvider);
-    final label = def?.label.label ?? 'Deliver to';
-    final line = def?.shortLabel ?? def?.fullAddress ?? 'Set your address';
+    final draft = ref.watch(eventDraftProvider);
+
+    // While an event is being planned (an event location has been chosen or
+    // prefilled), the header reflects the EVENT location — which is what the
+    // restaurant list is actually sorted by — instead of the saved delivery
+    // address. Tapping jumps to Plan-your-event to change it.
+    final eventLocation = draft.location?.trim();
+    final planning = eventLocation != null && eventLocation.isNotEmpty;
+
+    final String overline;
+    final String mainLabel;
+    final String? subLine;
+    final IconData markerIcon;
+    final VoidCallback onHeaderTap;
+    if (planning) {
+      final comma = eventLocation.indexOf(',');
+      overline = 'Event location';
+      mainLabel =
+          comma > 0 ? eventLocation.substring(0, comma).trim() : eventLocation;
+      subLine = comma > 0 ? eventLocation : null;
+      markerIcon = Icons.event_rounded;
+      onHeaderTap = () => context.push(AppRoutes.eventDetails);
+    } else {
+      overline = 'Deliver to';
+      mainLabel = def?.label.label ?? 'Deliver to';
+      subLine = def == null ? null : (def.shortLabel ?? def.fullAddress);
+      markerIcon = Icons.location_on_rounded;
+      onHeaderTap = () => AddressPickerSheet.show(context);
+    }
 
     return SliverAppBar(
       pinned: false,
@@ -141,20 +178,19 @@ class _LocationHeader extends ConsumerWidget {
               borderRadius: BorderRadius.circular(AppSizes.radiusMd),
             ),
             alignment: Alignment.center,
-            child: const Icon(Icons.location_on_rounded,
-                color: AppColors.primary, size: 22),
+            child: Icon(markerIcon, color: AppColors.primary, size: 22),
           ),
           const SizedBox(width: AppSizes.md),
           Expanded(
             child: InkWell(
-              onTap: () => AddressPickerSheet.show(context),
+              onTap: onHeaderTap,
               borderRadius: BorderRadius.circular(AppSizes.radiusSm),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    'Deliver to',
+                    overline,
                     style: AppTextStyles.caption.copyWith(
                       color: AppColors.textMuted,
                       fontSize: 11,
@@ -164,7 +200,7 @@ class _LocationHeader extends ConsumerWidget {
                     children: [
                       Flexible(
                         child: Text(
-                          label,
+                          mainLabel,
                           style: AppTextStyles.heading2,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
@@ -173,9 +209,9 @@ class _LocationHeader extends ConsumerWidget {
                       const Icon(Icons.keyboard_arrow_down_rounded, size: 20),
                     ],
                   ),
-                  if (def != null)
+                  if (subLine != null)
                     Text(
-                      line,
+                      subLine,
                       style: AppTextStyles.caption,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -794,7 +830,15 @@ class _DraftEventCard extends StatelessWidget {
         child: InkWell(
           onTap: () {
             HapticFeedback.lightImpact();
-            context.push(AppRoutes.eventDetails);
+            final route = progress.nextRoute;
+            if (route == AppRoutes.userHome) {
+              // Fully planned — drop them at the restaurant list to add
+              // dishes. A fresh nonce makes home's scroll-to-restaurants fire.
+              final t = DateTime.now().millisecondsSinceEpoch;
+              context.push('${AppRoutes.userHome}?scrollTo=restaurants&t=$t');
+            } else {
+              context.push(route);
+            }
           },
           borderRadius: BorderRadius.circular(AppSizes.radiusLg),
           child: Container(
@@ -963,6 +1007,7 @@ class _DraftProgress {
     required this.title,
     required this.dateText,
     required this.nextHint,
+    required this.nextRoute,
     required this.hasStarted,
   });
 
@@ -970,6 +1015,10 @@ class _DraftProgress {
   final String title;
   final String dateText;
   final String nextHint;
+
+  /// Route the "Continue planning" card opens — the next unfinished step,
+  /// not always the first screen.
+  final String nextRoute;
   final bool hasStarted;
 
   static _DraftProgress from(EventDraft d) {
@@ -979,39 +1028,37 @@ class _DraftProgress {
         d.tierId != null ||
         d.banquetVenueId != null;
 
+    // The last planning step depends on the venue branch: a banquet-hall
+    // event finishes by picking a venue, a private-property event by
+    // completing the property details. (Previously this always demanded a
+    // banquet venue, permanently capping private-property drafts at 5/6.)
+    final isPrivate = d.venueType == VenueType.privateProperty;
+    final venueStepDone = isPrivate
+        ? (d.propertyDraft?.isComplete ?? false)
+        : d.banquetVenueId != null;
+
     final steps = <bool>[
       d.session != null,
       d.date != null,
       d.startTime != null && d.endTime != null,
       d.location != null && d.location!.trim().isNotEmpty,
       d.tierId != null,
-      d.banquetVenueId != null,
+      venueStepDone,
     ];
     final filled = steps.where((e) => e).length;
     final fraction = filled / steps.length;
 
-    String nextHint;
-    if (d.session == null) {
-      nextHint = 'Pick the session to start';
-    } else if (d.date == null) {
-      nextHint = 'Pick a date to lock pricing';
-    } else if (d.startTime == null || d.endTime == null) {
-      nextHint = 'Set the start & end time';
-    } else if (d.location == null || d.location!.trim().isEmpty) {
-      nextHint = 'Add the event address';
-    } else if (d.tierId == null) {
-      nextHint = 'Pick a tier that fits your budget';
-    } else if (d.banquetVenueId == null) {
-      nextHint = 'Pick a banquet venue to finish';
-    } else {
-      nextHint = 'Add dishes to finalise the menu';
-    }
+    // Hint + destination for the "Continue planning" card come from one
+    // shared cascade (planningNextStep) so the label and the tap target can
+    // never disagree.
+    final step = planningNextStep(d);
 
     return _DraftProgress(
       fraction: fraction,
       title: _composeTitle(d),
       dateText: _composeDate(d),
-      nextHint: nextHint,
+      nextHint: step.hint,
+      nextRoute: step.route,
       hasStarted: hasStarted,
     );
   }
@@ -1191,7 +1238,7 @@ class _SectionHeader extends StatelessWidget {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(title, style: AppTextStyles.heading1),
+            Flexible(child: Text(title, style: AppTextStyles.heading1)),
             if (trailing != null)
               InkWell(
                 onTap: onTrailingTap == null
@@ -1317,12 +1364,7 @@ class _EventCategoryTile extends ConsumerWidget {
     return InkWell(
       onTap: () {
         HapticFeedback.selectionClick();
-        ref
-            .read(eventDraftProvider.notifier)
-            .setSession(category.defaultSession);
-        ref
-            .read(eventDraftProvider.notifier)
-            .setGuestCount(category.defaultGuestCount);
+        ref.read(eventDraftProvider.notifier).setCategory(category);
         context.push(AppRoutes.eventDetails);
       },
       borderRadius: BorderRadius.circular(AppSizes.radiusMd),
@@ -1453,7 +1495,11 @@ class _CollectionCard extends StatelessWidget {
     return InkWell(
       onTap: () {
         HapticFeedback.lightImpact();
-        // Collection landing page ships in phase 2.
+        // Land on live search results for this collection's theme — the
+        // server-side search matches restaurant names/cuisines and dishes.
+        // (These cards used to be dead taps.)
+        final q = Uri.encodeComponent(collection.slug);
+        context.push('${AppRoutes.search}?q=$q');
       },
       borderRadius: BorderRadius.circular(AppSizes.radiusMd),
       child: Container(
@@ -1586,7 +1632,7 @@ class _RestaurantList extends ConsumerWidget {
               AppSizes.pagePadding,
               0,
             ),
-            child: _RestaurantCard(restaurant: list[i])
+            child: RestaurantCard(restaurant: list[i])
                 .animate()
                 .fadeIn(duration: 280.ms, delay: (40 * i).ms)
                 .slideY(begin: 0.04, end: 0),
@@ -1595,347 +1641,6 @@ class _RestaurantList extends ConsumerWidget {
       },
     );
   }
-}
-
-class _RestaurantCard extends ConsumerWidget {
-  const _RestaurantCard({required this.restaurant});
-  final Restaurant restaurant;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final isFav = ref.watch(isFavoriteProvider(restaurant.id));
-    final bg = AppColors.fromHex(restaurant.heroBgHex,
-        fallback: AppColors.primarySoft);
-    return Material(
-      color: AppColors.surface,
-      borderRadius: BorderRadius.circular(AppSizes.radiusLg),
-      child: InkWell(
-        onTap: () {
-          HapticFeedback.lightImpact();
-          context.push(AppRoutes.restaurantDetailFor(restaurant.id));
-        },
-        borderRadius: BorderRadius.circular(AppSizes.radiusLg),
-        child: Container(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(AppSizes.radiusLg),
-            border: Border.all(color: AppColors.border),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              ClipRRect(
-                borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(AppSizes.radiusLg),
-                ),
-                child: SizedBox(
-                  height: 160,
-                  width: double.infinity,
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      if (restaurant.logoUrl != null)
-                        SafeNetImage(
-                          url: restaurant.logoUrl!,
-                          errorBuilder: (_) => _emojiFallback(bg),
-                        )
-                      else
-                        _emojiFallback(bg),
-                      if (restaurant.tag != null)
-                        Positioned(
-                          top: AppSizes.sm,
-                          left: AppSizes.sm,
-                          child: _TagChip(text: restaurant.tag!),
-                        ),
-                      Positioned(
-                        top: AppSizes.sm,
-                        right: AppSizes.sm,
-                        child: _FavButton(
-                          active: isFav,
-                          onTap: () => ref
-                              .read(favoritesProvider.notifier)
-                              .toggle(restaurant.id),
-                        ),
-                      ),
-                      if (restaurant.minGuests != null)
-                        Positioned(
-                          bottom: AppSizes.sm,
-                          right: AppSizes.sm,
-                          child: _MinGuestsChip(min: restaurant.minGuests!),
-                        ),
-                      if (restaurant.pricePerPlate != null)
-                        Positioned(
-                          bottom: AppSizes.sm,
-                          left: AppSizes.sm,
-                          child: _PriceChip(
-                              pricePerPlate: restaurant.pricePerPlate!),
-                        ),
-                    ],
-                  ),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  AppSizes.md,
-                  AppSizes.md,
-                  AppSizes.md,
-                  AppSizes.md,
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        Expanded(
-                          child: Text(
-                            restaurant.name,
-                            style: AppTextStyles.heading2,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        if (restaurant.rating != null)
-                          _RatingChip(
-                            rating: restaurant.rating!,
-                            count: restaurant.ratingsCount,
-                          ),
-                      ],
-                    ),
-                    if (restaurant.cuisinesDisplay != null) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        restaurant.cuisinesDisplay!,
-                        style: AppTextStyles.caption,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                    const SizedBox(height: AppSizes.sm),
-                    Container(
-                      height: 1,
-                      color: AppColors.divider,
-                    ),
-                    const SizedBox(height: AppSizes.sm),
-                    Row(
-                      children: [
-                        if (restaurant.deliveryEta.isNotEmpty) ...[
-                          const Icon(Icons.schedule_rounded,
-                              size: 14, color: AppColors.textSecondary),
-                          const SizedBox(width: 4),
-                          Text(restaurant.deliveryEta,
-                              style: AppTextStyles.caption),
-                          const SizedBox(width: AppSizes.sm),
-                          const _Dot(),
-                          const SizedBox(width: AppSizes.sm),
-                        ],
-                        const Icon(Icons.currency_rupee_rounded,
-                            size: 13, color: AppColors.textSecondary),
-                        Text(
-                          '${restaurant.pricePerPlate?.toStringAsFixed(0) ?? '—'}/plate',
-                          style: AppTextStyles.captionBold.copyWith(
-                            color: AppColors.textPrimary,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _emojiFallback(Color bg) => Container(
-        color: bg,
-        alignment: Alignment.center,
-        child: Text(
-          restaurant.heroEmoji ?? '🍽️',
-          style: const TextStyle(fontSize: 56),
-        ),
-      );
-}
-
-class _TagChip extends StatelessWidget {
-  const _TagChip({required this.text});
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: AppColors.textPrimary.withValues(alpha: 0.88),
-        borderRadius: BorderRadius.circular(AppSizes.radiusXs),
-      ),
-      child: Text(
-        text.toUpperCase(),
-        style: AppTextStyles.captionBold.copyWith(
-          color: Colors.white,
-          fontSize: 10,
-          letterSpacing: 0.5,
-        ),
-      ),
-    );
-  }
-}
-
-class _FavButton extends StatelessWidget {
-  const _FavButton({required this.active, required this.onTap});
-  final bool active;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: () {
-        HapticFeedback.selectionClick();
-        onTap();
-      },
-      borderRadius: BorderRadius.circular(100),
-      child: Container(
-        width: 34,
-        height: 34,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          shape: BoxShape.circle,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.06),
-              blurRadius: 6,
-              offset: const Offset(0, 1),
-            ),
-          ],
-        ),
-        alignment: Alignment.center,
-        child: Icon(
-          active ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-          size: 18,
-          color: active ? AppColors.primary : AppColors.textMuted,
-        ),
-      ),
-    );
-  }
-}
-
-class _MinGuestsChip extends StatelessWidget {
-  const _MinGuestsChip({required this.min});
-  final int min;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: AppColors.catGreenLt,
-        borderRadius: BorderRadius.circular(AppSizes.radiusXs),
-      ),
-      child: Text(
-        'Min $min guests',
-        style: AppTextStyles.captionBold.copyWith(
-          color: AppColors.catGreen,
-          fontSize: 11,
-        ),
-      ),
-    );
-  }
-}
-
-class _PriceChip extends StatelessWidget {
-  const _PriceChip({required this.pricePerPlate});
-  final double pricePerPlate;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: AppSizes.sm, vertical: 5),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(AppSizes.radiusSm),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.08),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Text(
-        '₹${pricePerPlate.toStringAsFixed(0)}/plate',
-        style: AppTextStyles.bodyBold.copyWith(
-          color: AppColors.primary,
-          fontSize: 13,
-        ),
-      ),
-    );
-  }
-}
-
-class _RatingChip extends StatelessWidget {
-  const _RatingChip({required this.rating, this.count});
-  final double rating;
-  final int? count;
-
-  @override
-  Widget build(BuildContext context) {
-    final bg = rating >= 4.0 ? AppColors.success : AppColors.warning;
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-          decoration: BoxDecoration(
-            color: bg,
-            borderRadius: BorderRadius.circular(AppSizes.radiusXs),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                rating.toStringAsFixed(1),
-                style: AppTextStyles.captionBold.copyWith(
-                  color: Colors.white,
-                  fontSize: 12,
-                ),
-              ),
-              const SizedBox(width: 2),
-              const Icon(Icons.star_rounded, color: Colors.white, size: 13),
-            ],
-          ),
-        ),
-        if (count != null) ...[
-          const SizedBox(width: 4),
-          Text(
-            _formatCount(count!),
-            style: AppTextStyles.caption.copyWith(fontSize: 11),
-          ),
-        ],
-      ],
-    );
-  }
-
-  String _formatCount(int n) {
-    if (n >= 1000) {
-      return '(${(n / 1000).toStringAsFixed(1)}K)';
-    }
-    return '($n)';
-  }
-}
-
-class _Dot extends StatelessWidget {
-  const _Dot();
-  @override
-  Widget build(BuildContext context) => Container(
-        width: 3,
-        height: 3,
-        decoration: const BoxDecoration(
-          color: AppColors.border,
-          shape: BoxShape.circle,
-        ),
-      );
 }
 
 class _RestaurantSkeleton extends StatelessWidget {

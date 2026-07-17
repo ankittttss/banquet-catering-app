@@ -1,4 +1,3 @@
-import 'chef.dart';
 import 'private_property.dart';
 import 'venue_type.dart';
 
@@ -6,6 +5,7 @@ import 'venue_type.dart';
 class EventDraft {
   const EventDraft({
     this.eventName,
+    this.categorySlug,
     this.date,
     this.location,
     this.eventLatitude,
@@ -22,13 +22,17 @@ class EventDraft {
     this.venueType,
     this.propertyDraft,
     this.addonQuantities = const {},
-    this.recce,
   });
 
   /// Customer-chosen display name for the event, e.g. "Aanya's Sangeet".
   /// Optional — when null the UI falls back to a composed label like
   /// "Dinner for 150".
   final String? eventName;
+
+  /// Slug of the occasion picked on the home grid / plan screen (e.g.
+  /// "wedding", "birthday"). Drives the pre-selected occasion chip and
+  /// persists the choice through the whole plan flow.
+  final String? categorySlug;
 
   final DateTime? date;
   final String? location;
@@ -69,10 +73,6 @@ class EventDraft {
   /// Addon id → quantity. Empty when the user hasn't customised anything.
   final Map<String, int> addonQuantities;
 
-  /// Optional free site-recce booking. Only meaningful on the private-
-  /// property path.
-  final ReccePick? recce;
-
   /// Suggested staffing level — 1 service boy per 10 guests (rounded up),
   /// floor of 1. e.g. 25 guests → 3, 100 guests → 10, 150 guests → 15.
   int get suggestedServiceBoys => ((guestCount + 9) ~/ 10).clamp(1, 999);
@@ -94,6 +94,7 @@ class EventDraft {
 
   EventDraft copyWith({
     String? eventName,
+    String? categorySlug,
     DateTime? date,
     String? location,
     double? eventLatitude,
@@ -110,10 +111,10 @@ class EventDraft {
     VenueType? venueType,
     PrivatePropertyDraft? propertyDraft,
     Map<String, int>? addonQuantities,
-    ReccePick? recce,
   }) =>
       EventDraft(
         eventName: eventName ?? this.eventName,
+        categorySlug: categorySlug ?? this.categorySlug,
         date: date ?? this.date,
         location: location ?? this.location,
         eventLatitude: eventLatitude ?? this.eventLatitude,
@@ -130,24 +131,12 @@ class EventDraft {
         venueType: venueType ?? this.venueType,
         propertyDraft: propertyDraft ?? this.propertyDraft,
         addonQuantities: addonQuantities ?? this.addonQuantities,
-        recce: recce ?? this.recce,
       );
 
-  Map<String, dynamic> toInsertMap(String userId) => {
-        'user_id': userId,
-        if (eventName != null && eventName!.trim().isNotEmpty)
-          'name': eventName!.trim(),
-        'event_date': date!.toIso8601String().substring(0, 10),
-        'location': location,
-        'session': session,
-        'start_time':
-            '${startTime!.hour.toString().padLeft(2, '0')}:${startTime!.minute.toString().padLeft(2, '0')}',
-        'end_time':
-            '${endTime!.hour.toString().padLeft(2, '0')}:${endTime!.minute.toString().padLeft(2, '0')}',
-        'guest_count': guestCount,
-        if (tierId != null) 'tier_id': tierId,
-        if (banquetVenueId != null) 'banquet_venue_id': banquetVenueId,
-      };
+  // NOTE: the old toInsertMap (direct events-table insert) was replaced by
+  // orderEventPayload (lib/data/repositories/order_payloads.dart), which
+  // feeds the transactional place_order RPC and persists the FULL booking
+  // (category, venue type, coordinates, property details, add-ons).
 
   /// Snapshot of the draft for persistence in `shared_preferences`. Bumps
   /// the schema version so old payloads can be discarded cleanly if the
@@ -155,6 +144,7 @@ class EventDraft {
   Map<String, dynamic> toJson() => {
         'v': 1,
         if (eventName != null) 'eventName': eventName,
+        if (categorySlug != null) 'categorySlug': categorySlug,
         if (date != null) 'date': date!.toIso8601String(),
         if (location != null) 'location': location,
         if (eventLatitude != null) 'eventLatitude': eventLatitude,
@@ -171,7 +161,6 @@ class EventDraft {
         if (venueType != null) 'venueType': venueType!.dbValue,
         if (propertyDraft != null) 'propertyDraft': propertyDraft!.toJson(),
         if (addonQuantities.isNotEmpty) 'addonQuantities': addonQuantities,
-        if (recce != null) 'recce': recce!.toJson(),
       };
 
   factory EventDraft.fromJson(Map<String, dynamic> json) {
@@ -186,6 +175,7 @@ class EventDraft {
         const <String, int>{};
     return EventDraft(
       eventName: json['eventName'] as String?,
+      categorySlug: json['categorySlug'] as String?,
       date: parse('date'),
       location: json['location'] as String?,
       eventLatitude: (json['eventLatitude'] as num?)?.toDouble(),
@@ -206,9 +196,6 @@ class EventDraft {
             )
           : null,
       addonQuantities: qty,
-      recce: json['recce'] is Map<String, dynamic>
-          ? ReccePick.fromJson(json['recce'] as Map<String, dynamic>)
-          : null,
     );
   }
 }

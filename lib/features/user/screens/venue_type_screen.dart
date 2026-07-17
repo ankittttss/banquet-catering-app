@@ -120,7 +120,6 @@ class VenueTypeScreen extends ConsumerWidget {
                     bullets: const [
                       'Cook live or pre-served',
                       'Setup, decor, equipment add-ons',
-                      'Free site recce by your chef',
                       'Discreet service team',
                     ],
                     imageUrl:
@@ -481,9 +480,29 @@ class _BanquetPickerSheet extends ConsumerWidget {
                     itemBuilder: (_, i) => _PickerVenueRow(
                       venue: rows[i],
                       onTap: () {
+                        // Capacity gate — the server re-checks at order time,
+                        // but blocking here saves the customer a dead end.
+                        final capacity = rows[i].capacity;
+                        final guests = ref.read(eventDraftProvider).guestCount;
+                        if (capacity != null && guests > capacity) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                '${rows[i].name} seats up to $capacity '
+                                'guests — you have $guests. Reduce the '
+                                'guest count or pick a bigger venue.',
+                              ),
+                              behavior: SnackBarBehavior.floating,
+                            ),
+                          );
+                          return;
+                        }
                         ref.read(eventDraftProvider.notifier).setBanquetVenue(
                               venueId: rows[i].id,
                               venueName: rows[i].name,
+                              address: rows[i].address,
+                              latitude: rows[i].latitude,
+                              longitude: rows[i].longitude,
                             );
                         Navigator.of(context).pop(true);
                       },
