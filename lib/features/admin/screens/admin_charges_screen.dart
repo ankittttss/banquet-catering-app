@@ -18,12 +18,10 @@ class AdminChargesScreen extends ConsumerStatefulWidget {
   const AdminChargesScreen({super.key});
 
   @override
-  ConsumerState<AdminChargesScreen> createState() =>
-      _AdminChargesScreenState();
+  ConsumerState<AdminChargesScreen> createState() => _AdminChargesScreenState();
 }
 
-class _AdminChargesScreenState
-    extends ConsumerState<AdminChargesScreen> {
+class _AdminChargesScreenState extends ConsumerState<AdminChargesScreen> {
   late TextEditingController _banquet;
   late TextEditingController _buffet;
   late TextEditingController _service;
@@ -109,8 +107,7 @@ class _AdminChargesScreenState
       body: cfg.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => AppErrorView(
-            error: e,
-            onRetry: () => ref.invalidate(chargesConfigProvider)),
+            error: e, onRetry: () => ref.invalidate(chargesConfigProvider)),
         data: (c) {
           _hydrate(c);
           return ListView(
@@ -127,11 +124,9 @@ class _AdminChargesScreenState
                     _ChargeRow(label: 'Banquet charge', controller: _banquet),
                     _ChargeRow(label: 'Buffet setup', controller: _buffet),
                     _ChargeRow(
-                        label: 'Service boy (per head)',
-                        controller: _service),
+                        label: 'Service boy (per head)', controller: _service),
                     _ChargeRow(label: 'Water bottles', controller: _water),
-                    _ChargeRow(
-                        label: 'Platform fee', controller: _platform),
+                    _ChargeRow(label: 'Platform fee', controller: _platform),
                     _ChargeRow(
                       label: 'GST %',
                       controller: _gst,

@@ -10,16 +10,27 @@ import '../../../data/models/menu_item.dart';
 import '../../../data/models/restaurant.dart';
 import '../../../shared/providers/menu_providers.dart';
 import '../../../shared/providers/repositories_providers.dart';
+import '../../user/widgets/photo_picker_sheet.dart';
 
 /// Add / edit form for a single menu item, shown as a modal bottom sheet.
 /// Returns `true` when a change was saved so the caller can refresh.
 class MenuItemFormSheet extends ConsumerStatefulWidget {
-  const MenuItemFormSheet({super.key, this.existing});
+  const MenuItemFormSheet({super.key, this.existing, this.lockedRestaurant});
 
   /// The item being edited, or null when adding a new one.
   final MenuItem? existing;
 
-  static Future<bool?> show(BuildContext context, {MenuItem? existing}) {
+  /// When set, the item belongs to this restaurant and the restaurant
+  /// dropdown is replaced by a read-only row. Used by the admin onboarding
+  /// wizard / management page — draft restaurants aren't in the customer
+  /// [restaurantsProvider] list the dropdown is fed from.
+  final Restaurant? lockedRestaurant;
+
+  static Future<bool?> show(
+    BuildContext context, {
+    MenuItem? existing,
+    Restaurant? lockedRestaurant,
+  }) {
     return showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
@@ -28,7 +39,10 @@ class MenuItemFormSheet extends ConsumerStatefulWidget {
         borderRadius:
             BorderRadius.vertical(top: Radius.circular(AppSizes.radiusLg)),
       ),
-      builder: (_) => MenuItemFormSheet(existing: existing),
+      builder: (_) => MenuItemFormSheet(
+        existing: existing,
+        lockedRestaurant: lockedRestaurant,
+      ),
     );
   }
 
@@ -45,8 +59,10 @@ class _MenuItemFormSheetState extends ConsumerState<MenuItemFormSheet> {
   String? _categoryId;
   late bool _isVeg;
   late bool _isAvailable;
+  String? _imageUrl;
 
   bool _saving = false;
+  bool _uploadingImage = false;
   String? _error;
 
   bool get _isEdit => widget.existing != null;
@@ -60,10 +76,49 @@ class _MenuItemFormSheetState extends ConsumerState<MenuItemFormSheet> {
       text: e == null ? '' : e.price.toStringAsFixed(0),
     );
     _descCtrl = TextEditingController(text: e?.description ?? '');
-    _restaurantId = e?.restaurantId;
+    _restaurantId = e?.restaurantId ?? widget.lockedRestaurant?.id;
     _categoryId = e?.categoryId;
     _isVeg = e?.isVeg ?? true;
     _isAvailable = e?.isAvailable ?? true;
+    _imageUrl = e?.imageUrl;
+  }
+
+  Future<void> _pickImage() async {
+    if (_restaurantId == null) {
+      setState(() => _error = 'Pick a restaurant first, then add a photo.');
+      return;
+    }
+    final result = await showPhotoPickerSheet(
+      context,
+      title: 'Dish photo',
+      hasExisting: _imageUrl != null,
+    );
+    if (!mounted) return;
+    if (result is PhotoRemoved) {
+      setState(() => _imageUrl = null);
+      return;
+    }
+    if (result is! PhotoPickedBytes) {
+      if (result is PhotoPickerError) {
+        setState(() => _error = result.message);
+      }
+      return;
+    }
+    setState(() {
+      _uploadingImage = true;
+      _error = null;
+    });
+    try {
+      final url = await ref.read(menuRepositoryProvider).uploadMenuItemImage(
+            restaurantId: _restaurantId!,
+            bytes: result.bytes,
+          );
+      if (mounted) setState(() => _imageUrl = url);
+    } catch (e) {
+      if (mounted) setState(() => _error = _friendly(e));
+    } finally {
+      if (mounted) setState(() => _uploadingImage = false);
+    }
   }
 
   @override
@@ -105,7 +160,7 @@ class _MenuItemFormSheetState extends ConsumerState<MenuItemFormSheet> {
             name: name,
             price: price,
             description: desc.isEmpty ? null : desc,
-            imageUrl: widget.existing!.imageUrl,
+            imageUrl: _imageUrl,
             isVeg: _isVeg,
             isAvailable: _isAvailable,
           ),
@@ -117,6 +172,7 @@ class _MenuItemFormSheetState extends ConsumerState<MenuItemFormSheet> {
           name: name,
           price: price,
           description: desc.isEmpty ? null : desc,
+          imageUrl: _imageUrl,
           isVeg: _isVeg,
           isAvailable: _isAvailable,
         );
@@ -187,7 +243,6 @@ class _MenuItemFormSheetState extends ConsumerState<MenuItemFormSheet> {
                 style: AppTextStyles.heading1,
               ),
               const SizedBox(height: AppSizes.lg),
-
               _label('Item name'),
               TextField(
                 controller: _nameCtrl,
@@ -195,20 +250,37 @@ class _MenuItemFormSheetState extends ConsumerState<MenuItemFormSheet> {
                 decoration: _dec('e.g. Paneer Tikka'),
               ),
               const SizedBox(height: AppSizes.md),
-
               _label('Restaurant'),
-              DropdownButtonFormField<String>(
-                initialValue: restId,
-                isExpanded: true,
-                decoration: _dec('Select a restaurant'),
-                items: [
-                  for (final r in restaurants)
-                    DropdownMenuItem(value: r.id, child: Text(r.name)),
-                ],
-                onChanged: (v) => setState(() => _restaurantId = v),
-              ),
+              if (widget.lockedRestaurant != null)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppSizes.md,
+                    vertical: AppSizes.md,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppColors.surfaceAlt,
+                    borderRadius: BorderRadius.circular(AppSizes.radiusSm),
+                    border: Border.all(color: AppColors.border),
+                  ),
+                  child: Text(
+                    widget.lockedRestaurant!.name,
+                    style: AppTextStyles.body
+                        .copyWith(color: AppColors.textSecondary),
+                  ),
+                )
+              else
+                DropdownButtonFormField<String>(
+                  initialValue: restId,
+                  isExpanded: true,
+                  decoration: _dec('Select a restaurant'),
+                  items: [
+                    for (final r in restaurants)
+                      DropdownMenuItem(value: r.id, child: Text(r.name)),
+                  ],
+                  onChanged: (v) => setState(() => _restaurantId = v),
+                ),
               const SizedBox(height: AppSizes.md),
-
               _label('Category'),
               DropdownButtonFormField<String>(
                 initialValue: catId,
@@ -221,7 +293,6 @@ class _MenuItemFormSheetState extends ConsumerState<MenuItemFormSheet> {
                 onChanged: (v) => setState(() => _categoryId = v),
               ),
               const SizedBox(height: AppSizes.md),
-
               _label('Price (₹)'),
               TextField(
                 controller: _priceCtrl,
@@ -233,7 +304,6 @@ class _MenuItemFormSheetState extends ConsumerState<MenuItemFormSheet> {
                 decoration: _dec('e.g. 220'),
               ),
               const SizedBox(height: AppSizes.md),
-
               _label('Description (optional)'),
               TextField(
                 controller: _descCtrl,
@@ -241,8 +311,14 @@ class _MenuItemFormSheetState extends ConsumerState<MenuItemFormSheet> {
                 textCapitalization: TextCapitalization.sentences,
                 decoration: _dec('Short description'),
               ),
+              const SizedBox(height: AppSizes.md),
+              _label('Dish photo (optional)'),
+              _ImagePickerTile(
+                url: _imageUrl,
+                uploading: _uploadingImage,
+                onTap: _uploadingImage ? null : _pickImage,
+              ),
               const SizedBox(height: AppSizes.sm),
-
               SwitchListTile.adaptive(
                 contentPadding: EdgeInsets.zero,
                 activeThumbColor: AppColors.veg,
@@ -261,7 +337,6 @@ class _MenuItemFormSheetState extends ConsumerState<MenuItemFormSheet> {
                 value: _isAvailable,
                 onChanged: (v) => setState(() => _isAvailable = v),
               ),
-
               if (_error != null) ...[
                 const SizedBox(height: AppSizes.sm),
                 Text(
@@ -270,7 +345,6 @@ class _MenuItemFormSheetState extends ConsumerState<MenuItemFormSheet> {
                 ),
               ],
               const SizedBox(height: AppSizes.lg),
-
               FilledButton(
                 onPressed: _saving ? null : _save,
                 style: FilledButton.styleFrom(
@@ -315,8 +389,7 @@ class _MenuItemFormSheetState extends ConsumerState<MenuItemFormSheet> {
 
   InputDecoration _dec(String hint) => InputDecoration(
         hintText: hint,
-        hintStyle:
-            AppTextStyles.body.copyWith(color: AppColors.textMuted),
+        hintStyle: AppTextStyles.body.copyWith(color: AppColors.textMuted),
         isDense: true,
         filled: true,
         fillColor: AppColors.surfaceAlt,
@@ -337,4 +410,77 @@ class _MenuItemFormSheetState extends ConsumerState<MenuItemFormSheet> {
           borderSide: const BorderSide(color: AppColors.primary, width: 1.4),
         ),
       );
+}
+
+/// Tappable dish-photo tile: empty prompt, uploading spinner, or the picked
+/// image with a "Change" affordance.
+class _ImagePickerTile extends StatelessWidget {
+  const _ImagePickerTile({
+    required this.url,
+    required this.uploading,
+    required this.onTap,
+  });
+
+  final String? url;
+  final bool uploading;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(AppSizes.radiusSm),
+      child: Container(
+        height: 110,
+        decoration: BoxDecoration(
+          color: AppColors.surfaceAlt,
+          borderRadius: BorderRadius.circular(AppSizes.radiusSm),
+          border: Border.all(color: AppColors.border),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: uploading
+            ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
+            : url == null
+                ? Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.add_a_photo_outlined,
+                          size: 24, color: AppColors.textMuted),
+                      const SizedBox(height: AppSizes.xs),
+                      Text(
+                        'Add photo',
+                        style: AppTextStyles.caption
+                            .copyWith(color: AppColors.textMuted),
+                      ),
+                    ],
+                  )
+                : Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      Image.network(url!, fit: BoxFit.cover),
+                      Positioned(
+                        right: AppSizes.sm,
+                        bottom: AppSizes.sm,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.55),
+                            borderRadius:
+                                BorderRadius.circular(AppSizes.radiusXs),
+                          ),
+                          child: Text(
+                            'Change',
+                            style: AppTextStyles.captionBold
+                                .copyWith(color: Colors.white, fontSize: 10),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+      ),
+    );
+  }
 }
