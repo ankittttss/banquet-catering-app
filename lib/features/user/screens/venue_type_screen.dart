@@ -63,12 +63,24 @@ class VenueTypeScreen extends ConsumerWidget {
         // restaurant browser.
         final alreadyPicked = draft.banquetVenueId != null;
         if (!alreadyPicked) {
-          final picked = await showModalBottomSheet<bool>(
+          final picked = await showModalBottomSheet<Object>(
             context: context,
             isScrollControlled: true,
             backgroundColor: Colors.transparent,
             builder: (_) => const _BanquetPickerSheet(),
           );
+          if (!context.mounted) return;
+          if (picked == _BanquetPickerSheet.changeLocationResult) {
+            // The customer wants to fix the event location. Navigate from
+            // THIS screen's (mounted-checked) context, never the sheet's,
+            // and use go() so the stack is replaced — pushing would stack
+            // a duplicate Event Details page on the
+            // Event Details → venue → picker path, while popping would
+            // miss it entirely on the home "Continue planning" → venue
+            // path (no Event Details below us there).
+            context.go(AppRoutes.eventDetails);
+            return;
+          }
           if (picked != true) return;
         }
         if (!context.mounted) return;
@@ -453,9 +465,20 @@ class _Bullet extends StatelessWidget {
 class _BanquetPickerSheet extends ConsumerWidget {
   const _BanquetPickerSheet();
 
+  /// Sheet result meaning "take me to Event Details to fix the location".
+  /// The sheet itself NEVER navigates — its context dies with the pop; the
+  /// awaiting venue screen handles the navigation with its own live context.
+  static const changeLocationResult = 'change-location';
+
+  void _changeLocation(BuildContext context) {
+    Navigator.of(context).pop(changeLocationResult);
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final venues = ref.watch(allBanquetVenuesProvider);
+    final draft = ref.watch(eventDraftProvider);
+    final radius = ref.watch(venueSearchRadiusProvider);
+    final venues = ref.watch(nearbyVenuesProvider);
     return DraggableScrollableSheet(
       initialChildSize: 0.7,
       maxChildSize: 0.95,
@@ -484,74 +507,202 @@ class _BanquetPickerSheet extends ConsumerWidget {
             Text('Pick a banquet venue', style: AppTextStyles.display),
             const SizedBox(height: AppSizes.xs),
             Text(
-              "Your booking is routed to this venue's operator for confirmation.",
+              draft.hasEventCoords
+                  ? 'Venues within ${radius.round()} km of your event '
+                      'location, nearest first.'
+                  : "Your booking is routed to this venue's operator for confirmation.",
               style: AppTextStyles.bodyMuted,
             ),
             const SizedBox(height: AppSizes.lg),
             Expanded(
-              child: venues.when(
-                loading: () => const Center(child: CircularProgressIndicator()),
-                error: (e, _) => Text(
-                  'Could not load venues: $e',
-                  style: AppTextStyles.caption,
-                ),
-                data: (rows) {
-                  if (rows.isEmpty) {
-                    return Center(
-                      child: Text(
-                        'No venues available yet.',
-                        style: AppTextStyles.bodyMuted,
+              // No event coordinates → we can't search "near" anything.
+              // Never fall back to the saved home address here; ask the
+              // customer to confirm the event location instead.
+              child: !draft.hasEventCoords
+                  ? _PickerMessage(
+                      icon: Icons.explore_off_rounded,
+                      title: 'Confirm your event location',
+                      message: 'Pick the event address from the suggestions on '
+                          'the event details page so we can find banquet '
+                          'halls near it.',
+                      primaryLabel: 'Set event location',
+                      onPrimary: () => _changeLocation(context),
+                    )
+                  : venues.when(
+                      loading: () =>
+                          const Center(child: CircularProgressIndicator()),
+                      error: (e, _) => _PickerMessage(
+                        icon: Icons.wifi_off_rounded,
+                        title: "Couldn't load venues",
+                        message: 'Something went wrong while searching near '
+                            'your event location. Check your connection and '
+                            'try again.',
+                        primaryLabel: 'Retry',
+                        onPrimary: () => ref.invalidate(nearbyVenuesProvider),
                       ),
-                    );
-                  }
-                  return ListView.separated(
-                    controller: scrollCtrl,
-                    itemCount: rows.length,
-                    separatorBuilder: (_, __) =>
-                        const SizedBox(height: AppSizes.sm),
-                    itemBuilder: (_, i) => _PickerVenueRow(
-                      venue: rows[i],
-                      onTap: () {
-                        // Capacity gate — the server re-checks at order time,
-                        // but blocking here saves the customer a dead end.
-                        final capacity = rows[i].capacity;
-                        final guests = ref.read(eventDraftProvider).guestCount;
-                        if (capacity != null && guests > capacity) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                '${rows[i].name} seats up to $capacity '
-                                'guests — you have $guests. Reduce the '
-                                'guest count or pick a bigger venue.',
-                              ),
-                              behavior: SnackBarBehavior.floating,
-                            ),
+                      data: (rows) {
+                        if (rows.isEmpty) {
+                          final canExpand = radius < 100;
+                          final area = draft.location ?? 'your event location';
+                          return _PickerMessage(
+                            icon: Icons.location_city_rounded,
+                            title: 'No venues near your event yet',
+                            message: 'We couldn\'t find an active banquet hall '
+                                'within ${radius.round()} km of $area'
+                                '${draft.guestCount > 0 ? ' for ${draft.guestCount} guests' : ''}.',
+                            primaryLabel: canExpand
+                                ? 'Expand search to 100 km'
+                                : 'Change location',
+                            onPrimary: canExpand
+                                ? () => ref
+                                    .read(venueSearchRadiusProvider.notifier)
+                                    .state = 100
+                                : () => _changeLocation(context),
+                            secondaryLabel:
+                                canExpand ? 'Change location' : null,
+                            onSecondary: canExpand
+                                ? () => _changeLocation(context)
+                                : null,
                           );
-                          return;
                         }
-                        final notifier = ref.read(eventDraftProvider.notifier);
-                        notifier.setBanquetVenue(
-                          venueId: rows[i].id,
-                          venueName: rows[i].name,
-                          address: rows[i].address,
-                          latitude: rows[i].latitude,
-                          longitude: rows[i].longitude,
+                        return ListView.separated(
+                          controller: scrollCtrl,
+                          itemCount: rows.length,
+                          separatorBuilder: (_, __) =>
+                              const SizedBox(height: AppSizes.sm),
+                          itemBuilder: (_, i) => _PickerVenueRow(
+                            venue: rows[i],
+                            onTap: () {
+                              // Capacity gate for venues with a KNOWN
+                              // capacity (place_order re-checks those too;
+                              // null-capacity venues are never blocked).
+                              // Mostly a backstop now that the nearby query
+                              // already hides known-too-small venues.
+                              final capacity = rows[i].capacity;
+                              final guests =
+                                  ref.read(eventDraftProvider).guestCount;
+                              if (capacity != null && guests > capacity) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      '${rows[i].name} seats up to $capacity '
+                                      'guests — you have $guests. Reduce the '
+                                      'guest count or pick a bigger venue.',
+                                    ),
+                                    behavior: SnackBarBehavior.floating,
+                                  ),
+                                );
+                                return;
+                              }
+                              final notifier =
+                                  ref.read(eventDraftProvider.notifier);
+                              notifier.setBanquetVenue(
+                                venueId: rows[i].id,
+                                venueName: rows[i].name,
+                                address: rows[i].address,
+                                latitude: rows[i].latitude,
+                                longitude: rows[i].longitude,
+                              );
+                              // Venue has no pin? Recover it from the address in
+                              // the background — doesn't block the tap.
+                              if (rows[i].latitude == null ||
+                                  rows[i].longitude == null) {
+                                unawaited(
+                                  _geocodeVenueCoords(notifier, rows[i]),
+                                );
+                              }
+                              Navigator.of(context).pop(true);
+                            },
+                          ),
                         );
-                        // Venue has no pin? Recover it from the address in
-                        // the background — doesn't block the tap.
-                        if (rows[i].latitude == null ||
-                            rows[i].longitude == null) {
-                          unawaited(
-                            _geocodeVenueCoords(notifier, rows[i]),
-                          );
-                        }
-                        Navigator.of(context).pop(true);
                       },
                     ),
-                  );
-                },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Centered informational state inside the picker sheet: icon + copy plus a
+/// primary action, with an optional secondary. Used for the
+/// "confirm your event location" and honest no-venues-nearby states.
+class _PickerMessage extends StatelessWidget {
+  const _PickerMessage({
+    required this.icon,
+    required this.title,
+    required this.message,
+    required this.primaryLabel,
+    required this.onPrimary,
+    this.secondaryLabel,
+    this.onSecondary,
+  });
+
+  final IconData icon;
+  final String title;
+  final String message;
+  final String primaryLabel;
+  final VoidCallback onPrimary;
+  final String? secondaryLabel;
+  final VoidCallback? onSecondary;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 64,
+              height: 64,
+              decoration: const BoxDecoration(
+                color: AppColors.primarySoft,
+                shape: BoxShape.circle,
+              ),
+              alignment: Alignment.center,
+              child: Icon(icon, color: AppColors.primary, size: 30),
+            ),
+            const SizedBox(height: AppSizes.md),
+            Text(
+              title,
+              style: AppTextStyles.heading2,
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: AppSizes.xs),
+            Padding(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: AppSizes.pagePadding),
+              child: Text(
+                message,
+                style: AppTextStyles.bodyMuted,
+                textAlign: TextAlign.center,
               ),
             ),
+            const SizedBox(height: AppSizes.lg),
+            FilledButton(
+              onPressed: onPrimary,
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                minimumSize: const Size(220, 48),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(AppSizes.radiusSm),
+                ),
+              ),
+              child: Text(primaryLabel),
+            ),
+            if (secondaryLabel != null) ...[
+              const SizedBox(height: AppSizes.sm),
+              TextButton(
+                onPressed: onSecondary,
+                child: Text(
+                  secondaryLabel!,
+                  style:
+                      AppTextStyles.bodyBold.copyWith(color: AppColors.primary),
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -606,14 +757,27 @@ class _PickerVenueRow extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                     ),
                   ],
-                  if (venue.capacity != null) ...[
-                    const SizedBox(height: 2),
-                    Text(
-                      'Up to ${venue.capacity} guests',
-                      style: AppTextStyles.captionBold
-                          .copyWith(color: AppColors.primary),
-                    ),
-                  ],
+                  const SizedBox(height: 2),
+                  Wrap(
+                    spacing: AppSizes.sm,
+                    children: [
+                      if (venue.distanceKm != null)
+                        Text(
+                          venue.distanceKm! < 1
+                              ? 'Under 1 km from your event'
+                              : '${venue.distanceKm!.toStringAsFixed(1)} km '
+                                  'from your event',
+                          style: AppTextStyles.captionBold
+                              .copyWith(color: AppColors.success),
+                        ),
+                      if (venue.capacity != null)
+                        Text(
+                          'Up to ${venue.capacity} guests',
+                          style: AppTextStyles.captionBold
+                              .copyWith(color: AppColors.primary),
+                        ),
+                    ],
+                  ),
                 ],
               ),
             ),

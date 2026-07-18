@@ -1,3 +1,4 @@
+import '../../../core/utils/geo.dart';
 import '../../models/banquet_venue.dart';
 import '../../models/user_profile.dart';
 import '../banquet_repository.dart';
@@ -8,6 +9,48 @@ class StubBanquetRepository implements BanquetRepository {
 
   @override
   Future<List<BanquetVenue>> fetchAllVenues() async => const [];
+
+  @override
+  Future<List<BanquetVenue>> venuesNear({
+    required double latitude,
+    required double longitude,
+    double radiusKm = 50,
+    int? minCapacity,
+  }) async {
+    // Mirrors the banquet_venues_near RPC: active + valid coords, radius
+    // clamped 1..100 km, known-too-small capacity hidden, nearest-first,
+    // distanceKm populated.
+    final radius = radiusKm.clamp(1.0, 100.0);
+    final hits = <BanquetVenue>[];
+    for (final v in _venues) {
+      if (!v.isActive) continue;
+      final d = haversineKm(
+        lat1: latitude,
+        lng1: longitude,
+        lat2: v.latitude,
+        lng2: v.longitude,
+      );
+      if (d == null || d > radius) continue;
+      if (minCapacity != null &&
+          v.capacity != null &&
+          v.capacity! < minCapacity) {
+        continue;
+      }
+      hits.add(BanquetVenue(
+        id: v.id,
+        ownerProfileId: v.ownerProfileId,
+        name: v.name,
+        address: v.address,
+        latitude: v.latitude,
+        longitude: v.longitude,
+        capacity: v.capacity,
+        isActive: v.isActive,
+        distanceKm: d,
+      ));
+    }
+    hits.sort((a, b) => a.distanceKm!.compareTo(b.distanceKm!));
+    return hits;
+  }
 
   @override
   Future<List<BanquetInboxEvent>> fetchInbox() async => const [];

@@ -12,6 +12,20 @@ abstract interface class BanquetRepository {
   /// (RLS: banquet_venues has a public-read policy for exactly this.)
   Future<List<BanquetVenue>> fetchAllVenues();
 
+  /// Active venues with valid coordinates within [radiusKm] of the event
+  /// point, nearest-first, each carrying [BanquetVenue.distanceKm]. Venues
+  /// whose KNOWN capacity is below [minCapacity] are excluded; unknown
+  /// capacity stays visible. NOTE: the tap-time gate and place_order's
+  /// server check also only protect venues with a KNOWN capacity — a
+  /// null-capacity venue is never blocked anywhere.
+  /// The server clamps the radius to 1..100 km regardless of what's passed.
+  Future<List<BanquetVenue>> venuesNear({
+    required double latitude,
+    required double longitude,
+    double radiusKm = 50,
+    int? minCapacity,
+  });
+
   /// All events routed to venues the operator owns, newest first.
   Future<List<BanquetInboxEvent>> fetchInbox();
 

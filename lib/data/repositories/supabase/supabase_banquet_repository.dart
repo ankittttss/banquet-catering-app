@@ -27,6 +27,26 @@ class SupabaseBanquetRepository implements BanquetRepository {
   }
 
   @override
+  Future<List<BanquetVenue>> venuesNear({
+    required double latitude,
+    required double longitude,
+    double radiusKm = 50,
+    int? minCapacity,
+  }) async {
+    final rows = await supabase.rpc<dynamic>('banquet_venues_near', params: {
+      'p_lat': latitude,
+      'p_lng': longitude,
+      'p_radius_km': radiusKm,
+      'p_min_capacity': minCapacity,
+    });
+    if (rows is! List) return const [];
+    return rows
+        .whereType<Map<String, dynamic>>()
+        .map<BanquetVenue>(BanquetVenue.fromMap)
+        .toList(growable: false);
+  }
+
+  @override
   Future<List<BanquetInboxEvent>> fetchInbox() async {
     // Newest received first — operators want to see what just landed,
     // not what's happening earliest on the calendar.
