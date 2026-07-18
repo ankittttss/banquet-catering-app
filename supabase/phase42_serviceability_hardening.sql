@@ -28,6 +28,10 @@
 --    still-ACTIVE banquet venue (existence + capacity checked); private-
 --    property orders need complete property details (type, address line,
 --    city/pincode). No client backfilling can sidestep these.
+--    For BANQUET orders the venue's own coordinates/address (from
+--    banquet_venues) are AUTHORITATIVE: they override the payload for both
+--    the serviceability check and the stored event location, so mismatched
+--    payload coordinates can never misroute an order.
 --    place_order stays SECURITY DEFINER by design (it writes across
 --    events/orders/lots/items); its grants were already authenticated-only
 --    (phase38) — unchanged.
@@ -175,6 +179,11 @@ declare
   -- phase42: full planning workflow enforcement
   v_tier uuid;
   v_venue_active boolean;
+  -- phase42: the banquet venue is the AUTHORITATIVE event location
+  v_venue_lat double precision;
+  v_venue_lng double precision;
+  v_venue_address text;
+  v_location text;
   -- charges config (defaults match the client fallback)
   c_banquet numeric := 0;
   c_buffet numeric := 0;
@@ -270,13 +279,18 @@ begin
     raise exception 'Invalid venue type.';
   end if;
 
+  v_location := trim(p_event->>'location');
   v_banquet_venue := nullif(p_event->>'banquet_venue_id', '')::uuid;
   if v_venue_type = 'banquet_hall' then
     -- Banquet path: a venue must be selected, still active, and big enough.
     if v_banquet_venue is null then
       raise exception 'Pick a banquet venue for your event.';
     end if;
-    select bv.capacity, bv.is_active into v_capacity, v_venue_active
+    select bv.capacity, bv.is_active,
+           bv.latitude::double precision, bv.longitude::double precision,
+           bv.address
+      into v_capacity, v_venue_active, v_venue_lat, v_venue_lng,
+           v_venue_address
       from banquet_venues bv where bv.id = v_banquet_venue;
     if not found or not v_venue_active then
       raise exception 'That banquet venue is no longer available — pick another.';
@@ -285,6 +299,19 @@ begin
       raise exception 'This venue seats up to % guests — reduce the guest count or pick another venue.',
         v_capacity;
     end if;
+    -- phase40 guarantees active venues carry a location, but never trust
+    -- that silently — an unlocatable venue can't anchor serviceability.
+    if v_venue_lat is null or v_venue_lng is null
+       or coalesce(trim(v_venue_address), '') = '' then
+      raise exception 'That banquet venue has no location on record — pick another or contact support.';
+    end if;
+    -- The venue IS the event location for a banquet order. The database
+    -- values override whatever the payload claimed, so a direct RPC caller
+    -- can NEVER pair a Hyderabad venue with Delhi coordinates: kitchens
+    -- are validated against — and the event is stored at — the venue.
+    v_lat := v_venue_lat;
+    v_lng := v_venue_lng;
+    v_location := trim(v_venue_address);
   else
     -- Private-property path: a stray banquet_venue_id would wrongly route
     -- the event into a banquet operator's inbox — reject the contradiction.
@@ -432,7 +459,7 @@ begin
     v_user,
     trim(p_event->>'name'), -- guaranteed non-blank by the name check above
     v_date,
-    trim(p_event->>'location'),
+    v_location, -- banquet orders: the venue's own address (authoritative)
     p_event->>'session',
     v_start,
     v_end,

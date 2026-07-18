@@ -2,6 +2,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:banquet_catering_app/core/router/app_routes.dart';
+import 'package:banquet_catering_app/data/models/private_property.dart';
+import 'package:banquet_catering_app/data/models/venue_type.dart';
+import 'package:banquet_catering_app/features/user/planning_next_step.dart';
 import 'package:banquet_catering_app/shared/providers/event_providers.dart';
 
 void main() {
@@ -94,6 +98,85 @@ void main() {
       expect(d.location, 'Community Hall'); // falls back to the name
       expect(d.eventLatitude, isNull);
       expect(d.eventLongitude, isNull);
+    });
+  });
+
+  group('changing the event location invalidates dependent choices', () {
+    /// Fills steps 1–5 so planningNextStep reaches the venue branch.
+    void fillBasics() {
+      ctrl().setSession('Dinner');
+      ctrl().setDate(DateTime(2026, 8, 20));
+      ctrl().setStartTime(DateTime(2026, 8, 20, 19));
+      ctrl().setTier(tierId: 't1', tierCode: 'STANDARD');
+    }
+
+    test('banquet venue is cleared — the hall must be picked again', () {
+      fillBasics();
+      ctrl().setVenueType(VenueType.banquetHall);
+      ctrl().setBanquetVenue(
+        venueId: 'v1',
+        venueName: 'Grand Palace',
+        address: 'Grand Palace, Gachibowli',
+        latitude: 17.44,
+        longitude: 78.35,
+      );
+      // Customer explicitly moves the event across town.
+      ctrl().setEventLocation(
+        address: 'New Farmhouse, Shamirpet',
+        latitude: 17.60,
+        longitude: 78.57,
+      );
+      final d = container.read(eventDraftProvider);
+      expect(d.banquetVenueId, isNull);
+      expect(d.banquetVenueName, isNull);
+      expect(d.location, 'New Farmhouse, Shamirpet');
+      expect(d.eventLatitude, 17.60);
+      // Planning flow demands the venue step again — no stale routing.
+      expect(planningNextStep(d).route, AppRoutes.eventVenueType);
+    });
+
+    test('property address details are cleared, the TYPE survives', () {
+      fillBasics();
+      ctrl().setEventLocation(
+        address: 'Old Villa, Jubilee Hills',
+        latitude: 17.43,
+        longitude: 78.40,
+      );
+      ctrl().setVenueType(VenueType.privateProperty);
+      ctrl().setPropertyType(PropertyType.farmhouse);
+      ctrl().setPropertyAddress(
+        line1: '12 Old Villa',
+        landmark: 'Behind the lake',
+        cityPincode: 'Hyderabad 500033',
+      );
+      expect(
+          container.read(eventDraftProvider).propertyDraft!.isComplete, isTrue);
+      // Move the event — the old address details described the old place.
+      ctrl().setEventLocation(
+        address: 'New Farmhouse, Shamirpet',
+        latitude: 17.60,
+        longitude: 78.57,
+      );
+      final d = container.read(eventDraftProvider);
+      expect(d.propertyDraft!.type, PropertyType.farmhouse); // survives
+      expect(d.propertyDraft!.addressLine1, isNull);
+      expect(d.propertyDraft!.landmark, isNull);
+      expect(d.propertyDraft!.cityPincode, isNull);
+      expect(d.propertyDraft!.isComplete, isFalse);
+      // Planning flow demands property completion again.
+      expect(planningNextStep(d).route, AppRoutes.eventProperty);
+    });
+
+    test('initial prefill is unaffected (nothing to invalidate yet)', () {
+      ctrl().setEventLocation(
+        address: 'Home, Delhi',
+        latitude: 28.61,
+        longitude: 77.21,
+      );
+      final d = container.read(eventDraftProvider);
+      expect(d.location, 'Home, Delhi');
+      expect(d.banquetVenueId, isNull);
+      expect(d.propertyDraft, isNull);
     });
   });
 

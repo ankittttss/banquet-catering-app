@@ -128,22 +128,33 @@ class EventDraftController extends Notifier<EventDraft> {
     );
   }
 
-  void setLocation(String v) => state = state.copyWith(location: v);
-
-  /// Set the event location together with its coordinates. Coordinates drive
-  /// the nearest-first restaurant sort, so callers that have them (address
-  /// search, saved-address pick) should use this rather than [setLocation].
+  /// Set the event location together with its coordinates (address search,
+  /// saved-address prefill).
   ///
   /// The coordinates are set to EXACTLY the passed values — a rebuild is used
   /// (not copyWith) so that passing null lat/lng CLEARS any previously-pinned
   /// point. Otherwise the restaurant list would keep sorting around the old
   /// venue while showing the new address.
+  ///
+  /// Changing the location also INVALIDATES the location-dependent choices:
+  /// • a previously selected banquet venue is cleared — the event no longer
+  ///   happens there, so the hall must be picked again (otherwise the order
+  ///   would still route to the OLD venue while restaurants are chosen
+  ///   around the NEW address);
+  /// • the private property's address fields are cleared (they described the
+  ///   old location) — the property TYPE survives, but details must be
+  ///   reconfirmed.
+  /// The initial prefill is unaffected: at that point no venue or property
+  /// details exist yet, so the clears are no-ops.
   void setEventLocation({
     required String address,
     double? latitude,
     double? longitude,
   }) {
     final s = state;
+    final property = s.propertyDraft == null
+        ? null
+        : PrivatePropertyDraft(type: s.propertyDraft!.type);
     state = EventDraft(
       eventName: s.eventName,
       categorySlug: s.categorySlug,
@@ -157,11 +168,11 @@ class EventDraftController extends Notifier<EventDraft> {
       guestCount: s.guestCount,
       tierId: s.tierId,
       tierCode: s.tierCode,
-      banquetVenueId: s.banquetVenueId,
-      banquetVenueName: s.banquetVenueName,
+      banquetVenueId: null,
+      banquetVenueName: null,
       serviceBoyCount: s.serviceBoyCount,
       venueType: s.venueType,
-      propertyDraft: s.propertyDraft,
+      propertyDraft: property,
       addonQuantities: s.addonQuantities,
     );
   }
