@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -8,11 +10,41 @@ import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_sizes.dart';
 import '../../../core/constants/app_text_styles.dart';
 import '../../../core/router/app_routes.dart';
+import '../../../core/services/photon_geocoder.dart';
 import '../../../data/models/banquet_venue.dart';
 import '../../../data/models/venue_type.dart';
 import '../../../shared/providers/banquet_providers.dart';
 import '../../../shared/providers/event_providers.dart';
 import '../widgets/plan_flow_chrome.dart';
+
+/// Best-effort background lookup for a venue saved WITHOUT coordinates:
+/// geocode its address (falling back to its name) and pin the point onto the
+/// draft. The notifier is captured up front so this outlives the picker
+/// sheet; [EventDraftController.pinVenueCoords] ignores the result if the
+/// user changed venue meanwhile. Failures are silent — the restaurant list
+/// then shows the honest popularity sort instead of a wrong location.
+Future<void> _geocodeVenueCoords(
+  EventDraftController notifier,
+  BanquetVenue venue,
+) async {
+  final query = (venue.address?.trim().isNotEmpty ?? false)
+      ? venue.address!.trim()
+      : venue.name;
+  final geocoder = PhotonGeocoder();
+  try {
+    final results = await geocoder.search(query, limit: 1);
+    if (results.isEmpty) return;
+    notifier.pinVenueCoords(
+      venueId: venue.id,
+      latitude: results.first.latitude,
+      longitude: results.first.longitude,
+    );
+  } catch (_) {
+    // Best effort only.
+  } finally {
+    geocoder.dispose();
+  }
+}
 
 class VenueTypeScreen extends ConsumerWidget {
   const VenueTypeScreen({super.key});
@@ -497,13 +529,22 @@ class _BanquetPickerSheet extends ConsumerWidget {
                           );
                           return;
                         }
-                        ref.read(eventDraftProvider.notifier).setBanquetVenue(
-                              venueId: rows[i].id,
-                              venueName: rows[i].name,
-                              address: rows[i].address,
-                              latitude: rows[i].latitude,
-                              longitude: rows[i].longitude,
-                            );
+                        final notifier = ref.read(eventDraftProvider.notifier);
+                        notifier.setBanquetVenue(
+                          venueId: rows[i].id,
+                          venueName: rows[i].name,
+                          address: rows[i].address,
+                          latitude: rows[i].latitude,
+                          longitude: rows[i].longitude,
+                        );
+                        // Venue has no pin? Recover it from the address in
+                        // the background — doesn't block the tap.
+                        if (rows[i].latitude == null ||
+                            rows[i].longitude == null) {
+                          unawaited(
+                            _geocodeVenueCoords(notifier, rows[i]),
+                          );
+                        }
                         Navigator.of(context).pop(true);
                       },
                     ),

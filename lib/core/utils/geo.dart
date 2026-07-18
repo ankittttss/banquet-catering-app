@@ -1,6 +1,8 @@
 import 'dart:math' as math;
 
+import '../../data/models/event_draft.dart';
 import '../../data/models/restaurant.dart';
+import '../../data/models/user_address.dart';
 
 /// How far a kitchen can serve, in km. Mirrors the `restaurants_near` RPC
 /// radius that scopes the customer home feed — used ONLY to label results
@@ -69,4 +71,29 @@ Serviceability serviceabilityOf(
   return d <= kServiceRadiusKm
       ? Serviceability.inRange
       : Serviceability.outOfRange;
+}
+
+/// The point the restaurant list should sort around, or (null, null) for an
+/// honest popularity sort.
+///
+/// Rules, most → least specific:
+///  1. The event location's own coordinates, when the draft has them.
+///  2. While PLANNING (an event location is set) but its coordinates are
+///     unknown — nothing. Falling back to the saved home/work address here
+///     is a lie: the header says "Event location" while the list quietly
+///     sorts around home. Popularity is the honest answer.
+///  3. Not planning → the saved address coordinates, when it has any.
+({double? lat, double? lng}) resolveSortOrigin({
+  required EventDraft draft,
+  required UserAddress? savedAddress,
+}) {
+  if (draft.hasEventCoords) {
+    return (lat: draft.eventLatitude, lng: draft.eventLongitude);
+  }
+  final planning = draft.location?.trim().isNotEmpty ?? false;
+  if (planning) return (lat: null, lng: null);
+  if (savedAddress != null && savedAddress.hasCoords) {
+    return (lat: savedAddress.latitude, lng: savedAddress.longitude);
+  }
+  return (lat: null, lng: null);
 }

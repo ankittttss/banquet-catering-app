@@ -45,4 +45,41 @@ abstract interface class BanquetRepository {
   /// accepted event. Admins can expand this to filter by "works for this
   /// banquet" later; for MVP every `role='manager'` profile is eligible.
   Future<List<UserProfile>> fetchAvailableManagers();
+
+  // ── Admin venue management (phase 40) ──────────────────────────────────
+  // Venues used to be hand-inserted in the database, which is how rows
+  // without coordinates could exist. These methods back the admin console's
+  // venue manager; the DB additionally enforces that ACTIVE venues carry an
+  // address + coordinates (banquet_venues_active_needs_location).
+
+  /// Every venue in ANY state (active + inactive) — admin console list.
+  Future<List<BanquetVenue>> fetchVenuesAdmin();
+
+  /// Create a venue owned by [ownerProfileId]. Returns the inserted row.
+  Future<BanquetVenue> createVenue({
+    required String ownerProfileId,
+    required String name,
+    String? address,
+    double? latitude,
+    double? longitude,
+    int? capacity,
+    required bool isActive,
+  });
+
+  /// Update a venue. All fields are written (null clears the nullable ones),
+  /// so callers pass the complete desired state. Returns the updated row.
+  Future<BanquetVenue> updateVenue({
+    required String venueId,
+    required String ownerProfileId,
+    required String name,
+    String? address,
+    double? latitude,
+    double? longitude,
+    int? capacity,
+    required bool isActive,
+  });
+
+  /// Banquet-operator profiles (`role='banquet'`) — the admin assigns one
+  /// as the owner when onboarding a venue.
+  Future<List<UserProfile>> fetchBanquetOperators();
 }

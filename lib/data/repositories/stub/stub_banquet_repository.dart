@@ -50,4 +50,71 @@ class StubBanquetRepository implements BanquetRepository {
 
   @override
   Future<List<UserProfile>> fetchAvailableManagers() async => const [];
+
+  // ── Admin venue management ────────────────────────────────────────────
+  // In-memory store so the admin venue screen is exercisable offline.
+
+  final List<BanquetVenue> _venues = [];
+  int _nextId = 1;
+
+  @override
+  Future<List<BanquetVenue>> fetchVenuesAdmin() async =>
+      List.unmodifiable(_venues);
+
+  @override
+  Future<BanquetVenue> createVenue({
+    required String ownerProfileId,
+    required String name,
+    String? address,
+    double? latitude,
+    double? longitude,
+    int? capacity,
+    required bool isActive,
+  }) async {
+    final venue = BanquetVenue(
+      id: 'stub-venue-${_nextId++}',
+      ownerProfileId: ownerProfileId,
+      name: name,
+      address: address,
+      latitude: latitude,
+      longitude: longitude,
+      capacity: capacity,
+      isActive: isActive,
+    );
+    _venues.add(venue);
+    return venue;
+  }
+
+  @override
+  Future<BanquetVenue> updateVenue({
+    required String venueId,
+    required String ownerProfileId,
+    required String name,
+    String? address,
+    double? latitude,
+    double? longitude,
+    int? capacity,
+    required bool isActive,
+  }) async {
+    final venue = BanquetVenue(
+      id: venueId,
+      ownerProfileId: ownerProfileId,
+      name: name,
+      address: address,
+      latitude: latitude,
+      longitude: longitude,
+      capacity: capacity,
+      isActive: isActive,
+    );
+    final i = _venues.indexWhere((v) => v.id == venueId);
+    if (i >= 0) {
+      _venues[i] = venue;
+    } else {
+      _venues.add(venue);
+    }
+    return venue;
+  }
+
+  @override
+  Future<List<UserProfile>> fetchBanquetOperators() async => const [];
 }

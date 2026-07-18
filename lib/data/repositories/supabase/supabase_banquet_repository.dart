@@ -170,4 +170,81 @@ class SupabaseBanquetRepository implements BanquetRepository {
       'is_active': isActive,
     }).eq('id', itemId);
   }
+
+  // ── Admin venue management ────────────────────────────────────────────
+
+  @override
+  Future<List<BanquetVenue>> fetchVenuesAdmin() async {
+    // No is_active filter — the admin sees drafts too. RLS restricts this
+    // to admins via venues_admin_write / venues_owner_rw anyway; customers
+    // go through fetchAllVenues.
+    final rows = await supabase.from('banquet_venues').select().order('name');
+    return rows.map<BanquetVenue>(BanquetVenue.fromMap).toList(growable: false);
+  }
+
+  @override
+  Future<BanquetVenue> createVenue({
+    required String ownerProfileId,
+    required String name,
+    String? address,
+    double? latitude,
+    double? longitude,
+    int? capacity,
+    required bool isActive,
+  }) async {
+    final row = await supabase
+        .from('banquet_venues')
+        .insert({
+          'owner_profile_id': ownerProfileId,
+          'name': name,
+          'address': address,
+          'latitude': latitude,
+          'longitude': longitude,
+          'capacity': capacity,
+          'is_active': isActive,
+        })
+        .select()
+        .single();
+    return BanquetVenue.fromMap(row);
+  }
+
+  @override
+  Future<BanquetVenue> updateVenue({
+    required String venueId,
+    required String ownerProfileId,
+    required String name,
+    String? address,
+    double? latitude,
+    double? longitude,
+    int? capacity,
+    required bool isActive,
+  }) async {
+    // Full-state write: nulls intentionally clear address/coords/capacity
+    // (the DB guard rejects an active venue losing its location).
+    final row = await supabase
+        .from('banquet_venues')
+        .update({
+          'owner_profile_id': ownerProfileId,
+          'name': name,
+          'address': address,
+          'latitude': latitude,
+          'longitude': longitude,
+          'capacity': capacity,
+          'is_active': isActive,
+        })
+        .eq('id', venueId)
+        .select()
+        .single();
+    return BanquetVenue.fromMap(row);
+  }
+
+  @override
+  Future<List<UserProfile>> fetchBanquetOperators() async {
+    final rows = await supabase
+        .from('profiles')
+        .select()
+        .eq('role', 'banquet')
+        .order('name');
+    return rows.map<UserProfile>(UserProfile.fromMap).toList(growable: false);
+  }
 }

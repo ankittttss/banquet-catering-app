@@ -246,6 +246,21 @@ class EventDraftController extends Notifier<EventDraft> {
     );
   }
 
+  /// Late coordinate pin for a banquet venue that was saved WITHOUT coords —
+  /// a background geocode of its address calls this once the lookup lands.
+  /// Ignored when the user has since picked a different venue (or cleared
+  /// it), or when coordinates arrived some other way in the meantime, so a
+  /// slow lookup can never stamp a stale point onto a newer draft.
+  void pinVenueCoords({
+    required String venueId,
+    required double latitude,
+    required double longitude,
+  }) {
+    final s = state;
+    if (s.banquetVenueId != venueId || s.hasEventCoords) return;
+    state = s.copyWith(eventLatitude: latitude, eventLongitude: longitude);
+  }
+
   void setServiceBoyCount(int v) => state = state.copyWith(
         serviceBoyCount: v.clamp(state.suggestedServiceBoys, 999),
       );

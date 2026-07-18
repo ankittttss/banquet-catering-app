@@ -90,6 +90,15 @@ class AdminHomeScreen extends ConsumerWidget {
                   ),
                   const SizedBox(height: AppSizes.sm),
                   _NavTile(
+                    icon: PhosphorIconsDuotone.buildings,
+                    iconBg: AppColors.catGreenLt,
+                    iconColor: AppColors.catGreen,
+                    title: 'Banquet venues',
+                    subtitle: 'Onboard halls & keep locations pinned',
+                    onTap: () => context.push(AppRoutes.adminVenues),
+                  ),
+                  const SizedBox(height: AppSizes.sm),
+                  _NavTile(
                     icon: PhosphorIconsDuotone.signOut,
                     iconBg: AppColors.primarySoft,
                     iconColor: AppColors.primary,

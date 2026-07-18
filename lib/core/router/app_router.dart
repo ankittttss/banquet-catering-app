@@ -9,6 +9,7 @@ import '../../features/admin/screens/admin_home_screen.dart';
 import '../../features/admin/screens/admin_restaurant_detail_screen.dart';
 import '../../features/admin/screens/admin_restaurant_wizard_screen.dart';
 import '../../features/admin/screens/admin_restaurants_screen.dart';
+import '../../features/admin/screens/admin_venues_screen.dart';
 import '../../features/auth/screens/login_screen.dart';
 import '../../features/auth/screens/otp_screen.dart';
 import '../../features/banquet/screens/banquet_home_screen.dart';
@@ -254,6 +255,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: AppRoutes.adminCharges,
         pageBuilder: (_, s) => _page(s, const AdminChargesScreen()),
+      ),
+      GoRoute(
+        path: AppRoutes.adminVenues,
+        pageBuilder: (_, s) => _page(s, const AdminVenuesScreen()),
       ),
       GoRoute(
         path: AppRoutes.adminRestaurants,

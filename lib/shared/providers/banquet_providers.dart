@@ -41,3 +41,17 @@ final availableManagersProvider =
   final repo = ref.watch(banquetRepositoryProvider);
   return repo.fetchAvailableManagers();
 });
+
+/// Every venue in any state — admin console venue manager.
+final adminVenuesProvider =
+    FutureProvider.autoDispose<List<BanquetVenue>>((ref) async {
+  final repo = ref.watch(banquetRepositoryProvider);
+  return repo.fetchVenuesAdmin();
+});
+
+/// Banquet-operator profiles the admin can assign as a venue's owner.
+final banquetOperatorsProvider =
+    FutureProvider.autoDispose<List<UserProfile>>((ref) async {
+  final repo = ref.watch(banquetRepositoryProvider);
+  return repo.fetchBanquetOperators();
+});

@@ -97,6 +97,40 @@ void main() {
     });
   });
 
+  group('pinVenueCoords (late background geocode)', () {
+    test('pins coords for the still-selected venue', () {
+      ctrl().setBanquetVenue(venueId: 'v1', venueName: 'Grand Palace');
+      ctrl().pinVenueCoords(venueId: 'v1', latitude: 17.44, longitude: 78.35);
+      final d = container.read(eventDraftProvider);
+      expect(d.eventLatitude, 17.44);
+      expect(d.eventLongitude, 78.35);
+    });
+
+    test('ignored when the user switched venue meanwhile', () {
+      ctrl().setBanquetVenue(venueId: 'v1', venueName: 'Grand Palace');
+      ctrl().setBanquetVenue(venueId: 'v2', venueName: 'Community Hall');
+      // Slow lookup for v1 lands late — must not stamp v1's point onto v2.
+      ctrl().pinVenueCoords(venueId: 'v1', latitude: 17.44, longitude: 78.35);
+      final d = container.read(eventDraftProvider);
+      expect(d.eventLatitude, isNull);
+      expect(d.eventLongitude, isNull);
+    });
+
+    test('ignored when coordinates already exist', () {
+      ctrl().setBanquetVenue(
+        venueId: 'v1',
+        venueName: 'Grand Palace',
+        address: 'Grand Palace, Gachibowli',
+        latitude: 17.44,
+        longitude: 78.35,
+      );
+      ctrl().pinVenueCoords(venueId: 'v1', latitude: 1.0, longitude: 2.0);
+      final d = container.read(eventDraftProvider);
+      expect(d.eventLatitude, 17.44);
+      expect(d.eventLongitude, 78.35);
+    });
+  });
+
   group('event location coordinates', () {
     test('a new address without coords CLEARS the previous pin', () {
       ctrl().setEventLocation(

@@ -35,6 +35,7 @@ class AppRoutes {
   // retired; statuses flow automatically and menus are per-restaurant.)
   static const adminHome = '/admin';
   static const adminCharges = '/admin/charges';
+  static const adminVenues = '/admin/venues';
   static const adminRestaurants = '/admin/restaurants';
   static const adminRestaurantNew = '/admin/restaurants/new';
   static const adminRestaurantDetail = '/admin/restaurants/:id'; // template

@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/utils/geo.dart';
 import '../../data/models/menu_category.dart';
 import '../../data/models/menu_item.dart';
 import '../../data/models/restaurant.dart';
@@ -33,16 +34,13 @@ final restaurantsProvider = FutureProvider<List<Restaurant>>((ref) async {
   final addr = ref.watch(activeAddressProvider);
   final draft = ref.watch(eventDraftProvider);
 
-  // Prefer the event-location coordinates; fall back to the saved address.
-  double? lat;
-  double? lng;
-  if (draft.hasEventCoords) {
-    lat = draft.eventLatitude;
-    lng = draft.eventLongitude;
-  } else if (addr != null && addr.hasCoords) {
-    lat = addr.latitude;
-    lng = addr.longitude;
-  }
+  // Event coords first; saved address only when NOT planning. While planning
+  // without coords, resolveSortOrigin returns (null, null) — an honest
+  // popularity sort, never a silent fallback to the home address (the header
+  // says "Event location", so sorting around home would be a lie).
+  final origin = resolveSortOrigin(draft: draft, savedAddress: addr);
+  final lat = origin.lat;
+  final lng = origin.lng;
 
   if (draft.tierId != null) {
     final tierRepo = ref.read(eventTierRepositoryProvider);
