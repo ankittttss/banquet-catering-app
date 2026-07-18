@@ -15,10 +15,8 @@ import '../../../data/models/charges_config.dart';
 import '../../../data/models/checkout_totals.dart';
 import '../../../data/models/event_draft.dart';
 import '../../../data/models/restaurant.dart';
-import '../../../data/models/user_address.dart';
 import '../../../data/models/venue_type.dart';
 import '../../../shared/providers/addon_providers.dart';
-import '../../../shared/providers/address_providers.dart';
 import '../../../shared/providers/auth_providers.dart';
 import '../../../shared/providers/cart_health_providers.dart';
 import '../../../shared/providers/cart_providers.dart';
@@ -28,6 +26,7 @@ import '../../../shared/providers/repositories_providers.dart';
 import '../../../shared/providers/search_results_providers.dart';
 import '../../../shared/widgets/app_error_view.dart';
 import '../../../shared/widgets/app_scaffold.dart';
+import '../checkout_guards.dart';
 import '../../../shared/widgets/service_tax_tile.dart';
 
 enum _PaymentMethod { upi, card, cod }
@@ -61,42 +60,22 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     }
 
     final draft = ref.read(eventDraftProvider);
-    // Active address (header-chip selection, falls back to default) — the
-    // same source the home feed and search use, so the fallback delivery
-    // location can never silently disagree with what the customer sees.
-    final address = ref.read(activeAddressProvider);
 
-    // Gate: the event must actually be planned before an order is placed.
-    // Otherwise the checkout would fabricate a nameless event with a default
-    // date/time (the customer never filled anything in). Require the core
-    // details the "Plan your event" screen collects — a name and a date —
-    // and route the customer there to complete them if they're missing.
-    final eventName = draft.eventName?.trim() ?? '';
-    if (eventName.isEmpty || draft.date == null) {
+    // Gate: the REAL planning workflow must be complete — name, date,
+    // session, start/end time, location with CONFIRMED coordinates, tier,
+    // and the venue branch (banquet venue picked / property details done).
+    // Nothing is backfilled anymore: no default times, and the saved home
+    // address is never silently turned into the event location. The server
+    // (place_order, phase42) enforces the same rules for direct RPC callers.
+    final gap = checkoutPlanningGap(draft);
+    if (gap != null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Add your event details (name & date) before placing the order.',
-          ),
-        ),
+        SnackBar(content: Text(gap.message)),
       );
-      context.push(AppRoutes.eventDetails);
+      context.push(gap.route);
       return;
     }
-
-    // Backfill only the NOT-NULL-but-UI-optional scheduling fields (session /
-    // start / end time) and resolve the delivery location from the saved
-    // address when the draft carries none. Name and date are guaranteed above.
-    final filled = _ensureDraftComplete(draft, address?.fullAddress);
-    if (filled == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content:
-              Text('Please add a delivery address before placing the order.'),
-        ),
-      );
-      return;
-    }
+    final filled = draft;
 
     setState(() => _placing = true);
     try {
@@ -206,33 +185,6 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     }
   }
 
-  /// Fills in reasonable defaults for any missing event fields so the insert
-  /// always has a valid payload. Returns null only when we can't infer a
-  /// delivery location (no saved address + empty draft).
-  EventDraft? _ensureDraftComplete(EventDraft d, String? fallbackLocation) {
-    final location = (d.location != null && d.location!.trim().isNotEmpty)
-        ? d.location
-        : fallbackLocation;
-    if (location == null || location.trim().isEmpty) return null;
-
-    final now = DateTime.now();
-    final date = d.date ?? now.add(const Duration(days: 3));
-    final session = d.session ?? 'Dinner';
-    final start =
-        d.startTime ?? DateTime(date.year, date.month, date.day, 19, 0);
-    final end = d.endTime ?? DateTime(date.year, date.month, date.day, 22, 0);
-    final guests = d.guestCount > 0 ? d.guestCount : 50;
-
-    return d.copyWith(
-      date: date,
-      location: location,
-      session: session,
-      startTime: start,
-      endTime: end,
-      guestCount: guests,
-    );
-  }
-
   String _friendlyError(Object e) {
     final s = e.toString();
     // Postgrest errors ship with message/hint/details; pull the first line.
@@ -250,7 +202,6 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     final restaurants = ref.watch(cartRestaurantsProvider).valueOrNull ??
         const <String, Restaurant>{};
     final event = ref.watch(eventDraftProvider);
-    final address = ref.watch(activeAddressProvider);
 
     return AppScaffold(
       padded: false,
@@ -278,14 +229,62 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
             event.venueType,
             addonsTotal,
           );
+          // Resolved ONCE — the banner message, its tap target and the
+          // place-order button state all share this single result.
+          final gap = checkoutPlanningGap(event);
           return Stack(
             children: [
               ListView(
                 padding: const EdgeInsets.only(bottom: 120),
                 children: [
+                  // Planning-gap banner — same rule as the place-order gate
+                  // (and the server), surfaced BEFORE the button tap. Tapping
+                  // opens the EXACT screen that fixes the gap (venue screen
+                  // for a missing venue type, property screen for incomplete
+                  // property details, event details otherwise).
+                  if (gap != null)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(
+                        AppSizes.pagePadding,
+                        AppSizes.md,
+                        AppSizes.pagePadding,
+                        0,
+                      ),
+                      child: InkWell(
+                        onTap: () => context.push(gap.route),
+                        borderRadius: BorderRadius.circular(AppSizes.radiusSm),
+                        child: Container(
+                          padding: const EdgeInsets.all(AppSizes.sm),
+                          decoration: BoxDecoration(
+                            color: AppColors.catGoldLt,
+                            borderRadius:
+                                BorderRadius.circular(AppSizes.radiusSm),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.info_outline_rounded,
+                                  size: 18, color: AppColors.accentDark),
+                              const SizedBox(width: AppSizes.sm),
+                              Expanded(
+                                child: Text(
+                                  gap.message,
+                                  style: AppTextStyles.caption
+                                      .copyWith(color: AppColors.accentDark),
+                                ),
+                              ),
+                              const Icon(Icons.chevron_right_rounded,
+                                  size: 18, color: AppColors.accentDark),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  // The order is delivered to the EVENT location (banquet
+                  // venue or confirmed private address) — the saved profile
+                  // address is no longer displayed or required here.
                   _Section(
-                    title: 'Delivery address',
-                    child: _AddressCard(address: address),
+                    title: 'Delivery location',
+                    child: _EventLocationCard(event: event),
                   ),
                   _Section(
                     title: 'Event details',
@@ -376,7 +375,10 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                 child: _PlaceOrderBar(
                   total: totals.total,
                   loading: _placing,
-                  disabled: cart.isEmpty || address == null,
+                  // A fully planned event proceeds with NO saved profile
+                  // address — the gap gate already guarantees a confirmed
+                  // event location.
+                  disabled: cart.isEmpty || gap != null,
                   onPlace: () => _placeOrder(totals),
                 ),
               ),
@@ -450,17 +452,20 @@ class _Section extends StatelessWidget {
   }
 }
 
-// ───────────────────────── Address card ─────────────────────────
+// ───────────────────────── Delivery location card ─────────────────────────
 
-class _AddressCard extends StatelessWidget {
-  const _AddressCard({required this.address});
-  final UserAddress? address;
+/// Where the order is delivered — the EVENT location (banquet venue or the
+/// customer's confirmed private address), never the saved profile address.
+class _EventLocationCard extends StatelessWidget {
+  const _EventLocationCard({required this.event});
+  final EventDraft event;
 
   @override
   Widget build(BuildContext context) {
-    if (address == null) {
+    final location = event.location?.trim();
+    if (location == null || location.isEmpty) {
       return InkWell(
-        onTap: () => context.push(AppRoutes.addresses),
+        onTap: () => context.push(AppRoutes.eventDetails),
         borderRadius: BorderRadius.circular(AppSizes.radiusSm),
         child: Container(
           padding: const EdgeInsets.all(AppSizes.md),
@@ -476,7 +481,7 @@ class _AddressCard extends StatelessWidget {
               const SizedBox(width: AppSizes.sm),
               Expanded(
                 child: Text(
-                  'Add a delivery address to continue',
+                  'Set your event location to continue',
                   style:
                       AppTextStyles.bodyBold.copyWith(color: AppColors.primary),
                 ),
@@ -488,6 +493,7 @@ class _AddressCard extends StatelessWidget {
       );
     }
 
+    final isBanquet = event.banquetVenueName != null;
     return Container(
       padding: const EdgeInsets.all(AppSizes.md),
       decoration: BoxDecoration(
@@ -498,16 +504,23 @@ class _AddressCard extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.home_outlined, color: AppColors.primary, size: 22),
+          Icon(
+            isBanquet ? Icons.apartment_rounded : Icons.event_rounded,
+            color: AppColors.primary,
+            size: 22,
+          ),
           const SizedBox(width: AppSizes.sm),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(address!.label.label, style: AppTextStyles.bodyBold),
+                Text(
+                  isBanquet ? event.banquetVenueName! : 'Event location',
+                  style: AppTextStyles.bodyBold,
+                ),
                 const SizedBox(height: 2),
                 Text(
-                  address!.fullAddress,
+                  location,
                   style: AppTextStyles.caption,
                   maxLines: 3,
                 ),
@@ -515,7 +528,7 @@ class _AddressCard extends StatelessWidget {
             ),
           ),
           InkWell(
-            onTap: () => context.push(AppRoutes.addresses),
+            onTap: () => context.push(AppRoutes.eventDetails),
             child: Padding(
               padding: const EdgeInsets.only(left: AppSizes.sm),
               child: Text(
