@@ -36,11 +36,15 @@ class EventTier {
       );
 }
 
-/// Static fallback used when the DB is unavailable (dev stub mode) or when
-/// an async load is still pending. Values mirror the Phase 14 seed.
+/// Static fallback served by the STUB repository (offline dev only).
+/// Values mirror the Phase 14 seed.
+///
+/// The ids are stable, UUID-SHAPED sentinels: the shared planning cascade
+/// treats any non-UUID tier id (like the old 'budget'/'standard'/'premium')
+/// as structurally invalid, so stub tiers must pass the same shape check.
 const fallbackEventTiers = <EventTier>[
   EventTier(
-    id: 'budget',
+    id: '11111111-1111-4111-8111-111111111111',
     code: 'budget',
     label: 'Budget Bite',
     description: '1 starter + 1 main + 1 dessert',
@@ -49,7 +53,7 @@ const fallbackEventTiers = <EventTier>[
     sortOrder: 1,
   ),
   EventTier(
-    id: 'standard',
+    id: '22222222-2222-4222-8222-222222222222',
     code: 'standard',
     label: 'Classic Meal',
     description: '2 starters + 2 mains + 1 dessert',
@@ -58,7 +62,7 @@ const fallbackEventTiers = <EventTier>[
     sortOrder: 2,
   ),
   EventTier(
-    id: 'premium',
+    id: '33333333-3333-4333-8333-333333333333',
     code: 'premium',
     label: 'Premium Feast',
     description: '4 starters + 3 mains + 2 desserts + drinks',

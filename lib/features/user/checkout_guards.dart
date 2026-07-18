@@ -9,45 +9,16 @@ class CheckoutGap {
   final String route;
 }
 
-/// The first missing piece of the REAL planning workflow, or null when the
-/// order may proceed. Pure — unit-tested, and the checkout screen uses it
-/// for both the visible banner and the place-order gate, so they can't
-/// drift.
+/// The first missing piece of the planning workflow, or null when the order
+/// may proceed.
 ///
-/// Checkout no longer backfills anything: no default session/times, and the
-/// saved home address is NEVER turned into the event location. The address
-/// may prefill Event Details (it already does), but the customer must walk
-/// the actual flow. Requirements (mirrored server-side in place_order,
-/// phase42):
-///  • event name + date
-///  • session and start/end time — really chosen, not defaulted
-///  • event location with CONFIRMED coordinates
-///  • a package/tier
-///  • venue type chosen; banquet hall → a venue selected,
-///    private property → property details complete
-CheckoutGap? checkoutPlanningGap(EventDraft draft) {
-  if (draft.eventName?.trim().isEmpty ?? true) {
-    return const CheckoutGap(
-      message: 'Name your event before placing the order.',
-      route: AppRoutes.eventDetails,
-    );
-  }
-  // planningNextStep is the SAME cascade the "Continue planning" card uses:
-  // session → date → times → location → tier → venue branch. Only when it
-  // says "browse restaurants" (route == userHome) is planning complete.
-  final step = planningNextStep(draft);
-  if (step.route != AppRoutes.userHome) {
-    return CheckoutGap(
-      message: 'Finish planning your event first: ${step.hint}',
-      route: step.route,
-    );
-  }
-  if (!draft.hasEventCoords) {
-    return const CheckoutGap(
-      message: 'Confirm your event location — pick it from the address '
-          'suggestions on the event details page.',
-      route: AppRoutes.eventDetails,
-    );
-  }
-  return null;
+/// A thin wrapper over [planningNextStep] — THE shared cascade (name,
+/// session, date, times, IST schedule validity, location, confirmed
+/// coordinates, guest range, tier, venue branch) — so checkout, the
+/// event-details Continue gate and the home card can never disagree.
+/// place_order enforces the same rules server-side for direct RPC callers.
+CheckoutGap? checkoutPlanningGap(EventDraft draft, {DateTime? now}) {
+  final step = planningNextStep(draft, now: now);
+  if (step.route == AppRoutes.userHome) return null; // planning complete
+  return CheckoutGap(message: step.hint, route: step.route);
 }

@@ -184,6 +184,10 @@ declare
   v_venue_lng double precision;
   v_venue_address text;
   v_location text;
+  -- phase42 v4: schedule rules run on the IST business clock. The database
+  -- runs UTC, so raw current_date/localtime would be up to 5.5 h behind
+  -- India — always compare against Asia/Kolkata explicitly.
+  v_now_ist timestamp;
   -- charges config (defaults match the client fallback)
   c_banquet numeric := 0;
   c_buffet numeric := 0;
@@ -211,16 +215,20 @@ begin
   end if;
 
   -- ── Validate the event payload ──
+  -- Product guest range — matches kGuestMin/kGuestMax in the app's shared
+  -- validation cascade and the guest selector.
   v_guests := coalesce((p_event->>'guest_count')::int, 0);
-  if v_guests < 1 or v_guests > 100000 then
-    raise exception 'Guest count must be between 1 and 100000.';
+  if v_guests < 5 or v_guests > 5000 then
+    raise exception 'Guest count must be between 5 and 5000.';
   end if;
+
+  v_now_ist := now() at time zone 'Asia/Kolkata';
 
   v_date := (p_event->>'event_date')::date;
   if v_date is null then
     raise exception 'Pick an event date.';
   end if;
-  if v_date < current_date then
+  if v_date < v_now_ist::date then
     raise exception 'The event date can''t be in the past.';
   end if;
 
@@ -231,6 +239,10 @@ begin
   end if;
   if v_end <= v_start then
     raise exception 'End time must be after the start time.';
+  end if;
+  -- Same-day guard: the event can't start at an IST time already passed.
+  if (v_date + v_start) <= v_now_ist then
+    raise exception 'That start time has already passed — pick a later time.';
   end if;
 
   if coalesce(trim(p_event->>'location'), '') = '' then

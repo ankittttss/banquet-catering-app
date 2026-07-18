@@ -102,12 +102,20 @@ void main() {
   });
 
   group('changing the event location invalidates dependent choices', () {
-    /// Fills steps 1–5 so planningNextStep reaches the venue branch.
+    // Fixed IST "now" so cascade assertions stay deterministic forever.
+    final now = DateTime(2026, 8, 1, 12, 0);
+
+    /// Fills the event-details fields so planningNextStep reaches the
+    /// venue branch.
     void fillBasics() {
+      ctrl().setEventName('Test Event');
       ctrl().setSession('Dinner');
       ctrl().setDate(DateTime(2026, 8, 20));
       ctrl().setStartTime(DateTime(2026, 8, 20, 19));
-      ctrl().setTier(tierId: 't1', tierCode: 'STANDARD');
+      ctrl().setTier(
+        tierId: '00000000-0000-4000-8000-000000000111',
+        tierCode: 'STANDARD',
+      );
     }
 
     test('banquet venue is cleared — the hall must be picked again', () {
@@ -132,7 +140,7 @@ void main() {
       expect(d.location, 'New Farmhouse, Shamirpet');
       expect(d.eventLatitude, 17.60);
       // Planning flow demands the venue step again — no stale routing.
-      expect(planningNextStep(d).route, AppRoutes.eventVenueType);
+      expect(planningNextStep(d, now: now).route, AppRoutes.eventVenueType);
     });
 
     test('property address details are cleared, the TYPE survives', () {
@@ -164,7 +172,7 @@ void main() {
       expect(d.propertyDraft!.cityPincode, isNull);
       expect(d.propertyDraft!.isComplete, isFalse);
       // Planning flow demands property completion again.
-      expect(planningNextStep(d).route, AppRoutes.eventProperty);
+      expect(planningNextStep(d, now: now).route, AppRoutes.eventProperty);
     });
 
     test('initial prefill is unaffected (nothing to invalidate yet)', () {
