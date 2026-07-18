@@ -24,6 +24,7 @@ import '../../../shared/widgets/double_back_exit.dart';
 import '../../../shared/widgets/empty_state.dart';
 import '../../../shared/widgets/restaurant_card.dart';
 import '../../../shared/widgets/safe_net_image.dart';
+import '../../../shared/widgets/shimmer.dart';
 import '../../../shared/widgets/user_bottom_nav.dart';
 import '../planning_next_step.dart';
 import '../widgets/address_picker_sheet.dart';
@@ -47,7 +48,17 @@ class _UserHomeScreenState extends ConsumerState<UserHomeScreen> {
     ref.invalidate(eventCategoriesProvider);
     ref.invalidate(collectionsProvider);
     ref.invalidate(addressesProvider);
-    await ref.read(restaurantsProvider.future);
+    // Wait for EVERY refreshed section, not just restaurants — otherwise the
+    // spinner disappears while categories/collections are still reloading.
+    // Each future is shielded so one failing section can't wedge the pull.
+    Future<void> quiet(Future<Object?> f) =>
+        f.then<void>((_) {}).catchError((_) {});
+    await Future.wait<void>([
+      quiet(ref.read(restaurantsProvider.future)),
+      quiet(ref.read(eventCategoriesProvider.future)),
+      quiet(ref.read(collectionsProvider.future)),
+      quiet(ref.read(addressesProvider.future)),
+    ]);
   }
 
   void _maybeScrollToRestaurants() {
@@ -70,15 +81,13 @@ class _UserHomeScreenState extends ConsumerState<UserHomeScreen> {
   Widget build(BuildContext context) {
     WidgetsBinding.instance
         .addPostFrameCallback((_) => _maybeScrollToRestaurants());
-    // The restaurant list is sorted by the event location while planning, so
-    // the section title reflects that instead of the generic "nearby". Same
-    // "an event location is set" signal the header uses, so they stay in sync.
+    // Three honest title states (see homeRestaurantsTitle): "nearby" when not
+    // planning, "serving your event location" only when the event point is
+    // CONFIRMED, neutral "Popular restaurants" + a confirm-location hint when
+    // planning without coordinates.
     final draft = ref.watch(eventDraftProvider);
-    final eventLocation = draft.location?.trim();
-    final planningEvent = eventLocation != null && eventLocation.isNotEmpty;
-    final restaurantsTitle = planningEvent
-        ? 'Restaurants serving your event location'
-        : 'Restaurants nearby';
+    final planningEvent = draft.location?.trim().isNotEmpty ?? false;
+    final needsLocationConfirm = planningEvent && !draft.hasEventCoords;
     return DoubleBackToExit(
       child: AppScaffold(
         padded: false,
@@ -94,24 +103,70 @@ class _UserHomeScreenState extends ConsumerState<UserHomeScreen> {
               const _SectionHeader(title: "What's the occasion?"),
               const SliverToBoxAdapter(child: _EventCategoriesGrid()),
               const SliverToBoxAdapter(child: SizedBox(height: AppSizes.md)),
-              _SectionHeader(
-                title: 'Curated for events',
-                trailing: 'See all',
-                onTrailingTap: () => context.push(AppRoutes.search),
-              ),
+              // Curated section renders its own header so header + tiles
+              // appear and disappear together (no orphaned title on error
+              // or empty data).
               const SliverToBoxAdapter(child: _CollectionsScroll()),
               const SliverToBoxAdapter(child: SizedBox(height: AppSizes.md)),
               const SliverToBoxAdapter(child: _FilterChipsRow()),
               _SectionHeader(
                 key: _restaurantsHeaderKey,
-                title: restaurantsTitle,
+                title: homeRestaurantsTitle(draft),
               ),
+              if (needsLocationConfirm)
+                const SliverToBoxAdapter(child: _ConfirmLocationHint()),
               const _RestaurantList(),
               const SliverToBoxAdapter(child: SizedBox(height: AppSizes.xxxl)),
             ],
           ),
         ),
         bottomBar: const UserBottomNav(active: UserNavTab.home),
+      ),
+    );
+  }
+}
+
+/// Shown under the restaurant-section title while an event is being planned
+/// WITHOUT confirmed coordinates: the list below is a popularity sort, and
+/// this is the honest, tappable path to fix it.
+class _ConfirmLocationHint extends StatelessWidget {
+  const _ConfirmLocationHint();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppSizes.pagePadding,
+        0,
+        AppSizes.pagePadding,
+        AppSizes.sm,
+      ),
+      child: InkWell(
+        onTap: () => context.push(AppRoutes.eventDetails),
+        borderRadius: BorderRadius.circular(AppSizes.radiusSm),
+        child: Container(
+          padding: const EdgeInsets.all(AppSizes.sm),
+          decoration: BoxDecoration(
+            color: AppColors.catGoldLt,
+            borderRadius: BorderRadius.circular(AppSizes.radiusSm),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.info_outline_rounded,
+                  size: 18, color: AppColors.accentDark),
+              const SizedBox(width: AppSizes.sm),
+              Expanded(
+                child: Text(
+                  'Confirm your event location to see kitchens that serve it',
+                  style: AppTextStyles.caption
+                      .copyWith(color: AppColors.accentDark),
+                ),
+              ),
+              const Icon(Icons.chevron_right_rounded,
+                  size: 18, color: AppColors.accentDark),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -418,14 +473,6 @@ class _SearchBar extends StatelessWidget {
                         ),
                       ),
                     ),
-                    Container(
-                      width: 1,
-                      height: 24,
-                      color: AppColors.border,
-                    ),
-                    const SizedBox(width: AppSizes.sm),
-                    const Icon(Icons.mic_none_rounded,
-                        color: AppColors.primary, size: 22),
                   ],
                 ),
               ),
@@ -508,8 +555,6 @@ class _FilterSheet extends ConsumerWidget {
   static const _purpleLt = Color(0xFFF3E8FF);
   static const _green = Color(0xFF1BA672);
   static const _greenLt = Color(0xFFEAFAF1);
-  static const _orange = Color(0xFFE97A2B);
-  static const _orangeLt = Color(0xFFFFF4EB);
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -622,13 +667,6 @@ class _FilterSheet extends ConsumerWidget {
                   iconBg: _greenLt,
                   iconColor: _green,
                   description: 'Only vegetarian kitchens',
-                ),
-                _FilterOptionData(
-                  sort: HomeSort.offers,
-                  icon: Icons.local_offer_rounded,
-                  iconBg: _orangeLt,
-                  iconColor: _orange,
-                  description: 'Deals & discounts',
                 ),
               ],
             ),
@@ -1214,9 +1252,21 @@ class _HeroBanner extends StatelessWidget {
 
 // ───────────────────────── Section header ─────────────────────────
 
+/// Sliver wrapper — the actual header row lives in [_SectionHeaderRow] so
+/// non-sliver contexts (the curated section, which renders its own header
+/// with a "See all" trailing) can share the exact same look.
 class _SectionHeader extends StatelessWidget {
-  const _SectionHeader({
-    super.key,
+  const _SectionHeader({super.key, required this.title});
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    return SliverToBoxAdapter(child: _SectionHeaderRow(title: title));
+  }
+}
+
+class _SectionHeaderRow extends StatelessWidget {
+  const _SectionHeaderRow({
     required this.title,
     this.trailing,
     this.onTrailingTap,
@@ -1227,49 +1277,47 @@ class _SectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SliverToBoxAdapter(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(
-          AppSizes.pagePadding,
-          AppSizes.xl,
-          AppSizes.pagePadding,
-          AppSizes.md,
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Flexible(child: Text(title, style: AppTextStyles.heading1)),
-            if (trailing != null)
-              InkWell(
-                onTap: onTrailingTap == null
-                    ? null
-                    : () {
-                        HapticFeedback.selectionClick();
-                        onTrailingTap!();
-                      },
-                borderRadius: BorderRadius.circular(AppSizes.radiusSm),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: AppSizes.xs, vertical: AppSizes.xs),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        trailing!,
-                        style: AppTextStyles.bodyBold
-                            .copyWith(color: AppColors.primary, fontSize: 13),
-                      ),
-                      if (onTrailingTap != null) ...[
-                        const SizedBox(width: 2),
-                        const Icon(Icons.arrow_forward_rounded,
-                            size: 14, color: AppColors.primary),
-                      ],
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppSizes.pagePadding,
+        AppSizes.xl,
+        AppSizes.pagePadding,
+        AppSizes.md,
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Flexible(child: Text(title, style: AppTextStyles.heading1)),
+          if (trailing != null)
+            InkWell(
+              onTap: onTrailingTap == null
+                  ? null
+                  : () {
+                      HapticFeedback.selectionClick();
+                      onTrailingTap!();
+                    },
+              borderRadius: BorderRadius.circular(AppSizes.radiusSm),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: AppSizes.xs, vertical: AppSizes.xs),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      trailing!,
+                      style: AppTextStyles.bodyBold
+                          .copyWith(color: AppColors.primary, fontSize: 13),
+                    ),
+                    if (onTrailingTap != null) ...[
+                      const SizedBox(width: 2),
+                      const Icon(Icons.arrow_forward_rounded,
+                          size: 14, color: AppColors.primary),
                     ],
-                  ),
+                  ],
                 ),
               ),
-          ],
-        ),
+            ),
+        ],
       ),
     );
   }
@@ -1285,7 +1333,11 @@ class _EventCategoriesGrid extends ConsumerWidget {
     final async = ref.watch(eventCategoriesProvider);
     return async.when(
       loading: () => const _EventGridSkeleton(),
-      error: (_, __) => const SizedBox.shrink(),
+      // Honest failure state instead of the grid silently vanishing.
+      error: (_, __) => _SectionLoadError(
+        message: "Couldn't load occasions",
+        onRetry: () => ref.invalidate(eventCategoriesProvider),
+      ),
       data: (cats) => Padding(
         padding: const EdgeInsets.symmetric(horizontal: AppSizes.pagePadding),
         child: GridView.builder(
@@ -1457,25 +1509,116 @@ class _EventGridSkeleton extends StatelessWidget {
 
 // ───────────────────────── Collections scroll ─────────────────────────
 
+/// The whole "Curated for events" section — HEADER INCLUDED, so the title,
+/// the tiles, the skeleton and the error state all appear and disappear as
+/// one unit (no orphaned header over nothing).
+///
+/// Cards are limited to collections whose slug maps to a catalog-verified
+/// search term ([collectionSearchTerm]) — a card must never open an empty
+/// search. When no collection qualifies (or the list is empty), the entire
+/// section collapses.
 class _CollectionsScroll extends ConsumerWidget {
   const _CollectionsScroll();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final async = ref.watch(collectionsProvider);
+
+    Widget titled(Widget child) => Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _SectionHeaderRow(
+              title: 'Curated for events',
+              trailing: 'See all',
+              onTrailingTap: () => context.push(AppRoutes.search),
+            ),
+            child,
+          ],
+        );
+
     return async.when(
-      loading: () => const SizedBox(height: 110),
-      error: (_, __) => const SizedBox.shrink(),
-      data: (list) => SizedBox(
-        height: 110,
-        child: ListView.separated(
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(
-            horizontal: AppSizes.pagePadding,
+      loading: () => titled(
+        SizedBox(
+          height: 110,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            physics: const NeverScrollableScrollPhysics(),
+            padding:
+                const EdgeInsets.symmetric(horizontal: AppSizes.pagePadding),
+            itemCount: 3,
+            separatorBuilder: (_, __) => const SizedBox(width: AppSizes.sm),
+            itemBuilder: (_, __) => ShimmerBox(
+              width: 170,
+              height: 110,
+              borderRadius: BorderRadius.circular(AppSizes.radiusMd),
+            ),
           ),
-          itemCount: list.length,
-          separatorBuilder: (_, __) => const SizedBox(width: AppSizes.sm),
-          itemBuilder: (_, i) => _CollectionCard(collection: list[i]),
+        ),
+      ),
+      error: (_, __) => titled(
+        _SectionLoadError(
+          message: "Couldn't load collections",
+          onRetry: () => ref.invalidate(collectionsProvider),
+        ),
+      ),
+      data: (list) {
+        final usable = list
+            .where((c) => collectionSearchTerm(c.slug) != null)
+            .toList(growable: false);
+        if (usable.isEmpty) return const SizedBox.shrink();
+        return titled(
+          SizedBox(
+            height: 110,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              padding:
+                  const EdgeInsets.symmetric(horizontal: AppSizes.pagePadding),
+              itemCount: usable.length,
+              separatorBuilder: (_, __) => const SizedBox(width: AppSizes.sm),
+              itemBuilder: (_, i) => _CollectionCard(collection: usable[i]),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// Compact inline failure row for a home section: message + Retry. Keeps the
+/// section visible and recoverable instead of silently vanishing.
+class _SectionLoadError extends StatelessWidget {
+  const _SectionLoadError({required this.message, required this.onRetry});
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: AppSizes.pagePadding),
+      child: Container(
+        padding: const EdgeInsets.all(AppSizes.md),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceAlt,
+          borderRadius: BorderRadius.circular(AppSizes.radiusSm),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.cloud_off_rounded,
+                size: 18, color: AppColors.textMuted),
+            const SizedBox(width: AppSizes.sm),
+            Expanded(
+              child: Text(message, style: AppTextStyles.caption),
+            ),
+            TextButton(
+              onPressed: onRetry,
+              child: Text(
+                'Retry',
+                style:
+                    AppTextStyles.bodyBold.copyWith(color: AppColors.primary),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -1495,11 +1638,12 @@ class _CollectionCard extends StatelessWidget {
     return InkWell(
       onTap: () {
         HapticFeedback.lightImpact();
-        // Land on live search results for this collection's theme — the
-        // server-side search matches restaurant names/cuisines and dishes.
-        // (These cards used to be dead taps.)
-        final q = Uri.encodeComponent(collection.slug);
-        context.push('${AppRoutes.search}?q=$q');
+        // Land on live search results for this collection's theme, using the
+        // catalog-VERIFIED term for this slug (the raw slug/name returned
+        // zero results — the cards used to open empty searches).
+        final term = collectionSearchTerm(collection.slug);
+        if (term == null) return; // unmapped cards are filtered out anyway
+        context.push('${AppRoutes.search}?q=${Uri.encodeComponent(term)}');
       },
       borderRadius: BorderRadius.circular(AppSizes.radiusMd),
       child: Container(
@@ -1522,11 +1666,8 @@ class _CollectionCard extends StatelessWidget {
               collection.name,
               style: AppTextStyles.heading3.copyWith(fontSize: 14),
             ),
-            if (collection.subtitle != null)
-              Text(
-                collection.subtitle!,
-                style: AppTextStyles.caption.copyWith(fontSize: 11),
-              ),
+            // NOTE: the DB `subtitle` ("28 places" etc.) is deliberately NOT
+            // rendered — those counts were static seed text, not real data.
           ],
         ),
       ),

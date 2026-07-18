@@ -12,11 +12,9 @@ import '../../../core/utils/geo.dart';
 import '../../../data/models/menu_category.dart';
 import '../../../data/models/menu_item.dart';
 import '../../../data/models/restaurant.dart';
-import '../../../data/models/restaurant_offer.dart';
 import '../../../shared/providers/cart_providers.dart';
 import '../../../shared/providers/favorites_providers.dart';
 import '../../../shared/providers/menu_providers.dart';
-import '../../../shared/providers/offers_providers.dart';
 import '../../../shared/providers/search_results_providers.dart';
 import '../../../shared/widgets/app_scaffold.dart';
 import '../../../shared/widgets/safe_net_image.dart';
@@ -125,9 +123,8 @@ class RestaurantDetailScreen extends ConsumerWidget {
                 SliverToBoxAdapter(
                   child: _OutOfRangeBanner(distanceKm: distanceKm),
                 ),
-              SliverToBoxAdapter(
-                child: _OffersScroll(restaurantId: restaurantId),
-              ),
+              // Offers strip removed for the MVP (no offers product); the
+              // restaurant_offers table stays in the DB for later.
               if (items.isEmpty)
                 const SliverFillRemaining(
                   hasScrollBody: false,
@@ -510,82 +507,6 @@ class _Separator extends StatelessWidget {
   @override
   Widget build(BuildContext context) =>
       Container(width: 1, height: 36, color: AppColors.border);
-}
-
-// ───────────────────────── Offers scroll ─────────────────────────
-
-class _OffersScroll extends ConsumerWidget {
-  const _OffersScroll({required this.restaurantId});
-  final String restaurantId;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final async = ref.watch(restaurantOffersProvider(restaurantId));
-    return async.when(
-      loading: () => const SizedBox.shrink(),
-      error: (_, __) => const SizedBox.shrink(),
-      data: (list) {
-        if (list.isEmpty) return const SizedBox.shrink();
-        return SizedBox(
-          height: 72,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(
-              horizontal: AppSizes.pagePadding,
-              vertical: AppSizes.sm,
-            ),
-            itemCount: list.length,
-            separatorBuilder: (_, __) => const SizedBox(width: AppSizes.sm),
-            itemBuilder: (_, i) => _OfferCard(offer: list[i]),
-          ),
-        );
-      },
-    );
-  }
-}
-
-class _OfferCard extends StatelessWidget {
-  const _OfferCard({required this.offer});
-  final RestaurantOffer offer;
-
-  @override
-  Widget build(BuildContext context) {
-    final accent = AppColors.fromHex(offer.accentHex, fallback: AppColors.info);
-    final bg = AppColors.fromHex(offer.bgHex, fallback: AppColors.catBlueLt);
-    return Container(
-      width: 220,
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppSizes.md,
-        vertical: AppSizes.sm,
-      ),
-      decoration: BoxDecoration(
-        color: bg,
-        border: Border.all(color: accent.withValues(alpha: 0.4), width: 1.2),
-        borderRadius: BorderRadius.circular(AppSizes.radiusSm),
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            offer.title,
-            style: AppTextStyles.bodyBold.copyWith(color: accent),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          if (offer.subtitle != null) ...[
-            const SizedBox(height: 2),
-            Text(
-              offer.subtitle!,
-              style: AppTextStyles.caption.copyWith(fontSize: 11),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ],
-        ],
-      ),
-    );
-  }
 }
 
 // ───────────────────────── Menu list ─────────────────────────

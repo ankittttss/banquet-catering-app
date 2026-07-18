@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/utils/geo.dart';
 import '../../data/models/dish_search_result.dart';
 import '../../data/models/restaurant.dart';
 import 'address_providers.dart';
@@ -10,20 +11,17 @@ import 'repositories_providers.dart';
 /// before writing here, so each write costs one server round-trip.
 final searchQueryProvider = StateProvider<String>((_) => '');
 
-/// The customer's reference point, with the same precedence the home feed
-/// uses (menu_providers.restaurantsProvider): event-location coords first,
-/// then the active saved address. (null, null) when neither has coords —
-/// search still works, results just carry no distance.
+/// The customer's reference point — THE single location rule for every
+/// customer flow (home feed, search distances, restaurant-detail and cart
+/// serviceability, checkout revalidation), all via [resolveSortOrigin]:
+/// event coords first; while PLANNING without coords → (null, null), never
+/// the home address (serviceability then reads `unknown`, which never
+/// blocks browsing — checkout + place_order enforce the hard stop);
+/// home-address coords only when no event is being planned.
 final customerCoordsProvider = Provider<({double? lat, double? lng})>((ref) {
   final draft = ref.watch(eventDraftProvider);
-  if (draft.hasEventCoords) {
-    return (lat: draft.eventLatitude, lng: draft.eventLongitude);
-  }
   final addr = ref.watch(activeAddressProvider);
-  if (addr != null && addr.hasCoords) {
-    return (lat: addr.latitude, lng: addr.longitude);
-  }
-  return (lat: null, lng: null);
+  return resolveSortOrigin(draft: draft, savedAddress: addr);
 });
 
 /// Server-side restaurant search over the WHOLE published catalog — no

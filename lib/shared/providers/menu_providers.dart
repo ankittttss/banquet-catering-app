@@ -1,13 +1,12 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/utils/geo.dart';
 import '../../data/models/menu_category.dart';
 import '../../data/models/menu_item.dart';
 import '../../data/models/restaurant.dart';
-import 'address_providers.dart';
 import 'event_providers.dart';
 import 'filters_providers.dart';
 import 'repositories_providers.dart';
+import 'search_results_providers.dart';
 
 final menuCategoriesProvider = FutureProvider<List<MenuCategory>>((ref) {
   return ref.read(menuRepositoryProvider).fetchCategories();
@@ -31,14 +30,12 @@ final menuCategoriesProvider = FutureProvider<List<MenuCategory>>((ref) {
 ///   3. Otherwise → full catalog, popularity sort.
 final restaurantsProvider = FutureProvider<List<Restaurant>>((ref) async {
   final repo = ref.read(menuRepositoryProvider);
-  final addr = ref.watch(activeAddressProvider);
   final draft = ref.watch(eventDraftProvider);
 
-  // Event coords first; saved address only when NOT planning. While planning
-  // without coords, resolveSortOrigin returns (null, null) — an honest
-  // popularity sort, never a silent fallback to the home address (the header
-  // says "Event location", so sorting around home would be a lie).
-  final origin = resolveSortOrigin(draft: draft, savedAddress: addr);
+  // The ONE location rule (customerCoordsProvider → resolveSortOrigin):
+  // event coords first; while planning without coords → (null, null), an
+  // honest popularity list — never a silent fallback to the home address.
+  final origin = ref.watch(customerCoordsProvider);
   final lat = origin.lat;
   final lng = origin.lng;
 

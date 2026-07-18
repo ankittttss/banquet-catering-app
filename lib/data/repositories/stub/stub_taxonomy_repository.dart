@@ -1,6 +1,5 @@
 import '../../models/collection.dart';
 import '../../models/event_category.dart';
-import '../../models/restaurant_offer.dart';
 import '../../models/trending_search.dart';
 import '../taxonomy_repository.dart';
 
@@ -12,27 +11,6 @@ class StubTaxonomyRepository implements TaxonomyRepository {
 
   @override
   Future<List<Collection>> fetchCollections() async => _collections;
-
-  @override
-  Future<List<RestaurantOffer>> fetchOffersFor(String restaurantId) async =>
-      _offers
-          .map((o) => RestaurantOffer(
-                id: '${o.id}-$restaurantId',
-                restaurantId: restaurantId,
-                title: o.title,
-                subtitle: o.subtitle,
-                code: o.code,
-                accentHex: o.accentHex,
-                bgHex: o.bgHex,
-                sortOrder: o.sortOrder,
-              ))
-          .toList(growable: false);
-
-  @override
-  Future<Set<String>> fetchOfferRestaurantIds() async =>
-      // A meaningful subset so the home "Offers" chip visibly filters in
-      // stub mode (fetchOffersFor clones template offers for any id).
-      const {'r1', 'r3', 'r5'};
 
   @override
   Future<List<TrendingSearch>> fetchTrendingSearches() async => _trending;
@@ -163,29 +141,6 @@ class StubTaxonomyRepository implements TaxonomyRepository {
       bgHex: '#F3E8FF',
       iconHex: '#9B59B6',
       sortOrder: 3,
-    ),
-  ];
-
-  /// Template offers — each is cloned per-restaurant by fetchOffersFor.
-  static const _offers = [
-    RestaurantOffer(
-      id: 'offer1',
-      restaurantId: '',
-      title: '50% OFF up to ₹100',
-      subtitle: 'Use code FEAST50 · Above ₹299',
-      code: 'FEAST50',
-      accentHex: '#2B6CB0',
-      bgHex: '#EBF4FF',
-      sortOrder: 1,
-    ),
-    RestaurantOffer(
-      id: 'offer2',
-      restaurantId: '',
-      title: 'Free delivery on 50+ plates',
-      subtitle: 'No code needed · Auto-applied',
-      accentHex: '#1BA672',
-      bgHex: '#EAFAF1',
-      sortOrder: 2,
     ),
   ];
 
