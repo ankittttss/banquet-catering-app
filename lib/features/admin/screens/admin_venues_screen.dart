@@ -5,31 +5,21 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' show PostgrestException;
 
-import '../../../core/constants/app_colors.dart';
-import '../../../core/constants/app_sizes.dart';
-import '../../../core/constants/app_text_styles.dart';
 import '../../../core/services/photon_geocoder.dart';
 import '../../../data/models/banquet_venue.dart';
 import '../../../data/models/user_profile.dart';
 import '../../../shared/providers/banquet_providers.dart';
 import '../../../shared/providers/repositories_providers.dart';
 import '../../../shared/widgets/app_error_view.dart';
-import '../../../shared/widgets/app_scaffold.dart';
-import '../../../shared/widgets/empty_state.dart';
+import '../widgets/admin_ui.dart';
 
-const _indigo = Color(0xFF4338CA);
-
-/// Admin banquet-venue manager: onboard halls, keep their map locations
-/// pinned, assign operators, and flip venues active/inactive.
-///
-/// Venues used to be hand-inserted in the database — which is how rows
-/// without coordinates could exist, silently degrading the customer's
-/// "restaurants near your event" sort back to their home address. Here the
-/// address is picked from geocoder suggestions so coordinates are captured
-/// automatically, and an ACTIVE venue cannot be saved without a pinned
-/// location (mirrored by the banquet_venues_active_needs_location DB guard).
+/// Admin banquet-venue manager. Onboard halls, keep their map location pinned,
+/// assign operators and flip venues active/inactive. Redesigned to the indigo
+/// admin identity; the DB guard (phase40) still enforces that an active venue
+/// carries a pinned location, and the picker captures coordinates from
+/// geocoder suggestions so they're never forgotten.
 class AdminVenuesScreen extends ConsumerWidget {
   const AdminVenuesScreen({super.key});
 
@@ -37,233 +27,216 @@ class AdminVenuesScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final venuesAsync = ref.watch(adminVenuesProvider);
     final operators = ref.watch(banquetOperatorsProvider).valueOrNull;
-    // ownerProfileId → operator display name, best-effort.
     final operatorNames = <String, String>{
       for (final p in operators ?? const <UserProfile>[])
         p.id: p.name ?? p.email ?? 'Operator',
     };
 
-    return AppScaffold(
-      appBar: AppBar(
-        leading: context.canPop()
-            ? IconButton(
-                icon: const Icon(PhosphorIconsBold.arrowLeft),
-                onPressed: () => context.pop(),
-              )
-            : null,
-        title: const Text('Banquet venues'),
+    final subtitle = venuesAsync.maybeWhen(
+      data: (v) =>
+          '${v.where((x) => x.isActive).length} active · ${v.length} total',
+      orElse: () => null,
+    );
+
+    return AdminScaffold(
+      active: AdminNav.venues,
+      floatingActionButton: AdminFab(
+        label: 'Add venue',
+        onTap: () => _openSheet(context, ref),
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        backgroundColor: _indigo,
-        foregroundColor: Colors.white,
-        icon: const Icon(PhosphorIconsBold.plus),
-        label: const Text('Add venue'),
-        onPressed: () => _VenueFormSheet.show(context),
-      ),
-      body: venuesAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => AppErrorView(
-          error: e,
-          onRetry: () => ref.invalidate(adminVenuesProvider),
-        ),
-        data: (venues) {
-          if (venues.isEmpty) {
-            return const EmptyState(
-              icon: PhosphorIconsDuotone.buildings,
-              title: 'No venues yet',
-              message:
-                  'Add the first banquet hall — customers pick one of these '
-                  'while planning a hall event.',
-            );
-          }
-          return RefreshIndicator(
-            color: AppColors.primary,
-            onRefresh: () async => ref.invalidate(adminVenuesProvider),
-            child: ListView.separated(
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.fromLTRB(0, AppSizes.md, 0, 96),
-              itemCount: venues.length,
-              separatorBuilder: (_, __) => const SizedBox(height: AppSizes.sm),
-              itemBuilder: (_, i) => _VenueRow(
-                venue: venues[i],
-                operatorName: operatorNames[venues[i].ownerProfileId],
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          AdminBar(
+            title: 'Banquet venues',
+            subtitle: subtitle,
+            onBack: () => context.pop(),
+          ),
+          Expanded(
+            child: venuesAsync.when(
+              loading: () => const Center(
+                child: CircularProgressIndicator(color: AdminColors.indigo),
               ),
+              error: (e, _) => AppErrorView(
+                error: e,
+                onRetry: () => ref.invalidate(adminVenuesProvider),
+              ),
+              data: (venues) {
+                if (venues.isEmpty) {
+                  return const AdminMessageState(
+                    icon: PhosphorIconsBold.mapPin,
+                    title: 'No venues yet',
+                    message:
+                        'Add a banquet venue to show it in the customer venue picker.',
+                  );
+                }
+                return RefreshIndicator(
+                  color: AdminColors.indigo,
+                  onRefresh: () async => ref.invalidate(adminVenuesProvider),
+                  child: ListView.separated(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    // Reserve room for the pinned "Add venue" button so it
+                    // never covers the last venue card.
+                    padding: const EdgeInsets.fromLTRB(
+                      16,
+                      16,
+                      16,
+                      AdminScaffold.fabScrollPadding,
+                    ),
+                    itemCount: venues.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 10),
+                    itemBuilder: (_, i) => _VenueRow(
+                      venue: venues[i],
+                      operatorName: operatorNames[venues[i].ownerProfileId],
+                      onTap: () =>
+                          _openSheet(context, ref, existing: venues[i]),
+                    ),
+                  ),
+                );
+              },
             ),
-          );
-        },
+          ),
+        ],
       ),
+    );
+  }
+
+  void _openSheet(BuildContext context, WidgetRef ref,
+      {BanquetVenue? existing}) {
+    showAdminSheet<void>(
+      context,
+      title: existing == null ? 'Add venue' : 'Edit venue',
+      builder: (_) => _VenueForm(existing: existing),
     );
   }
 }
 
-// ───────────────────────── Venue row ─────────────────────────
-
 class _VenueRow extends StatelessWidget {
-  const _VenueRow({required this.venue, this.operatorName});
+  const _VenueRow(
+      {required this.venue, required this.onTap, this.operatorName});
   final BanquetVenue venue;
   final String? operatorName;
+  final VoidCallback onTap;
 
-  bool get _missingPin => venue.latitude == null || venue.longitude == null;
+  bool get _noPin => venue.latitude == null || venue.longitude == null;
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: AppColors.surface,
-      borderRadius: BorderRadius.circular(AppSizes.radiusMd),
-      child: InkWell(
-        onTap: () => _VenueFormSheet.show(context, existing: venue),
-        borderRadius: BorderRadius.circular(AppSizes.radiusMd),
-        child: Container(
-          padding: const EdgeInsets.all(AppSizes.md),
-          decoration: BoxDecoration(
-            border: Border.all(color: AppColors.border),
-            borderRadius: BorderRadius.circular(AppSizes.radiusMd),
+    final active = venue.isActive;
+    return AdminCard(
+      onTap: onTap,
+      padding: const EdgeInsets.all(14),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: active ? AdminColors.liveBg : AdminColors.archBg,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(PhosphorIconsDuotone.mapPin,
+                size: 22, color: active ? AdminColors.live : AdminColors.arch),
           ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  color: AppColors.primarySoft,
-                  borderRadius: BorderRadius.circular(AppSizes.radiusSm),
-                ),
-                alignment: Alignment.center,
-                child: const Icon(
-                  PhosphorIconsDuotone.buildings,
-                  color: AppColors.primary,
-                ),
-              ),
-              const SizedBox(width: AppSizes.md),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
                   children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            venue.name,
-                            style: AppTextStyles.bodyBold,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        const SizedBox(width: AppSizes.xs),
-                        _Pill(
-                          label: venue.isActive ? 'ACTIVE' : 'INACTIVE',
-                          bg: venue.isActive
-                              ? AppColors.catGreenLt
-                              : AppColors.surfaceAlt,
-                          fg: venue.isActive
-                              ? AppColors.catGreen
-                              : AppColors.textMuted,
-                        ),
-                      ],
+                    Flexible(
+                      child: Text(venue.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AdminText.h2),
                     ),
-                    if (venue.address != null) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        venue.address!,
-                        style: AppTextStyles.caption,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                    const SizedBox(height: AppSizes.xs),
-                    Wrap(
-                      spacing: AppSizes.xs,
-                      runSpacing: 4,
-                      children: [
-                        if (_missingPin)
-                          const _Pill(
-                            label: 'NO MAP PIN',
-                            bg: AppColors.catGoldLt,
-                            fg: AppColors.accentDark,
-                          ),
-                        if (venue.capacity != null)
-                          _Pill(
-                            label: 'UP TO ${venue.capacity}',
-                            bg: AppColors.catBlueLt,
-                            fg: AppColors.catBlue,
-                          ),
-                        if (operatorName != null)
-                          _Pill(
-                            label: operatorName!.toUpperCase(),
-                            bg: AppColors.surfaceAlt,
-                            fg: AppColors.textSecondary,
-                          ),
-                      ],
+                    const SizedBox(width: 8),
+                    AdminPill(
+                      label: active ? 'ACTIVE' : 'INACTIVE',
+                      fg: active ? AdminColors.live : AdminColors.arch,
+                      bg: active ? AdminColors.liveBg : AdminColors.archBg,
+                      small: true,
                     ),
                   ],
                 ),
-              ),
-            ],
+                const SizedBox(height: 4),
+                Text(venue.address ?? 'No address set',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: AdminText.cap),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 4,
+                  children: [
+                    if (venue.capacity != null)
+                      _MetaChip(
+                          icon: PhosphorIconsRegular.users,
+                          label: 'up to ${venue.capacity}'),
+                    if (operatorName != null)
+                      _MetaChip(
+                          icon: PhosphorIconsRegular.diamond,
+                          label: operatorName!),
+                  ],
+                ),
+                if (_noPin) ...[
+                  const SizedBox(height: 8),
+                  const AdminPill(
+                    label: 'NO MAP PIN',
+                    icon: PhosphorIconsFill.info,
+                    fg: AdminColors.susp,
+                    bg: AdminColors.suspBg,
+                    small: true,
+                  ),
+                ],
+              ],
+            ),
           ),
-        ),
+          const SizedBox(width: 8),
+          const Icon(PhosphorIconsBold.caretRight,
+              size: 18, color: AdminColors.tx3),
+        ],
       ),
     );
   }
 }
 
-class _Pill extends StatelessWidget {
-  const _Pill({required this.label, required this.bg, required this.fg});
+class _MetaChip extends StatelessWidget {
+  const _MetaChip({required this.icon, required this.label});
+  final IconData icon;
   final String label;
-  final Color bg;
-  final Color fg;
-
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Text(
-        label,
-        style: AppTextStyles.captionBold.copyWith(color: fg, fontSize: 9),
-      ),
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 13, color: AdminColors.tx3),
+        const SizedBox(width: 4),
+        Text(label, style: AdminText.cap),
+      ],
     );
   }
 }
 
-// ───────────────────────── Add / edit form sheet ─────────────────────────
+// ─────────────────────── Add / edit venue form ───────────────────────
 
-class _VenueFormSheet extends ConsumerStatefulWidget {
-  const _VenueFormSheet({this.existing});
+class _VenueForm extends ConsumerStatefulWidget {
+  const _VenueForm({this.existing});
   final BanquetVenue? existing;
-
-  static Future<bool?> show(BuildContext context, {BanquetVenue? existing}) {
-    return showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: AppColors.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius:
-            BorderRadius.vertical(top: Radius.circular(AppSizes.radiusLg)),
-      ),
-      builder: (_) => _VenueFormSheet(existing: existing),
-    );
-  }
-
   @override
-  ConsumerState<_VenueFormSheet> createState() => _VenueFormSheetState();
+  ConsumerState<_VenueForm> createState() => _VenueFormState();
 }
 
-class _VenueFormSheetState extends ConsumerState<_VenueFormSheet> {
+class _VenueFormState extends ConsumerState<_VenueForm> {
   late final TextEditingController _nameCtrl;
-  late final TextEditingController _addressCtrl;
   late final TextEditingController _capacityCtrl;
-
-  final _geocoder = PhotonGeocoder();
-  Timer? _geoDebounce;
-  List<GeocodeResult> _suggestions = const [];
-  bool _searching = false;
 
   double? _lat;
   double? _lng;
+  String? _address;
   String? _ownerId;
   bool _isActive = true;
 
@@ -277,61 +250,27 @@ class _VenueFormSheetState extends ConsumerState<_VenueFormSheet> {
     super.initState();
     final v = widget.existing;
     _nameCtrl = TextEditingController(text: v?.name ?? '');
-    _addressCtrl = TextEditingController(text: v?.address ?? '');
     _capacityCtrl = TextEditingController(text: v?.capacity?.toString() ?? '');
+    _address = v?.address;
     _lat = v?.latitude;
     _lng = v?.longitude;
     _ownerId = v?.ownerProfileId;
-    _isActive = v?.isActive ?? true;
+    _isActive = v?.isActive ?? false;
   }
 
   @override
   void dispose() {
-    _geoDebounce?.cancel();
-    _geocoder.dispose();
     _nameCtrl.dispose();
-    _addressCtrl.dispose();
     _capacityCtrl.dispose();
     super.dispose();
   }
 
-  // ── Geocoding — same pattern as the restaurant wizard ──
-
-  void _onAddressChanged(String value) {
-    _lat = null; // typed text invalidates the previously pinned point
-    _lng = null;
-    _geoDebounce?.cancel();
-    if (value.trim().length < 3) {
-      setState(() => _suggestions = const []);
-      return;
-    }
-    _geoDebounce = Timer(const Duration(milliseconds: 450), () async {
-      setState(() => _searching = true);
-      final results = await _geocoder.search(value, limit: 5);
-      if (!mounted) return;
-      setState(() {
-        _searching = false;
-        _suggestions = results;
-      });
-    });
-  }
-
-  void _pickSuggestion(GeocodeResult r) {
-    setState(() {
-      _addressCtrl.text = r.displayAddress;
-      _lat = r.latitude;
-      _lng = r.longitude;
-      _suggestions = const [];
-    });
-  }
-
-  // ── Save ──
+  bool get _canActivate =>
+      (_address?.trim().isNotEmpty ?? false) && _lat != null && _lng != null;
 
   Future<void> _save() async {
     final name = _nameCtrl.text.trim();
-    final address = _addressCtrl.text.trim();
     final capacity = int.tryParse(_capacityCtrl.text.trim());
-
     if (name.isEmpty) {
       setState(() => _error = 'Give the venue a name.');
       return;
@@ -340,29 +279,24 @@ class _VenueFormSheetState extends ConsumerState<_VenueFormSheet> {
       setState(() => _error = 'Pick the banquet operator who runs this venue.');
       return;
     }
-    // Mirror of the DB guard (banquet_venues_active_needs_location): an
-    // active venue must carry an address AND a pinned location, otherwise
-    // customers get restaurants sorted around the wrong point.
-    if (_isActive && (address.isEmpty || _lat == null || _lng == null)) {
-      setState(() {
-        _error = 'An active venue needs a pinned location — search the '
-            'address and tap a suggestion. Or save it as inactive for now.';
-      });
+    if (_isActive && !_canActivate) {
+      setState(() => _error =
+          'An active venue needs a pinned location — search the address and tap a suggestion.');
       return;
     }
-
     setState(() {
       _saving = true;
       _error = null;
     });
     try {
       final repo = ref.read(banquetRepositoryProvider);
+      final addr = (_address?.trim().isEmpty ?? true) ? null : _address!.trim();
       if (_isEdit) {
         await repo.updateVenue(
           venueId: widget.existing!.id,
           ownerProfileId: _ownerId!,
           name: name,
-          address: address.isEmpty ? null : address,
+          address: addr,
           latitude: _lat,
           longitude: _lng,
           capacity: capacity,
@@ -372,17 +306,19 @@ class _VenueFormSheetState extends ConsumerState<_VenueFormSheet> {
         await repo.createVenue(
           ownerProfileId: _ownerId!,
           name: name,
-          address: address.isEmpty ? null : address,
+          address: addr,
           latitude: _lat,
           longitude: _lng,
           capacity: capacity,
           isActive: _isActive,
         );
       }
-      // Refresh the admin list and the customer-side picker.
       ref.invalidate(adminVenuesProvider);
       ref.invalidate(allBanquetVenuesProvider);
-      if (mounted) Navigator.of(context).pop(true);
+      if (!mounted) return;
+      Navigator.of(context).pop();
+      adminToast(context, _isEdit ? 'Venue saved' : 'Venue added',
+          success: true);
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -399,238 +335,205 @@ class _VenueFormSheetState extends ConsumerState<_VenueFormSheet> {
     return first.length > 160 ? '${first.substring(0, 160)}…' : first;
   }
 
-  // ── UI ──
-
   @override
   Widget build(BuildContext context) {
     final operatorsAsync = ref.watch(banquetOperatorsProvider);
-    return Padding(
-      padding:
-          EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-      child: SafeArea(
-        top: false,
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(AppSizes.pagePadding),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: AppColors.border,
-                    borderRadius: BorderRadius.circular(AppSizes.radiusPill),
-                  ),
-                ),
-              ),
-              const SizedBox(height: AppSizes.lg),
-              Text(
-                _isEdit ? 'Edit venue' : 'Add venue',
-                style: AppTextStyles.display,
-              ),
-              const SizedBox(height: AppSizes.lg),
-              _label('Venue name *'),
-              TextField(
-                controller: _nameCtrl,
-                textCapitalization: TextCapitalization.words,
-                decoration: _dec('e.g. Grand Palace Banquets'),
-              ),
-              const SizedBox(height: AppSizes.md),
-              _label('Address *'),
-              TextField(
-                controller: _addressCtrl,
-                onChanged: _onAddressChanged,
-                maxLines: 2,
-                minLines: 1,
-                decoration: _dec('Search the venue address…').copyWith(
-                  suffixIcon: _searching
-                      ? const Padding(
-                          padding: EdgeInsets.all(12),
-                          child: SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          ),
-                        )
-                      : _lat != null
-                          ? const Icon(
-                              PhosphorIconsFill.mapPin,
-                              color: AppColors.success,
-                              size: 20,
-                            )
-                          : null,
-                ),
-              ),
-              if (_suggestions.isNotEmpty)
-                Container(
-                  margin: const EdgeInsets.only(top: AppSizes.xs),
-                  decoration: BoxDecoration(
-                    color: AppColors.surface,
-                    borderRadius: BorderRadius.circular(AppSizes.radiusSm),
-                    border: Border.all(color: AppColors.border),
-                  ),
-                  child: Column(
-                    children: [
-                      for (final s in _suggestions)
-                        ListTile(
-                          dense: true,
-                          leading: const Icon(
-                            PhosphorIconsRegular.mapPin,
-                            size: 18,
-                          ),
-                          title: Text(s.name, style: AppTextStyles.bodyBold),
-                          subtitle: Text(
-                            s.displayAddress,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: AppTextStyles.caption,
-                          ),
-                          onTap: () => _pickSuggestion(s),
-                        ),
-                    ],
-                  ),
-                ),
-              const SizedBox(height: AppSizes.xs),
-              Text(
-                _lat == null
-                    ? 'Pick a suggestion to pin the map location — it drives '
-                        'the "restaurants near your event" sorting customers see.'
-                    : 'Location pinned ✓',
-                style: AppTextStyles.caption.copyWith(
-                  color:
-                      _lat == null ? AppColors.accentDark : AppColors.success,
-                ),
-              ),
-              const SizedBox(height: AppSizes.md),
-              _label('Capacity (guests)'),
-              TextField(
-                controller: _capacityCtrl,
-                keyboardType: TextInputType.number,
-                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                decoration: _dec('e.g. 300'),
-              ),
-              const SizedBox(height: AppSizes.md),
-              _label('Banquet operator *'),
-              operatorsAsync.when(
-                loading: () => const Padding(
-                  padding: EdgeInsets.symmetric(vertical: AppSizes.sm),
-                  child: SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                ),
-                error: (e, _) => Text(
-                  'Could not load operators: ${_friendly(e)}',
-                  style: AppTextStyles.caption.copyWith(color: AppColors.error),
-                ),
-                data: (ops) {
-                  if (ops.isEmpty) {
-                    return Text(
-                      'No banquet-operator accounts exist yet — create one '
-                      'first, then add the venue.',
-                      style: AppTextStyles.caption
-                          .copyWith(color: AppColors.accentDark),
-                    );
-                  }
-                  // Preselect when there's exactly one operator; guard the
-                  // dropdown against a saved owner that no longer exists.
-                  final ids = ops.map((o) => o.id).toSet();
-                  final value = ids.contains(_ownerId) ? _ownerId : null;
-                  if (value == null && ops.length == 1) {
-                    _ownerId = ops.first.id;
-                  }
-                  return DropdownButtonFormField<String>(
-                    initialValue: ids.contains(_ownerId) ? _ownerId : null,
-                    decoration: _dec('Pick an operator'),
-                    items: [
-                      for (final o in ops)
-                        DropdownMenuItem(
-                          value: o.id,
-                          child: Text(
-                            o.name ?? o.email ?? 'Operator',
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                    ],
-                    onChanged: (v) => setState(() => _ownerId = v),
-                  );
-                },
-              ),
-              const SizedBox(height: AppSizes.md),
-              SwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                title: Text('Active', style: AppTextStyles.bodyBold),
-                subtitle: Text(
-                  'Active venues appear in the customer venue picker.',
-                  style: AppTextStyles.caption,
-                ),
-                value: _isActive,
-                activeThumbColor: AppColors.primary,
-                onChanged: (v) => setState(() => _isActive = v),
-              ),
-              if (_error != null) ...[
-                const SizedBox(height: AppSizes.sm),
-                Text(
-                  _error!,
-                  style: AppTextStyles.caption.copyWith(color: AppColors.error),
-                ),
-              ],
-              const SizedBox(height: AppSizes.md),
-              FilledButton(
-                onPressed: _saving ? null : _save,
-                style: FilledButton.styleFrom(
-                  backgroundColor: _indigo,
-                  minimumSize: const Size.fromHeight(50),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(AppSizes.radiusSm),
-                  ),
-                ),
-                child: _saving
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
-                    : Text(_isEdit ? 'Save changes' : 'Add venue'),
-              ),
-              const SizedBox(height: AppSizes.sm),
-            ],
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        AdminField(
+          label: 'Venue name',
+          required: true,
+          child: TextField(
+            controller: _nameCtrl,
+            textCapitalization: TextCapitalization.words,
+            style: adminTextStyle,
+            decoration: adminInput('e.g. Lotus Banquet Hall'),
           ),
         ),
-      ),
+        const SizedBox(height: 14),
+        AdminField(
+          label: 'Address',
+          required: true,
+          hint: 'auto-pins coordinates',
+          child: AdminAddressPin(
+            initialText: _address,
+            pinned: _lat != null && _lng != null,
+            onPick: (addr, lat, lng) => setState(() {
+              _address = addr;
+              _lat = lat;
+              _lng = lng;
+            }),
+            onTyping: () {
+              // typed text without a suggestion drops any prior pin
+              if (_lat != null || _lng != null)
+                setState(() {
+                  _lat = null;
+                  _lng = null;
+                });
+            },
+          ),
+        ),
+        const SizedBox(height: 14),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: AdminField(
+                label: 'Capacity',
+                required: true,
+                child: TextField(
+                  controller: _capacityCtrl,
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  style: adminTextStyle,
+                  decoration: adminInput('0'),
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: AdminField(
+                label: 'Operator',
+                child: operatorsAsync.when(
+                  loading: () => _selectShell(const Center(
+                    child: SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2)),
+                  )),
+                  error: (e, _) => Text('Load failed: ${_friendly(e)}',
+                      style: AdminText.cap.copyWith(color: AdminColors.danger)),
+                  data: (ops) {
+                    if (ops.isEmpty) {
+                      return Text('Create an operator account first.',
+                          style:
+                              AdminText.cap.copyWith(color: AdminColors.susp));
+                    }
+                    final ids = ops.map((o) => o.id).toSet();
+                    if (_ownerId == null && ops.length == 1)
+                      _ownerId = ops.first.id;
+                    return _selectShell(
+                      DropdownButtonHideUnderline(
+                        child: DropdownButton<String>(
+                          isExpanded: true,
+                          value: ids.contains(_ownerId) ? _ownerId : null,
+                          hint: Text('Pick', style: AdminText.body),
+                          style: adminTextStyle,
+                          items: [
+                            for (final o in ops)
+                              DropdownMenuItem(
+                                value: o.id,
+                                child: Text(o.name ?? o.email ?? 'Operator',
+                                    overflow: TextOverflow.ellipsis),
+                              ),
+                          ],
+                          onChanged: (v) => setState(() => _ownerId = v),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
+        _ActiveToggleRow(
+          value: _isActive,
+          canActivate: _canActivate,
+          onChanged: (v) {
+            if (v && !_canActivate) {
+              setState(() => _error =
+                  'Add an address + map pin before making the venue active.');
+              return;
+            }
+            setState(() {
+              _isActive = v;
+              _error = null;
+            });
+          },
+        ),
+        if (!_canActivate) ...[
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              const Icon(PhosphorIconsFill.info,
+                  size: 14, color: AdminColors.susp),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                    'An address + map pin is required before a venue can be made active.',
+                    style: AdminText.cap.copyWith(color: AdminColors.susp)),
+              ),
+            ],
+          ),
+        ],
+        if (_error != null) ...[
+          const SizedBox(height: 10),
+          Text(_error!,
+              style: AdminText.cap.copyWith(color: AdminColors.danger)),
+        ],
+        const SizedBox(height: 16),
+        AdminButton(
+          label: _saving ? 'Saving…' : (_isEdit ? 'Save changes' : 'Add venue'),
+          size: 'lg',
+          expand: true,
+          disabled: _saving,
+          onPressed: _save,
+        ),
+      ],
     );
   }
 
-  Widget _label(String text) => Padding(
-        padding: const EdgeInsets.only(bottom: AppSizes.xs),
-        child: Text(
-          text,
-          style: AppTextStyles.captionBold
-              .copyWith(color: AppColors.textSecondary),
+  Widget _selectShell(Widget child) => Container(
+        height: 46,
+        padding: const EdgeInsets.symmetric(horizontal: 13),
+        alignment: Alignment.centerLeft,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(11),
+          border: Border.all(color: AdminColors.line, width: 1.5),
         ),
+        child: child,
       );
+}
 
-  InputDecoration _dec(String hint) => InputDecoration(
-        hintText: hint,
-        filled: true,
-        fillColor: AppColors.surfaceAlt,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(AppSizes.radiusSm),
-          borderSide: const BorderSide(color: AppColors.border),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(AppSizes.radiusSm),
-          borderSide: const BorderSide(color: AppColors.border),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(AppSizes.radiusSm),
-          borderSide: const BorderSide(color: AppColors.primary, width: 1.4),
-        ),
-      );
+class _ActiveToggleRow extends StatelessWidget {
+  const _ActiveToggleRow({
+    required this.value,
+    required this.canActivate,
+    required this.onChanged,
+  });
+  final bool value;
+  final bool canActivate;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AdminColors.line),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: const [
+                Text('Active', style: AdminText.h3),
+                SizedBox(height: 2),
+                Text('Active venues appear in the customer venue picker',
+                    style: AdminText.cap),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          AdminToggle(value: value, onChanged: onChanged),
+        ],
+      ),
+    );
+  }
 }

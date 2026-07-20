@@ -5,24 +5,16 @@ import 'package:go_router/go_router.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../../core/config/app_config.dart';
-import '../../../core/constants/app_colors.dart';
-import '../../../core/constants/app_sizes.dart';
-import '../../../core/constants/app_text_styles.dart';
 import '../../../core/router/app_routes.dart';
 import '../../../core/supabase/supabase_client.dart' as sb;
 import '../../../data/models/restaurant.dart';
 import '../../../shared/providers/admin_restaurant_providers.dart';
+import '../../../shared/providers/banquet_providers.dart';
 import '../../../shared/providers/repositories_providers.dart';
-import '../../../shared/widgets/app_scaffold.dart';
+import '../widgets/admin_ui.dart';
 
-// Deep-indigo chrome so the admin console never gets confused with the
-// customer or operator apps.
-const _indigoDeep = Color(0xFF1E1B4B);
-const _indigo = Color(0xFF4338CA);
-
-/// Onboarding pipeline counts per lifecycle state — the one statistic that
-/// belongs to an onboarding admin. Four cheap count-only queries (pageSize 1)
-/// instead of the old console's full 23k-item catalog download.
+/// Onboarding pipeline counts per lifecycle state — four cheap count-only
+/// queries (pageSize 1) instead of downloading the whole catalog.
 final _kitchenCountsProvider =
     FutureProvider.autoDispose<Map<RestaurantStatus, int>>((ref) async {
   final repo = ref.read(adminRestaurantRepositoryProvider);
@@ -36,213 +28,225 @@ final _kitchenCountsProvider =
   };
 });
 
-/// Deliberately minimal admin console: the admin's job is onboarding /
-/// managing kitchens and the charges config — nothing else. The old
-/// five-tab operations dashboard (GMV, bookings, team, payouts, catalog
-/// stats) was retired: order statuses flow automatically from banquet
-/// decisions + kitchen progress, menus are managed per restaurant, and
-/// anything new gets built when the business actually needs it.
+/// Deliberately minimal admin console: onboard/manage kitchens, banquet
+/// venues and the charges config — nothing else. Redesigned to the imported
+/// indigo "Dawat Admin Console" identity; data stays 100% live.
 class AdminHomeScreen extends ConsumerWidget {
   const AdminHomeScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final counts = ref.watch(_kitchenCountsProvider);
+    final venues = ref.watch(adminVenuesProvider).valueOrNull;
 
-    return AppScaffold(
-      padded: false,
-      backgroundColor: AppColors.surfaceWarm,
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const _Header(),
-          Expanded(
-            child: RefreshIndicator(
-              color: _indigo,
-              onRefresh: () async {
-                ref.invalidate(_kitchenCountsProvider);
-                ref.invalidate(adminRestaurantListProvider);
-              },
-              child: ListView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.fromLTRB(
-                  AppSizes.pagePadding,
-                  AppSizes.lg,
-                  AppSizes.pagePadding,
-                  AppSizes.xl,
-                ),
+    return AdminScaffold(
+      active: AdminNav.overview,
+      child: RefreshIndicator(
+        color: AdminColors.indigo,
+        onRefresh: () async {
+          ref.invalidate(_kitchenCountsProvider);
+          ref.invalidate(adminRestaurantListProvider);
+          ref.invalidate(adminVenuesProvider);
+        },
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: EdgeInsets.zero,
+          children: [
+            _Header(counts: counts),
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  _KitchensCard(counts: counts),
-                  const SizedBox(height: AppSizes.md),
-                  _PrimaryButton(
-                    icon: PhosphorIconsBold.plus,
+                  AdminButton(
                     label: 'Onboard kitchen',
-                    onTap: () => context.push(AppRoutes.adminRestaurantNew),
+                    size: 'lg',
+                    expand: true,
+                    elevated: true,
+                    leading: PhosphorIconsBold.plus,
+                    onPressed: () => context.push(AppRoutes.adminRestaurantNew),
                   ),
-                  const SizedBox(height: AppSizes.lg),
-                  _NavTile(
-                    icon: PhosphorIconsDuotone.gearSix,
-                    iconBg: AppColors.catBlueLt,
-                    iconColor: AppColors.catBlue,
-                    title: 'Charges config',
-                    subtitle: 'Fees, taxes and per-head service rates',
-                    onTap: () => context.push(AppRoutes.adminCharges),
+                  const SizedBox(height: 22),
+                  const Padding(
+                    padding: EdgeInsets.only(left: 4, bottom: 10),
+                    child: AdminOverline('Manage'),
                   ),
-                  const SizedBox(height: AppSizes.sm),
-                  _NavTile(
-                    icon: PhosphorIconsDuotone.buildings,
-                    iconBg: AppColors.catGreenLt,
-                    iconColor: AppColors.catGreen,
+                  _NavCard(
+                    icon: PhosphorIconsDuotone.storefront,
+                    iconColor: AdminColors.indigo,
+                    title: 'Kitchens',
+                    subtitle: counts.when(
+                      loading: () => 'Counting…',
+                      error: (_, __) => 'Open the catalog',
+                      data: (c) => '${_fmt(_total(c))} in catalog',
+                    ),
+                    onTap: () => context.push(AppRoutes.adminRestaurants),
+                  ),
+                  const SizedBox(height: 10),
+                  _NavCard(
+                    icon: PhosphorIconsDuotone.mapPin,
+                    iconColor: const Color(0xFF2B6CB0),
                     title: 'Banquet venues',
-                    subtitle: 'Onboard halls & keep locations pinned',
+                    subtitle: venues == null
+                        ? 'Onboard halls & keep locations pinned'
+                        : '${venues.where((v) => v.isActive).length} active · ${venues.length} total',
                     onTap: () => context.push(AppRoutes.adminVenues),
                   ),
-                  const SizedBox(height: AppSizes.sm),
-                  _NavTile(
-                    icon: PhosphorIconsDuotone.signOut,
-                    iconBg: AppColors.primarySoft,
-                    iconColor: AppColors.primary,
-                    title: 'Sign out',
-                    subtitle: null,
-                    showChevron: false,
-                    onTap: () async {
-                      HapticFeedback.mediumImpact();
-                      if (AppConfig.hasSupabase) {
-                        try {
-                          await sb.auth.signOut();
-                        } catch (_) {
-                          // best effort — still route to login
-                        }
-                      }
-                      if (context.mounted) context.go(AppRoutes.login);
-                    },
+                  const SizedBox(height: 10),
+                  _NavCard(
+                    icon: PhosphorIconsDuotone.receipt,
+                    iconColor: AdminColors.susp,
+                    title: 'Charges & taxes',
+                    subtitle: 'Applied to every checkout',
+                    onTap: () => context.push(AppRoutes.adminCharges),
                   ),
+                  const SizedBox(height: 20),
+                  _SignOutButton(),
+                  const SizedBox(height: 8),
                 ],
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
+
+  static int _total(Map<RestaurantStatus, int> c) =>
+      c.values.fold(0, (a, b) => a + b);
+
+  static String _fmt(int n) {
+    // Indian grouping (12,34,567) for the catalog count.
+    final s = n.toString();
+    if (s.length <= 3) return s;
+    final last3 = s.substring(s.length - 3);
+    var rest = s.substring(0, s.length - 3);
+    final groups = <String>[];
+    while (rest.length > 2) {
+      groups.insert(0, rest.substring(rest.length - 2));
+      rest = rest.substring(0, rest.length - 2);
+    }
+    if (rest.isNotEmpty) groups.insert(0, rest);
+    return '${groups.join(',')},$last3';
+  }
 }
 
-// ───────────────────────── Header ─────────────────────────
-
 class _Header extends StatelessWidget {
-  const _Header();
+  const _Header({required this.counts});
+  final AsyncValue<Map<RestaurantStatus, int>> counts;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(
-        AppSizes.pagePadding,
-        AppSizes.lg,
-        AppSizes.pagePadding,
-        AppSizes.lg,
-      ),
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 26),
       decoration: const BoxDecoration(
         gradient: LinearGradient(
-          begin: Alignment(-0.7, -1),
-          end: Alignment(0.7, 1),
-          colors: [_indigoDeep, _indigo],
+          begin: Alignment(-0.6, -1),
+          end: Alignment(0.6, 1),
+          colors: [AdminColors.ink, AdminColors.indigo700],
         ),
+        borderRadius: BorderRadius.vertical(bottom: Radius.circular(22)),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'ADMIN CONSOLE',
-            style: AppTextStyles.overline.copyWith(
-              color: Colors.white.withValues(alpha: 0.7),
+      child: SafeArea(
+        bottom: false,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: const [
+                      AdminOverline('Admin console',
+                          color: AdminColors.indigoA),
+                      SizedBox(height: 4),
+                      Text('Dawat operations',
+                          style: TextStyle(
+                              fontSize: 26,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: -0.6,
+                              height: 1.15,
+                              color: Colors.white)),
+                    ],
+                  ),
+                ),
+                Container(
+                  width: 42,
+                  height: 42,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.14),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(PhosphorIconsBold.user,
+                      size: 20, color: Colors.white),
+                ),
+              ],
             ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Dawat operations',
-            style: AppTextStyles.displaySm.copyWith(color: Colors.white),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            'Onboard kitchens · manage charges',
-            style: AppTextStyles.caption.copyWith(
-              color: Colors.white.withValues(alpha: 0.75),
-            ),
-          ),
-        ],
+            const SizedBox(height: 18),
+            _PipelineCard(counts: counts),
+          ],
+        ),
       ),
     );
   }
 }
 
-// ───────────────────────── Kitchens pipeline card ─────────────────────────
-
-class _KitchensCard extends StatelessWidget {
-  const _KitchensCard({required this.counts});
+class _PipelineCard extends StatelessWidget {
+  const _PipelineCard({required this.counts});
   final AsyncValue<Map<RestaurantStatus, int>> counts;
 
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: AppColors.surface,
-      borderRadius: BorderRadius.circular(AppSizes.radiusMd),
+      color: Colors.white.withValues(alpha: 0.08),
+      borderRadius: BorderRadius.circular(16),
       child: InkWell(
         onTap: () => context.push(AppRoutes.adminRestaurants),
-        borderRadius: BorderRadius.circular(AppSizes.radiusMd),
+        borderRadius: BorderRadius.circular(16),
         child: Container(
-          padding: const EdgeInsets.all(AppSizes.lg),
+          padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(AppSizes.radiusMd),
-            border: Border.all(color: AppColors.border),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
           ),
-          child: Row(
+          child: Column(
             children: [
-              Container(
-                width: 52,
-                height: 52,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFEEF2FF),
-                  borderRadius: BorderRadius.circular(AppSizes.radiusSm),
-                ),
-                child: const Icon(
-                  PhosphorIconsDuotone.storefront,
-                  size: 26,
-                  color: _indigo,
-                ),
-              ),
-              const SizedBox(width: AppSizes.md),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Kitchens', style: AppTextStyles.heading2),
-                    const SizedBox(height: 3),
-                    counts.when(
-                      loading: () => Text(
-                        'Counting…',
-                        style: AppTextStyles.caption
-                            .copyWith(color: AppColors.textMuted),
-                      ),
-                      error: (_, __) => Text(
-                        'Tap to open the list',
-                        style: AppTextStyles.caption
-                            .copyWith(color: AppColors.textMuted),
-                      ),
-                      data: (c) => Text(
-                        _pipelineLine(c),
-                        style: AppTextStyles.caption
-                            .copyWith(color: AppColors.textSecondary),
-                      ),
+              Row(
+                children: [
+                  const Expanded(
+                    child: Text('Kitchens pipeline',
+                        style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white)),
+                  ),
+                  Text(
+                    counts.maybeWhen(
+                      data: (c) =>
+                          '${AdminHomeScreen._fmt(AdminHomeScreen._total(c))} total',
+                      orElse: () => '',
                     ),
-                  ],
-                ),
+                    style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: AdminColors.indigoA),
+                  ),
+                  const SizedBox(width: 3),
+                  const Icon(PhosphorIconsBold.caretRight,
+                      size: 14, color: AdminColors.indigoA),
+                ],
               ),
-              const SizedBox(width: AppSizes.sm),
-              const Icon(
-                PhosphorIconsBold.caretRight,
-                size: 18,
-                color: AppColors.textMuted,
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  for (final s in RestaurantStatus.values) ...[
+                    Expanded(child: _StatTile(status: s, counts: counts)),
+                    if (s != RestaurantStatus.values.last)
+                      const SizedBox(width: 8),
+                  ],
+                ],
               ),
             ],
           ),
@@ -250,137 +254,123 @@ class _KitchensCard extends StatelessWidget {
       ),
     );
   }
-
-  String _pipelineLine(Map<RestaurantStatus, int> c) {
-    final live = c[RestaurantStatus.published] ?? 0;
-    final drafts = c[RestaurantStatus.draft] ?? 0;
-    final suspended = c[RestaurantStatus.suspended] ?? 0;
-    final archived = c[RestaurantStatus.archived] ?? 0;
-    final parts = <String>[
-      '$live live',
-      '$drafts draft${drafts == 1 ? '' : 's'}',
-      if (suspended > 0) '$suspended suspended',
-      if (archived > 0) '$archived archived',
-    ];
-    return parts.join(' · ');
-  }
 }
 
-// ───────────────────────── Buttons / tiles ─────────────────────────
-
-class _PrimaryButton extends StatelessWidget {
-  const _PrimaryButton({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-  });
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
+class _StatTile extends StatelessWidget {
+  const _StatTile({required this.status, required this.counts});
+  final RestaurantStatus status;
+  final AsyncValue<Map<RestaurantStatus, int>> counts;
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: _indigo,
-      borderRadius: BorderRadius.circular(AppSizes.radiusSm),
-      child: InkWell(
-        onTap: () {
-          HapticFeedback.selectionClick();
-          onTap();
-        },
-        borderRadius: BorderRadius.circular(AppSizes.radiusSm),
-        child: Container(
-          height: 52,
-          alignment: Alignment.center,
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon, size: 18, color: Colors.white),
-              const SizedBox(width: AppSizes.sm),
-              Text(
-                label,
-                style: AppTextStyles.buttonLabel.copyWith(color: Colors.white),
-              ),
-            ],
+    final style = adminStatusStyle(status);
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.9),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        children: [
+          counts.when(
+            loading: () => const SizedBox(
+              height: 24,
+              child: Center(child: AdminSkeleton(width: 22, height: 16)),
+            ),
+            error: (_, __) => Text('—',
+                style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                    color: style.fg)),
+            data: (c) => Text('${c[status] ?? 0}',
+                style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                    color: style.fg)),
           ),
-        ),
+          const SizedBox(height: 2),
+          Text(style.label,
+              style: const TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  color: AdminColors.tx2)),
+        ],
       ),
     );
   }
 }
 
-class _NavTile extends StatelessWidget {
-  const _NavTile({
+class _NavCard extends StatelessWidget {
+  const _NavCard({
     required this.icon,
-    required this.iconBg,
     required this.iconColor,
     required this.title,
     required this.subtitle,
     required this.onTap,
-    this.showChevron = true,
   });
-
   final IconData icon;
-  final Color iconBg;
   final Color iconColor;
   final String title;
-  final String? subtitle;
+  final String subtitle;
   final VoidCallback onTap;
-  final bool showChevron;
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: AppColors.surface,
-      borderRadius: BorderRadius.circular(AppSizes.radiusMd),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(AppSizes.radiusMd),
-        child: Container(
-          padding: const EdgeInsets.all(AppSizes.md + 2),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(AppSizes.radiusMd),
-            border: Border.all(color: AppColors.border),
+    return AdminCard(
+      onTap: onTap,
+      padding: const EdgeInsets.all(14),
+      child: Row(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: AdminColors.indigo050,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, size: 22, color: iconColor),
           ),
-          child: Row(
-            children: [
-              Container(
-                width: 42,
-                height: 42,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: iconBg,
-                  borderRadius: BorderRadius.circular(AppSizes.radiusSm),
-                ),
-                child: Icon(icon, size: 22, color: iconColor),
-              ),
-              const SizedBox(width: AppSizes.md),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(title, style: AppTextStyles.bodyBold),
-                    if (subtitle != null) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        subtitle!,
-                        style: AppTextStyles.caption
-                            .copyWith(color: AppColors.textMuted),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              if (showChevron)
-                const Icon(
-                  PhosphorIconsBold.caretRight,
-                  size: 18,
-                  color: AppColors.textMuted,
-                ),
-            ],
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: AdminText.h2),
+                const SizedBox(height: 2),
+                Text(subtitle,
+                    style: AdminText.cap,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis),
+              ],
+            ),
           ),
-        ),
+          const Icon(PhosphorIconsBold.caretRight,
+              size: 20, color: AdminColors.tx3),
+        ],
       ),
+    );
+  }
+}
+
+class _SignOutButton extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return AdminButton(
+      label: 'Sign out',
+      variant: AdminBtn.ghost,
+      expand: true,
+      onPressed: () async {
+        HapticFeedback.mediumImpact();
+        if (AppConfig.hasSupabase) {
+          try {
+            await sb.auth.signOut();
+          } catch (_) {
+            // best effort — still route to login
+          }
+        }
+        if (context.mounted) context.go(AppRoutes.login);
+      },
     );
   }
 }

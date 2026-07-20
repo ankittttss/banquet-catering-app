@@ -4,32 +4,24 @@ import 'package:go_router/go_router.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show PostgrestException;
 
-import '../../../core/constants/app_colors.dart';
-import '../../../core/constants/app_sizes.dart';
-import '../../../core/constants/app_text_styles.dart';
 import '../../../core/router/app_routes.dart';
+import '../../../data/models/menu_category.dart';
 import '../../../data/models/menu_item.dart';
 import '../../../data/models/restaurant.dart';
 import '../../../shared/providers/admin_restaurant_providers.dart';
 import '../../../shared/providers/menu_providers.dart';
 import '../../../shared/providers/repositories_providers.dart';
 import '../../../shared/widgets/app_error_view.dart';
-import '../../../shared/widgets/app_scaffold.dart';
-import '../../../shared/widgets/empty_state.dart';
 import '../../../shared/widgets/restaurant_card.dart';
-import '../../../shared/widgets/veg_dot.dart';
+import '../widgets/admin_ui.dart';
 import '../widgets/menu_item_form_sheet.dart';
-import '../widgets/restaurant_status_badge.dart';
 
-// Admin console indigo.
-const _indigo = Color(0xFF4338CA);
-
-/// Per-restaurant management hub: live customer preview, lifecycle actions
-/// (publish / suspend / archive / restore), "Edit details" into the wizard,
-/// and the scoped menu manager.
+/// Per-restaurant management hub: lifecycle actions (publish / suspend /
+/// archive / restore), live customer preview, "Edit details" into the wizard,
+/// and the scoped menu manager. Redesigned to the indigo admin identity; all
+/// lifecycle + menu mutations run through the real repositories.
 class AdminRestaurantDetailScreen extends ConsumerStatefulWidget {
   const AdminRestaurantDetailScreen({super.key, required this.restaurantId});
-
   final String restaurantId;
 
   @override
@@ -51,36 +43,19 @@ class _AdminRestaurantDetailScreenState
   }
 
   Future<void> _setStatus(Restaurant r, RestaurantStatus next) async {
-    // Suspend/archive take a restaurant away from customers — confirm.
     if (next == RestaurantStatus.suspended ||
         next == RestaurantStatus.archived) {
       final verb = next == RestaurantStatus.suspended ? 'Suspend' : 'Archive';
-      final ok = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: Text('$verb "${r.name}"?'),
-          content: Text(
-            next == RestaurantStatus.suspended
-                ? 'The restaurant is hidden from customers until you '
-                    'reactivate it. Existing orders are not affected.'
-                : 'The restaurant is taken off the catalog. You can restore '
-                    'it to a draft later — nothing is deleted.',
-            style: AppTextStyles.body,
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: AppColors.error),
-              onPressed: () => Navigator.pop(ctx, true),
-              child: Text(verb),
-            ),
-          ],
-        ),
+      final ok = await adminConfirm(
+        context,
+        title: '$verb "${r.name}"?',
+        body: next == RestaurantStatus.suspended
+            ? "Customers won't see it until you reactivate. Existing orders are unaffected."
+            : 'It will be taken off the catalog. You can restore it to a draft later — nothing is deleted.',
+        confirmLabel: verb,
+        danger: true,
       );
-      if (ok != true) return;
+      if (!ok) return;
     }
 
     setState(() => _busy = true);
@@ -88,28 +63,20 @@ class _AdminRestaurantDetailScreenState
       await ref.read(adminRestaurantRepositoryProvider).setStatus(r.id, next);
       _refreshAll();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(switch (next) {
-            RestaurantStatus.published => '"${r.name}" is live for customers',
-            RestaurantStatus.suspended => '"${r.name}" suspended — hidden '
-                'from customers',
-            RestaurantStatus.archived => '"${r.name}" archived',
-            RestaurantStatus.draft => '"${r.name}" restored to draft',
-          }),
-          backgroundColor:
-              next == RestaurantStatus.published ? AppColors.success : null,
-        ),
+      adminToast(
+        context,
+        switch (next) {
+          RestaurantStatus.published => '"${r.name}" is now live',
+          RestaurantStatus.suspended => '"${r.name}" suspended',
+          RestaurantStatus.archived => '"${r.name}" archived',
+          RestaurantStatus.draft => '"${r.name}" restored to draft',
+        },
+        success: next == RestaurantStatus.published,
       );
     } catch (e) {
       if (!mounted) return;
       // The phase34 publish gate speaks human — show it verbatim.
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(_errText(e)),
-          backgroundColor: AppColors.error,
-        ),
-      );
+      adminToast(context, _errText(e));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -128,14 +95,9 @@ class _AdminRestaurantDetailScreenState
   }
 
   Future<void> _addOrEditItem(Restaurant r, {MenuItem? existing}) async {
-    final saved = await MenuItemFormSheet.show(
-      context,
-      existing: existing,
-      lockedRestaurant: r,
-    );
-    if (saved == true) {
-      ref.invalidate(adminRestaurantMenuProvider(r.id));
-    }
+    final saved = await MenuItemFormSheet.show(context,
+        existing: existing, lockedRestaurant: r);
+    if (saved == true) ref.invalidate(adminRestaurantMenuProvider(r.id));
   }
 
   Future<void> _toggleItem(MenuItem item, bool value) async {
@@ -145,249 +107,267 @@ class _AdminRestaurantDetailScreenState
     ref.invalidate(adminRestaurantMenuProvider(widget.restaurantId));
     ref.invalidate(adminMenuItemsProvider);
     ref.invalidate(menuItemsProvider);
+    if (mounted) {
+      adminToast(
+          context, value ? '"${item.name}" available' : '"${item.name}" hidden',
+          success: value);
+    }
   }
 
   Future<void> _deleteItem(MenuItem item) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('Delete "${item.name}"?'),
-        content: const Text('This permanently removes the dish.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: AppColors.error),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
+    final ok = await adminConfirm(
+      context,
+      title: 'Delete "${item.name}"?',
+      body: 'This permanently removes the dish.',
+      confirmLabel: 'Delete',
+      danger: true,
     );
-    if (ok != true) return;
+    if (!ok) return;
     await ref.read(menuRepositoryProvider).deleteMenuItem(item.id);
     ref.invalidate(adminRestaurantMenuProvider(widget.restaurantId));
     ref.invalidate(adminMenuItemsProvider);
     ref.invalidate(menuItemsProvider);
+    if (mounted) adminToast(context, 'Dish deleted');
   }
 
   @override
   Widget build(BuildContext context) {
     final rAsync = ref.watch(adminRestaurantProvider(widget.restaurantId));
 
-    return AppScaffold(
-      padded: false,
-      appBar: AppBar(
-        title: Text(rAsync.valueOrNull?.name ?? 'Manage restaurant'),
-        leading: IconButton(
-          icon: const Icon(PhosphorIconsBold.arrowLeft),
-          onPressed: () => context.pop(),
-        ),
-      ),
-      body: rAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => AppErrorView(error: e),
-        data: (r) {
-          if (r == null) {
-            return const EmptyState(
-              title: 'Restaurant not found',
-              message: 'It may have been removed.',
-              icon: PhosphorIconsDuotone.storefront,
-            );
-          }
-          return RefreshIndicator(
-            color: _indigo,
-            onRefresh: () async => _refreshAll(),
-            child: ListView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.fromLTRB(
-                AppSizes.pagePadding,
-                AppSizes.md,
-                AppSizes.pagePadding,
-                AppSizes.xxl,
-              ),
-              children: [
-                _StatusCard(
-                  restaurant: r,
-                  busy: _busy,
-                  onAction: (next) => _setStatus(r, next),
-                ),
-                const SizedBox(height: AppSizes.lg),
-                Row(
-                  children: [
-                    Text('Customer preview', style: AppTextStyles.heading2),
-                    const Spacer(),
-                    TextButton.icon(
-                      onPressed: _busy ? null : _editDetails,
-                      icon: const Icon(
-                        PhosphorIconsRegular.pencilSimple,
-                        size: 16,
-                        color: _indigo,
-                      ),
-                      label: Text(
-                        'Edit details',
-                        style: AppTextStyles.buttonLabel
-                            .copyWith(color: _indigo, fontSize: 13),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: AppSizes.xs),
-                RestaurantCard(restaurant: r, interactive: false),
-                const SizedBox(height: AppSizes.lg),
-                _MenuSection(
-                  restaurant: r,
-                  onAdd: () => _addOrEditItem(r),
-                  onEdit: (item) => _addOrEditItem(r, existing: item),
-                  onToggle: _toggleItem,
-                  onDelete: _deleteItem,
-                ),
-              ],
-            ),
-          );
-        },
-      ),
-    );
-  }
-}
-
-// ───────────────────────── Status / lifecycle card ─────────────────────────
-
-class _StatusCard extends StatelessWidget {
-  const _StatusCard({
-    required this.restaurant,
-    required this.busy,
-    required this.onAction,
-  });
-
-  final Restaurant restaurant;
-  final bool busy;
-  final ValueChanged<RestaurantStatus> onAction;
-
-  @override
-  Widget build(BuildContext context) {
-    final r = restaurant;
-    return Container(
-      padding: const EdgeInsets.all(AppSizes.md + 2),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(AppSizes.radiusMd),
-        border: Border.all(color: AppColors.border),
-      ),
+    return AdminScaffold(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            children: [
-              RestaurantStatusBadge(status: r.status),
-              const Spacer(),
-              Text(
-                switch (r.status) {
-                  RestaurantStatus.published when r.publishedAt != null =>
-                    'Live since ${_date(r.publishedAt!)}',
-                  RestaurantStatus.archived when r.archivedAt != null =>
-                    'Archived ${_date(r.archivedAt!)}',
-                  _ when r.updatedAt != null =>
-                    'Updated ${_date(r.updatedAt!)}',
-                  _ => '',
-                },
-                style: AppTextStyles.caption.copyWith(
-                  color: AppColors.textMuted,
-                ),
+          AdminBar(
+            title: rAsync.valueOrNull?.name ?? 'Manage restaurant',
+            subtitle: rAsync.valueOrNull == null
+                ? null
+                : [
+                    if ((rAsync.value!.cuisinesDisplay ?? '').isNotEmpty)
+                      rAsync.value!.cuisinesDisplay!,
+                    if (rAsync.value!.pricePerPlate != null)
+                      '₹${rAsync.value!.pricePerPlate!.toStringAsFixed(0)}/plate',
+                  ].join(' · '),
+            onBack: () => context.pop(),
+          ),
+          Expanded(
+            child: rAsync.when(
+              loading: () => const Center(
+                child: CircularProgressIndicator(color: AdminColors.indigo),
               ),
-            ],
-          ),
-          const SizedBox(height: AppSizes.sm),
-          Text(
-            switch (r.status) {
-              RestaurantStatus.draft =>
-                'Hidden from customers. Publish when the profile and menu '
-                    'are ready.',
-              RestaurantStatus.published =>
-                'Visible to customers on the home feed and search.',
-              RestaurantStatus.suspended =>
-                'Temporarily hidden from customers. Reactivate anytime.',
-              RestaurantStatus.archived =>
-                'Off the catalog. Restore to draft to work on it again.',
-            },
-            style: AppTextStyles.caption,
-          ),
-          const SizedBox(height: AppSizes.md),
-          Row(
-            children: [
-              for (final (label, target, primary) in _actionsFor(r.status)) ...[
-                Expanded(
-                  child: primary
-                      ? FilledButton(
-                          onPressed: busy ? null : () => onAction(target),
-                          style: FilledButton.styleFrom(
-                            backgroundColor: _indigo,
-                            minimumSize: const Size(0, 44),
-                            shape: RoundedRectangleBorder(
-                              borderRadius:
-                                  BorderRadius.circular(AppSizes.radiusSm),
-                            ),
-                          ),
-                          child: Text(
-                            label,
-                            style: AppTextStyles.buttonLabel
-                                .copyWith(color: Colors.white, fontSize: 13),
-                          ),
-                        )
-                      : OutlinedButton(
-                          onPressed: busy ? null : () => onAction(target),
-                          style: OutlinedButton.styleFrom(
-                            minimumSize: const Size(0, 44),
-                            side: const BorderSide(color: AppColors.border),
-                            shape: RoundedRectangleBorder(
-                              borderRadius:
-                                  BorderRadius.circular(AppSizes.radiusSm),
-                            ),
-                          ),
-                          child: Text(
-                            label,
-                            style: AppTextStyles.buttonLabel.copyWith(
-                              color: AppColors.textSecondary,
-                              fontSize: 13,
-                            ),
-                          ),
-                        ),
-                ),
-                const SizedBox(width: AppSizes.sm),
-              ],
-            ]..removeLast(),
+              // Without onRetry this was a dead end — a failed load left the
+              // admin with no way back except leaving the screen.
+              error: (e, _) => AppErrorView(error: e, onRetry: _refreshAll),
+              data: (r) {
+                if (r == null) {
+                  return const AdminMessageState(
+                    icon: PhosphorIconsBold.storefront,
+                    title: 'Restaurant not found',
+                    message: 'It may have been removed.',
+                  );
+                }
+                return RefreshIndicator(
+                  color: AdminColors.indigo,
+                  onRefresh: () async => _refreshAll(),
+                  child: ListView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+                    children: [
+                      _LifecycleCard(
+                        restaurant: r,
+                        busy: _busy,
+                        onAction: (next) => _setStatus(r, next),
+                      ),
+                      const SizedBox(height: 18),
+                      const Padding(
+                        padding: EdgeInsets.only(left: 4, bottom: 10),
+                        child: AdminOverline('Customer preview'),
+                      ),
+                      RestaurantCard(restaurant: r, interactive: false),
+                      const SizedBox(height: 10),
+                      AdminButton(
+                        label: 'Edit details',
+                        variant: AdminBtn.soft,
+                        expand: true,
+                        leading: PhosphorIconsRegular.pencilSimple,
+                        onPressed: _busy ? null : _editDetails,
+                      ),
+                      const SizedBox(height: 22),
+                      _MenuSection(
+                        restaurant: r,
+                        onAdd: () => _addOrEditItem(r),
+                        onEdit: (item) => _addOrEditItem(r, existing: item),
+                        onToggle: _toggleItem,
+                        onDelete: _deleteItem,
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
           ),
         ],
       ),
     );
   }
-
-  /// (label, target status, is-primary) per lifecycle state.
-  List<(String, RestaurantStatus, bool)> _actionsFor(RestaurantStatus s) =>
-      switch (s) {
-        RestaurantStatus.draft => const [
-            ('Publish', RestaurantStatus.published, true),
-            ('Archive', RestaurantStatus.archived, false),
-          ],
-        RestaurantStatus.published => const [
-            ('Suspend', RestaurantStatus.suspended, false),
-            ('Archive', RestaurantStatus.archived, false),
-          ],
-        RestaurantStatus.suspended => const [
-            ('Reactivate', RestaurantStatus.published, true),
-            ('Archive', RestaurantStatus.archived, false),
-          ],
-        RestaurantStatus.archived => const [
-            ('Restore to draft', RestaurantStatus.draft, true),
-          ],
-      };
-
-  static String _date(DateTime t) => '${t.day}/${t.month}/${t.year}';
 }
 
-// ───────────────────────── Menu section ─────────────────────────
+// ─────────────────────── Lifecycle card ───────────────────────
+
+class _LifecycleCard extends ConsumerWidget {
+  const _LifecycleCard(
+      {required this.restaurant, required this.busy, required this.onAction});
+  final Restaurant restaurant;
+  final bool busy;
+  final ValueChanged<RestaurantStatus> onAction;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final r = restaurant;
+    final s = adminStatusStyle(r.status);
+    final items = ref.watch(adminRestaurantMenuProvider(r.id)).valueOrNull ??
+        const <MenuItem>[];
+    final missing =
+        r.status == RestaurantStatus.draft ? _missingCount(r, items) : 0;
+
+    final explain = switch (r.status) {
+      RestaurantStatus.published =>
+        'Visible to customers in search and event planning.',
+      RestaurantStatus.draft => missing == 0
+          ? 'Ready to publish — all checks pass.'
+          : 'Hidden from customers. Complete the checklist to publish.',
+      RestaurantStatus.suspended => 'Temporarily hidden from customers.',
+      RestaurantStatus.archived => 'Removed from the catalog but not deleted.',
+    };
+
+    final actions = _actionsFor(r.status);
+
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: s.fg.withValues(alpha: 0.2)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
+            color: s.bg,
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    AdminBadge(status: r.status),
+                    const Spacer(),
+                    Text(_updatedLabel(r),
+                        style: AdminText.cap.copyWith(color: s.fg)),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Text(explain,
+                    style: AdminText.body.copyWith(color: AdminColors.tx)),
+              ],
+            ),
+          ),
+          Container(
+            color: AdminColors.card,
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              children: [
+                for (var i = 0; i < actions.length; i++) ...[
+                  Expanded(
+                    child: AdminButton(
+                      label: actions[i].$1,
+                      variant: actions[i].$3,
+                      expand: true,
+                      disabled: busy,
+                      onPressed: () => onAction(actions[i].$2),
+                    ),
+                  ),
+                  if (i != actions.length - 1) const SizedBox(width: 10),
+                ],
+              ],
+            ),
+          ),
+          if (missing > 0)
+            Container(
+              color: AdminColors.card,
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+              child: Row(
+                children: [
+                  const Icon(PhosphorIconsFill.info,
+                      size: 14, color: AdminColors.susp),
+                  const SizedBox(width: 5),
+                  Expanded(
+                    child: Text(
+                      '$missing item(s) block publishing — open the editor to finish.',
+                      style: AdminText.cap.copyWith(
+                          color: AdminColors.susp, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  static int _missingCount(Restaurant r, List<MenuItem> items) {
+    var n = 0;
+    if (r.name.trim().isEmpty) n++;
+    if ((r.pricePerPlate ?? 0) <= 0) n++;
+    if ((r.minGuests ?? 0) <= 0) n++;
+    if ((r.address?.trim().isEmpty ?? true) ||
+        r.latitude == null ||
+        r.longitude == null) n++;
+    final noImage =
+        (r.logoUrl?.isEmpty ?? true) && (r.coverImageUrl?.isEmpty ?? true);
+    if (noImage) n++;
+    if (!items.any((m) => m.isAvailable)) n++;
+    return n;
+  }
+
+  static String _updatedLabel(Restaurant r) {
+    final d = switch (r.status) {
+      RestaurantStatus.published => r.publishedAt,
+      RestaurantStatus.archived => r.archivedAt,
+      _ => r.updatedAt,
+    };
+    if (d == null) return '';
+    final prefix = switch (r.status) {
+      RestaurantStatus.published => 'Live since ',
+      RestaurantStatus.archived => 'Archived ',
+      _ => 'Updated ',
+    };
+    return '$prefix${d.day}/${d.month}/${d.year}';
+  }
+
+  /// (label, target status, variant) per lifecycle state.
+  static List<(String, RestaurantStatus, AdminBtn)> _actionsFor(
+          RestaurantStatus s) =>
+      switch (s) {
+        RestaurantStatus.draft => const [
+            ('Publish now', RestaurantStatus.published, AdminBtn.primary),
+            ('Archive', RestaurantStatus.archived, AdminBtn.ghost),
+          ],
+        RestaurantStatus.published => const [
+            ('Suspend', RestaurantStatus.suspended, AdminBtn.ghost),
+            ('Archive', RestaurantStatus.archived, AdminBtn.ghost),
+          ],
+        RestaurantStatus.suspended => const [
+            ('Reactivate', RestaurantStatus.published, AdminBtn.primary),
+            ('Archive', RestaurantStatus.archived, AdminBtn.ghost),
+          ],
+        RestaurantStatus.archived => const [
+            ('Restore to draft', RestaurantStatus.draft, AdminBtn.primary),
+          ],
+      };
+}
+
+// ─────────────────────── Menu section ───────────────────────
 
 class _MenuSection extends ConsumerWidget {
   const _MenuSection({
@@ -397,7 +377,6 @@ class _MenuSection extends ConsumerWidget {
     required this.onToggle,
     required this.onDelete,
   });
-
   final Restaurant restaurant;
   final VoidCallback onAdd;
   final ValueChanged<MenuItem> onEdit;
@@ -409,6 +388,12 @@ class _MenuSection extends ConsumerWidget {
     final itemsAsync = ref.watch(adminRestaurantMenuProvider(restaurant.id));
     final items = itemsAsync.valueOrNull ?? const <MenuItem>[];
     final available = items.where((i) => i.isAvailable).length;
+    // Category names for the "Starters · ₹220" sub-line on each dish row.
+    final categoryNames = <String, String>{
+      for (final c in ref.watch(menuCategoriesProvider).valueOrNull ??
+          const <MenuCategory>[])
+        c.id: c.name,
+    };
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -416,97 +401,142 @@ class _MenuSection extends ConsumerWidget {
         Row(
           children: [
             Expanded(
-              child: Text(
-                'Menu · $available available of ${items.length}',
-                style: AppTextStyles.heading2,
-              ),
+              child: AdminOverline(
+                  'Menu · $available available of ${items.length}'),
             ),
-            FilledButton.icon(
-              style: FilledButton.styleFrom(
-                backgroundColor: _indigo,
-                foregroundColor: Colors.white,
+            GestureDetector(
+              onTap: onAdd,
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(PhosphorIconsBold.plus,
+                      size: 16, color: AdminColors.indigo600),
+                  SizedBox(width: 4),
+                  Text('Add',
+                      style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: AdminColors.indigo600)),
+                ],
               ),
-              onPressed: onAdd,
-              icon: const Icon(PhosphorIconsBold.plus, size: 16),
-              label: const Text('Add'),
             ),
           ],
         ),
-        const SizedBox(height: AppSizes.sm),
+        const SizedBox(height: 10),
         if (itemsAsync.isLoading && items.isEmpty)
-          const Center(
-            child: Padding(
-              padding: EdgeInsets.all(AppSizes.xl),
-              child: CircularProgressIndicator(),
-            ),
+          const Padding(
+            padding: EdgeInsets.all(28),
+            child: Center(
+                child: CircularProgressIndicator(color: AdminColors.indigo)),
           )
         else if (items.isEmpty)
-          Container(
-            padding: const EdgeInsets.all(AppSizes.lg),
-            decoration: BoxDecoration(
-              color: AppColors.surfaceAlt,
-              borderRadius: BorderRadius.circular(AppSizes.radiusMd),
-            ),
-            child: Text(
-              'No dishes yet — add at least one available item before '
-              'publishing.',
-              textAlign: TextAlign.center,
-              style: AppTextStyles.caption,
+          AdminCard(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              children: [
+                Container(
+                  width: 56,
+                  height: 56,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: AdminColors.indigo050,
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: const Icon(PhosphorIconsDuotone.forkKnife,
+                      size: 26, color: AdminColors.indigo),
+                ),
+                const SizedBox(height: 12),
+                const Text('No dishes yet', style: AdminText.h2),
+                const SizedBox(height: 4),
+                const Text('Add at least one available dish before publishing.',
+                    textAlign: TextAlign.center, style: AdminText.cap),
+                const SizedBox(height: 14),
+                AdminButton(
+                  label: 'Add dish',
+                  size: 'sm',
+                  leading: PhosphorIconsBold.plus,
+                  onPressed: onAdd,
+                ),
+              ],
             ),
           )
         else
           for (final item in items) ...[
-            InkWell(
-              onTap: () => onEdit(item),
-              borderRadius: BorderRadius.circular(AppSizes.radiusMd),
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: AppSizes.md,
-                  vertical: AppSizes.xs,
-                ),
-                decoration: BoxDecoration(
-                  color: AppColors.surface,
-                  borderRadius: BorderRadius.circular(AppSizes.radiusMd),
-                  border: Border.all(color: AppColors.border),
-                ),
-                child: Row(
+            _DishRow(
+                item: item,
+                categoryName: categoryNames[item.categoryId],
+                onEdit: onEdit,
+                onToggle: onToggle,
+                onDelete: onDelete),
+            const SizedBox(height: 8),
+          ],
+      ],
+    );
+  }
+}
+
+class _DishRow extends StatelessWidget {
+  const _DishRow({
+    required this.item,
+    required this.categoryName,
+    required this.onEdit,
+    required this.onToggle,
+    required this.onDelete,
+  });
+  final MenuItem item;
+
+  /// Resolved category label ("Starters"); null while categories load or if
+  /// the dish points at a category that no longer exists.
+  final String? categoryName;
+  final ValueChanged<MenuItem> onEdit;
+  final void Function(MenuItem, bool) onToggle;
+  final ValueChanged<MenuItem> onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    return Opacity(
+      opacity: item.isAvailable ? 1 : 0.6,
+      child: AdminCard(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          children: [
+            AdminVegMark(isVeg: item.isVeg),
+            const SizedBox(width: 12),
+            Expanded(
+              child: GestureDetector(
+                onTap: () => onEdit(item),
+                behavior: HitTestBehavior.opaque,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    VegDot(isVeg: item.isVeg),
-                    const SizedBox(width: AppSizes.sm),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            item.name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: AppTextStyles.bodyBold,
-                          ),
-                          Text(
-                            '₹${item.price.toStringAsFixed(0)}',
-                            style: AppTextStyles.caption,
-                          ),
-                        ],
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(PhosphorIconsRegular.trash, size: 18),
-                      color: AppColors.textMuted,
-                      onPressed: () => onDelete(item),
-                    ),
-                    Switch.adaptive(
-                      value: item.isAvailable,
-                      activeThumbColor: _indigo,
-                      onChanged: (v) => onToggle(item, v),
+                    Text(item.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AdminText.h3),
+                    const SizedBox(height: 2),
+                    Text(
+                      categoryName == null
+                          ? '₹${item.price.toStringAsFixed(0)}'
+                          : '$categoryName · ₹${item.price.toStringAsFixed(0)}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AdminText.cap,
                     ),
                   ],
                 ),
               ),
             ),
-            const SizedBox(height: AppSizes.sm),
+            AdminToggle(
+                value: item.isAvailable, onChanged: (v) => onToggle(item, v)),
+            const SizedBox(width: 4),
+            IconButton(
+              icon: const Icon(PhosphorIconsRegular.trash,
+                  size: 18, color: AdminColors.tx3),
+              onPressed: () => onDelete(item),
+            ),
           ],
-      ],
+        ),
+      ),
     );
   }
 }
