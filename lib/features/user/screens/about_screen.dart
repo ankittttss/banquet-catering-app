@@ -39,7 +39,8 @@ class AboutScreen extends StatelessWidget {
               'memorable gatherings. Today, we connect homes and event venues '
               'with curated caterers across India — from Rajasthani thalis to '
               'coastal seafood, Sattvik pure-veg to Mughlai tandoors.',
-              style: AppTextStyles.body.copyWith(color: AppColors.textSecondary),
+              style:
+                  AppTextStyles.body.copyWith(color: AppColors.textSecondary),
             ),
           ),
           const _Divider(),
@@ -410,8 +411,7 @@ class _CompanyCard extends StatelessWidget {
           const SizedBox(height: AppSizes.xs),
           Text(
             'Registered office: Hyderabad, India',
-            style:
-                AppTextStyles.body.copyWith(color: AppColors.textSecondary),
+            style: AppTextStyles.body.copyWith(color: AppColors.textSecondary),
           ),
           const SizedBox(height: AppSizes.sm + 2),
           _InfoLine(icon: Icons.email_rounded, text: 'hello@dawat.app'),
@@ -437,8 +437,7 @@ class _InfoLine extends StatelessWidget {
         Icon(icon, size: 16, color: AppColors.textSecondary),
         const SizedBox(width: AppSizes.sm),
         Text(text,
-            style:
-                AppTextStyles.body.copyWith(color: AppColors.textSecondary)),
+            style: AppTextStyles.body.copyWith(color: AppColors.textSecondary)),
       ],
     );
   }

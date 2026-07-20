@@ -4,8 +4,7 @@ import '../../data/models/user_address.dart';
 import 'auth_providers.dart';
 import 'repositories_providers.dart';
 
-final addressesProvider =
-    FutureProvider<List<UserAddress>>((ref) async {
+final addressesProvider = FutureProvider<List<UserAddress>>((ref) async {
   final userId = ref.watch(currentUserIdProvider);
   if (userId == null) return const [];
   return ref.read(addressRepositoryProvider).fetchForUser(userId);

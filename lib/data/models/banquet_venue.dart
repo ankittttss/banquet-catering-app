@@ -8,6 +8,7 @@ class BanquetVenue {
     this.longitude,
     this.capacity,
     this.isActive = true,
+    this.distanceKm,
   });
 
   final String id;
@@ -19,6 +20,10 @@ class BanquetVenue {
   final int? capacity;
   final bool isActive;
 
+  /// Distance from the event location in km — only populated by the
+  /// `banquet_venues_near` RPC (mirrors [Restaurant.distanceKm]).
+  final double? distanceKm;
+
   factory BanquetVenue.fromMap(Map<String, dynamic> map) => BanquetVenue(
         id: map['id'] as String,
         ownerProfileId: map['owner_profile_id'] as String,
@@ -28,6 +33,7 @@ class BanquetVenue {
         longitude: (map['longitude'] as num?)?.toDouble(),
         capacity: (map['capacity'] as num?)?.toInt(),
         isActive: (map['is_active'] as bool?) ?? true,
+        distanceKm: (map['distance_km'] as num?)?.toDouble(),
       );
 }
 

@@ -6,9 +6,10 @@ import '../../data/models/user_profile.dart';
 import '../../data/models/user_role.dart';
 import '../../features/admin/screens/admin_charges_screen.dart';
 import '../../features/admin/screens/admin_home_screen.dart';
-import '../../features/admin/screens/admin_menu_screen.dart';
-import '../../features/admin/screens/admin_orders_screen.dart';
-import '../../features/admin/screens/admin_partners_screen.dart';
+import '../../features/admin/screens/admin_restaurant_detail_screen.dart';
+import '../../features/admin/screens/admin_restaurant_wizard_screen.dart';
+import '../../features/admin/screens/admin_restaurants_screen.dart';
+import '../../features/admin/screens/admin_venues_screen.dart';
 import '../../features/auth/screens/login_screen.dart';
 import '../../features/auth/screens/otp_screen.dart';
 import '../../features/banquet/screens/banquet_home_screen.dart';
@@ -37,7 +38,6 @@ import '../../features/user/screens/checkout_screen.dart';
 import '../../features/user/screens/edit_profile_screen.dart';
 import '../../features/user/screens/event_details_screen.dart';
 import '../../features/user/screens/private_property_screen.dart';
-import '../../features/user/screens/recce_screen.dart';
 import '../../features/user/screens/setup_equipment_screen.dart';
 import '../../features/user/screens/venue_type_screen.dart';
 import '../../features/user/screens/favorites_screen.dart';
@@ -63,8 +63,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
   // Snapshot the profile as-is (not just the role) so the redirect callback
   // can tell "still loading" from "resolved as customer". Without this, an
   // admin would get bounced to /user while their profile is mid-load.
-  var profileAsync =
-      const AsyncValue<UserProfile?>.loading();
+  var profileAsync = const AsyncValue<UserProfile?>.loading();
   ref.listen(
     currentProfileProvider,
     (_, next) {
@@ -77,12 +76,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     initialLocation: AppRoutes.splash,
     refreshListenable: _RouterRefresh(authChanges),
     redirect: (context, state) {
-      final loggedIn =
-          AppConfig.hasSupabase && sb.auth.currentUser != null;
+      final loggedIn = AppConfig.hasSupabase && sb.auth.currentUser != null;
 
       final loc = state.matchedLocation;
-      final isAuthRoute =
-          loc == AppRoutes.login || loc == AppRoutes.otp;
+      final isAuthRoute = loc == AppRoutes.login || loc == AppRoutes.otp;
       final isSplash = loc == AppRoutes.splash;
       final isOnboarding = loc == AppRoutes.onboarding;
 
@@ -137,7 +134,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: AppRoutes.onboarding,
-        pageBuilder: (_, s) => _page(s, const OnboardingScreen()),
+        pageBuilder: (_, s) => _page(
+          s,
+          OnboardingScreen(
+            review: s.uri.queryParameters['review'] == '1',
+          ),
+        ),
       ),
       GoRoute(
         path: AppRoutes.login,
@@ -183,10 +185,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         pageBuilder: (_, s) => _page(s, const SetupEquipmentScreen()),
       ),
       GoRoute(
-        path: AppRoutes.eventRecce,
-        pageBuilder: (_, s) => _page(s, const RecceScreen()),
-      ),
-      GoRoute(
         path: AppRoutes.menu,
         pageBuilder: (_, s) => _page(s, const MenuScreen()),
       ),
@@ -194,13 +192,15 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: AppRoutes.restaurantDetail,
         pageBuilder: (_, s) => _page(
           s,
-          RestaurantDetailScreen(
-              restaurantId: s.pathParameters['id']!),
+          RestaurantDetailScreen(restaurantId: s.pathParameters['id']!),
         ),
       ),
       GoRoute(
         path: AppRoutes.search,
-        pageBuilder: (_, s) => _page(s, const SearchScreen()),
+        pageBuilder: (_, s) => _page(
+          s,
+          SearchScreen(initialQuery: s.uri.queryParameters['q']),
+        ),
       ),
       GoRoute(
         path: AppRoutes.favorites,
@@ -248,21 +248,41 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: AppRoutes.adminHome,
         pageBuilder: (_, s) => _page(s, const AdminHomeScreen()),
       ),
-      GoRoute(
-        path: AppRoutes.adminOrders,
-        pageBuilder: (_, s) => _page(s, const AdminOrdersScreen()),
-      ),
-      GoRoute(
-        path: AppRoutes.adminMenu,
-        pageBuilder: (_, s) => _page(s, const AdminMenuScreen()),
-      ),
+      // Retired admin routes: the global orders manager (statuses now flow
+      // automatically from banquet decisions + kitchen lots), the global
+      // menu editor (menus are per-restaurant), and delivery partners
+      // (legacy flow). Admin = restaurants + charges.
       GoRoute(
         path: AppRoutes.adminCharges,
         pageBuilder: (_, s) => _page(s, const AdminChargesScreen()),
       ),
       GoRoute(
-        path: AppRoutes.adminPartners,
-        pageBuilder: (_, s) => _page(s, const AdminPartnersScreen()),
+        path: AppRoutes.adminVenues,
+        pageBuilder: (_, s) => _page(s, const AdminVenuesScreen()),
+      ),
+      GoRoute(
+        path: AppRoutes.adminRestaurants,
+        pageBuilder: (_, s) => _page(s, const AdminRestaurantsScreen()),
+      ),
+      // Static 'new' must be registered before the ':id' template so
+      // /admin/restaurants/new opens the wizard, not a detail page.
+      GoRoute(
+        path: AppRoutes.adminRestaurantNew,
+        pageBuilder: (_, s) => _page(s, const AdminRestaurantWizardScreen()),
+      ),
+      GoRoute(
+        path: AppRoutes.adminRestaurantDetail,
+        pageBuilder: (_, s) => _page(
+          s,
+          AdminRestaurantDetailScreen(restaurantId: s.pathParameters['id']!),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.adminRestaurantEdit,
+        pageBuilder: (_, s) => _page(
+          s,
+          AdminRestaurantWizardScreen(restaurantId: s.pathParameters['id']),
+        ),
       ),
       GoRoute(
         path: AppRoutes.banquetHome,

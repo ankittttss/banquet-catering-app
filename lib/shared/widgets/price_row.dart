@@ -35,8 +35,7 @@ class PriceRow extends StatelessWidget {
                   style: AppTextStyles.heading2
                       .copyWith(color: AppColors.textPrimary)),
             ),
-            Text(Formatters.currency(amount),
-                style: AppTextStyles.totalAmount),
+            Text(Formatters.currency(amount), style: AppTextStyles.totalAmount),
           ],
         ),
       );
@@ -45,8 +44,7 @@ class PriceRow extends StatelessWidget {
     final labelStyle = emphasis
         ? AppTextStyles.bodyBold
         : AppTextStyles.body.copyWith(color: AppColors.textSecondary);
-    final amountStyle =
-        emphasis ? AppTextStyles.bodyBold : AppTextStyles.price;
+    final amountStyle = emphasis ? AppTextStyles.bodyBold : AppTextStyles.price;
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: AppSizes.sm),

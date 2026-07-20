@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/config/app_config.dart';
 import '../../data/repositories/address_repository.dart';
+import '../../data/repositories/admin_restaurant_repository.dart';
 import '../../data/repositories/banquet_repository.dart';
 import '../../data/repositories/charges_repository.dart';
 import '../../data/repositories/delivery_repository.dart';
@@ -14,6 +15,7 @@ import '../../data/repositories/restaurant_ops_repository.dart';
 import '../../data/repositories/review_repository.dart';
 import '../../data/repositories/staffing_repository.dart';
 import '../../data/repositories/stub/stub_address_repository.dart';
+import '../../data/repositories/stub/stub_admin_restaurant_repository.dart';
 import '../../data/repositories/stub/stub_banquet_repository.dart';
 import '../../data/repositories/stub/stub_charges_repository.dart';
 import '../../data/repositories/stub/stub_delivery_repository.dart';
@@ -27,6 +29,7 @@ import '../../data/repositories/stub/stub_review_repository.dart';
 import '../../data/repositories/stub/stub_staffing_repository.dart';
 import '../../data/repositories/stub/stub_taxonomy_repository.dart';
 import '../../data/repositories/supabase/supabase_address_repository.dart';
+import '../../data/repositories/supabase/supabase_admin_restaurant_repository.dart';
 import '../../data/repositories/supabase/supabase_banquet_repository.dart';
 import '../../data/repositories/supabase/supabase_charges_repository.dart';
 import '../../data/repositories/supabase/supabase_delivery_repository.dart';
@@ -45,14 +48,24 @@ import '../../data/repositories/taxonomy_repository.dart';
 /// credentials, otherwise falls back to in-memory stubs so the app remains
 /// runnable for UI development. Keep this the only place that branches on
 /// [AppConfig.hasSupabase] — all feature code should depend on the interfaces.
-T _pick<T>(T supabase, T stub) =>
-    AppConfig.hasSupabase ? supabase : stub;
+T _pick<T>(T supabase, T stub) => AppConfig.hasSupabase ? supabase : stub;
 
 final menuRepositoryProvider = Provider<MenuRepository>(
   (ref) => _pick<MenuRepository>(
     SupabaseMenuRepository(),
     StubMenuRepository(),
   ),
+);
+
+/// Admin catalog management. The stub variant shares the stub menu repo's
+/// in-memory stores (hence the explicit branch instead of [_pick] — it needs
+/// the concrete [StubMenuRepository] instance, not the interface).
+final adminRestaurantRepositoryProvider = Provider<AdminRestaurantRepository>(
+  (ref) => AppConfig.hasSupabase
+      ? SupabaseAdminRestaurantRepository()
+      : StubAdminRestaurantRepository(
+          ref.watch(menuRepositoryProvider) as StubMenuRepository,
+        ),
 );
 
 final chargesRepositoryProvider = Provider<ChargesRepository>(

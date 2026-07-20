@@ -18,6 +18,16 @@ abstract interface class OrderRepository {
 
   Future<void> updateStatus(String orderId, OrderStatus status);
 
+  /// Customer-initiated cancellation of their OWN order. Server-enforced:
+  /// only placed/confirmed orders can be cancelled, and the cancellation
+  /// cascades to the order's not-yet-picked-up vendor lots.
+  Future<void> cancelOrder(String orderId);
+
+  /// Rebuild cart lines from a past order — only items that are still
+  /// orderable come back (deleted/unavailable dishes are skipped), priced at
+  /// the CURRENT catalog price. Backs the "Reorder" action.
+  Future<List<CartItem>> fetchReorderLines(String orderId);
+
   /// Aggregated event-level snapshot used by the manager event-detail
   /// screen: event row + venue/tier names + the booking order + per-
   /// restaurant vendor lots in a single query. Returns `null` when the

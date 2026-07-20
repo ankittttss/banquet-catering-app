@@ -52,8 +52,7 @@ class BanquetVenuesScreen extends ConsumerWidget {
           return ListView.separated(
             padding: const EdgeInsets.symmetric(vertical: AppSizes.md),
             itemCount: rows.length,
-            separatorBuilder: (_, __) =>
-                const SizedBox(height: AppSizes.md),
+            separatorBuilder: (_, __) => const SizedBox(height: AppSizes.md),
             itemBuilder: (_, i) => _VenueCard(venue: rows[i]),
           );
         },
@@ -116,8 +115,7 @@ class _VenueCard extends StatelessWidget {
                 height: 48,
                 decoration: BoxDecoration(
                   color: AppColors.primarySoft,
-                  borderRadius:
-                      BorderRadius.circular(AppSizes.radiusSm),
+                  borderRadius: BorderRadius.circular(AppSizes.radiusSm),
                 ),
                 alignment: Alignment.center,
                 child: const Icon(PhosphorIconsDuotone.buildings,
@@ -151,9 +149,8 @@ class _VenueCard extends StatelessWidget {
               _StatChip(
                 icon: PhosphorIconsBold.circle,
                 label: venue.isActive ? 'Active' : 'Inactive',
-                colour: venue.isActive
-                    ? AppColors.success
-                    : AppColors.textMuted,
+                colour:
+                    venue.isActive ? AppColors.success : AppColors.textMuted,
               ),
             ],
           ),
@@ -187,8 +184,7 @@ class _StatChip extends StatelessWidget {
         children: [
           Icon(icon, size: 14, color: c),
           const SizedBox(width: 4),
-          Text(label,
-              style: AppTextStyles.captionBold.copyWith(color: c)),
+          Text(label, style: AppTextStyles.captionBold.copyWith(color: c)),
         ],
       ),
     );

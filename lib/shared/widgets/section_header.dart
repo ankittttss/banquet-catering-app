@@ -36,8 +36,7 @@ class SectionHeader extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 if (kicker != null) ...[
-                  Text(kicker!.toUpperCase(),
-                      style: AppTextStyles.overline),
+                  Text(kicker!.toUpperCase(), style: AppTextStyles.overline),
                   const SizedBox(height: AppSizes.xs),
                 ],
                 Text(title, style: AppTextStyles.heading1),

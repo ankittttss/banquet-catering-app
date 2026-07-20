@@ -1,4 +1,3 @@
-import 'chef.dart';
 import 'private_property.dart';
 import 'venue_type.dart';
 
@@ -6,6 +5,7 @@ import 'venue_type.dart';
 class EventDraft {
   const EventDraft({
     this.eventName,
+    this.categorySlug,
     this.date,
     this.location,
     this.eventLatitude,
@@ -18,17 +18,22 @@ class EventDraft {
     this.tierCode,
     this.banquetVenueId,
     this.banquetVenueName,
+    this.banquetVenueCapacity,
     this.serviceBoyCount,
     this.venueType,
     this.propertyDraft,
     this.addonQuantities = const {},
-    this.recce,
   });
 
   /// Customer-chosen display name for the event, e.g. "Aanya's Sangeet".
   /// Optional — when null the UI falls back to a composed label like
   /// "Dinner for 150".
   final String? eventName;
+
+  /// Slug of the occasion picked on the home grid / plan screen (e.g.
+  /// "wedding", "birthday"). Drives the pre-selected occasion chip and
+  /// persists the choice through the whole plan flow.
+  final String? categorySlug;
 
   final DateTime? date;
   final String? location;
@@ -55,6 +60,14 @@ class EventDraft {
   final String? banquetVenueId;
   final String? banquetVenueName;
 
+  /// Capacity of the selected banquet venue, captured at selection time.
+  /// Null when unknown (the venue row had no capacity). This lets the shared
+  /// planning cascade detect — offline, without a fetch — that a later
+  /// guest-count increase pushed the party past the hall it fits, so Home,
+  /// Event Details and Checkout all stop treating that stale hall as a done
+  /// step. `place_order` re-checks LIVE capacity as the final authority.
+  final int? banquetVenueCapacity;
+
   /// Customer-chosen number of service boys. When null, falls back to
   /// suggestedServiceBoys (1 per 10 guests, min 1).
   final int? serviceBoyCount;
@@ -68,10 +81,6 @@ class EventDraft {
 
   /// Addon id → quantity. Empty when the user hasn't customised anything.
   final Map<String, int> addonQuantities;
-
-  /// Optional free site-recce booking. Only meaningful on the private-
-  /// property path.
-  final ReccePick? recce;
 
   /// Suggested staffing level — 1 service boy per 10 guests (rounded up),
   /// floor of 1. e.g. 25 guests → 3, 100 guests → 10, 150 guests → 15.
@@ -94,6 +103,7 @@ class EventDraft {
 
   EventDraft copyWith({
     String? eventName,
+    String? categorySlug,
     DateTime? date,
     String? location,
     double? eventLatitude,
@@ -106,14 +116,15 @@ class EventDraft {
     String? tierCode,
     String? banquetVenueId,
     String? banquetVenueName,
+    int? banquetVenueCapacity,
     int? serviceBoyCount,
     VenueType? venueType,
     PrivatePropertyDraft? propertyDraft,
     Map<String, int>? addonQuantities,
-    ReccePick? recce,
   }) =>
       EventDraft(
         eventName: eventName ?? this.eventName,
+        categorySlug: categorySlug ?? this.categorySlug,
         date: date ?? this.date,
         location: location ?? this.location,
         eventLatitude: eventLatitude ?? this.eventLatitude,
@@ -126,28 +137,17 @@ class EventDraft {
         tierCode: tierCode ?? this.tierCode,
         banquetVenueId: banquetVenueId ?? this.banquetVenueId,
         banquetVenueName: banquetVenueName ?? this.banquetVenueName,
+        banquetVenueCapacity: banquetVenueCapacity ?? this.banquetVenueCapacity,
         serviceBoyCount: serviceBoyCount ?? this.serviceBoyCount,
         venueType: venueType ?? this.venueType,
         propertyDraft: propertyDraft ?? this.propertyDraft,
         addonQuantities: addonQuantities ?? this.addonQuantities,
-        recce: recce ?? this.recce,
       );
 
-  Map<String, dynamic> toInsertMap(String userId) => {
-        'user_id': userId,
-        if (eventName != null && eventName!.trim().isNotEmpty)
-          'name': eventName!.trim(),
-        'event_date': date!.toIso8601String().substring(0, 10),
-        'location': location,
-        'session': session,
-        'start_time':
-            '${startTime!.hour.toString().padLeft(2, '0')}:${startTime!.minute.toString().padLeft(2, '0')}',
-        'end_time':
-            '${endTime!.hour.toString().padLeft(2, '0')}:${endTime!.minute.toString().padLeft(2, '0')}',
-        'guest_count': guestCount,
-        if (tierId != null) 'tier_id': tierId,
-        if (banquetVenueId != null) 'banquet_venue_id': banquetVenueId,
-      };
+  // NOTE: the old toInsertMap (direct events-table insert) was replaced by
+  // orderEventPayload (lib/data/repositories/order_payloads.dart), which
+  // feeds the transactional place_order RPC and persists the FULL booking
+  // (category, venue type, coordinates, property details, add-ons).
 
   /// Snapshot of the draft for persistence in `shared_preferences`. Bumps
   /// the schema version so old payloads can be discarded cleanly if the
@@ -155,6 +155,7 @@ class EventDraft {
   Map<String, dynamic> toJson() => {
         'v': 1,
         if (eventName != null) 'eventName': eventName,
+        if (categorySlug != null) 'categorySlug': categorySlug,
         if (date != null) 'date': date!.toIso8601String(),
         if (location != null) 'location': location,
         if (eventLatitude != null) 'eventLatitude': eventLatitude,
@@ -167,11 +168,12 @@ class EventDraft {
         if (tierCode != null) 'tierCode': tierCode,
         if (banquetVenueId != null) 'banquetVenueId': banquetVenueId,
         if (banquetVenueName != null) 'banquetVenueName': banquetVenueName,
+        if (banquetVenueCapacity != null)
+          'banquetVenueCapacity': banquetVenueCapacity,
         if (serviceBoyCount != null) 'serviceBoyCount': serviceBoyCount,
         if (venueType != null) 'venueType': venueType!.dbValue,
         if (propertyDraft != null) 'propertyDraft': propertyDraft!.toJson(),
         if (addonQuantities.isNotEmpty) 'addonQuantities': addonQuantities,
-        if (recce != null) 'recce': recce!.toJson(),
       };
 
   factory EventDraft.fromJson(Map<String, dynamic> json) {
@@ -186,6 +188,7 @@ class EventDraft {
         const <String, int>{};
     return EventDraft(
       eventName: json['eventName'] as String?,
+      categorySlug: json['categorySlug'] as String?,
       date: parse('date'),
       location: json['location'] as String?,
       eventLatitude: (json['eventLatitude'] as num?)?.toDouble(),
@@ -198,6 +201,7 @@ class EventDraft {
       tierCode: json['tierCode'] as String?,
       banquetVenueId: json['banquetVenueId'] as String?,
       banquetVenueName: json['banquetVenueName'] as String?,
+      banquetVenueCapacity: (json['banquetVenueCapacity'] as num?)?.toInt(),
       serviceBoyCount: (json['serviceBoyCount'] as num?)?.toInt(),
       venueType: VenueType.fromDbValue(json['venueType'] as String?),
       propertyDraft: json['propertyDraft'] is Map<String, dynamic>
@@ -206,9 +210,6 @@ class EventDraft {
             )
           : null,
       addonQuantities: qty,
-      recce: json['recce'] is Map<String, dynamic>
-          ? ReccePick.fromJson(json['recce'] as Map<String, dynamic>)
-          : null,
     );
   }
 }

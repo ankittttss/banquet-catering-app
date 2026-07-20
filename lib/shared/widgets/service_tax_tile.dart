@@ -53,8 +53,7 @@ class ServiceTaxTile extends StatelessWidget {
   /// How far the bg + border peeks past the column edges on each side.
   static const double _overhang = 8;
 
-  String _pct(double v) =>
-      v.toStringAsFixed(v.truncateToDouble() == v ? 0 : 1);
+  String _pct(double v) => v.toStringAsFixed(v.truncateToDouble() == v ? 0 : 1);
 
   @override
   Widget build(BuildContext context) {
@@ -68,11 +67,9 @@ class ServiceTaxTile extends StatelessWidget {
       decorationColor: AppColors.textMuted,
     );
 
-    final fillColor =
-        included ? AppColors.accentSoft : AppColors.surfaceAlt;
-    final borderColor = included
-        ? AppColors.accent.withValues(alpha: 0.30)
-        : AppColors.border;
+    final fillColor = included ? AppColors.accentSoft : AppColors.surfaceAlt;
+    final borderColor =
+        included ? AppColors.accent.withValues(alpha: 0.30) : AppColors.border;
     final radius = BorderRadius.circular(AppSizes.radiusSm);
 
     return Padding(

@@ -74,9 +74,11 @@ class BanquetBookingDetailScreen extends ConsumerWidget {
           ),
           data: (detail) {
             if (detail == null) return const _NotFoundView();
-            final manager = staffAsync.valueOrNull?.where(
-              (a) => a.roleOnEvent == EventAssignmentRole.manager,
-            ).toList();
+            final manager = staffAsync.valueOrNull
+                ?.where(
+                  (a) => a.roleOnEvent == EventAssignmentRole.manager,
+                )
+                .toList();
             final hasManager = manager != null && manager.isNotEmpty;
             return Column(
               children: [
@@ -284,11 +286,10 @@ class _TimelineCard extends StatelessWidget {
     final managerAssignment = staffAsync.valueOrNull
         ?.where((a) => a.roleOnEvent == EventAssignmentRole.manager)
         .fold<EventAssignment?>(
-      null,
-      (acc, a) => acc == null || a.assignedAt.isBefore(acc.assignedAt)
-          ? a
-          : acc,
-    );
+          null,
+          (acc, a) =>
+              acc == null || a.assignedAt.isBefore(acc.assignedAt) ? a : acc,
+        );
     final status = detail.banquetStatus ?? BanquetEventStatus.pending;
     final steps = <_TimelineStep>[
       if (detail.orderCreatedAt != null)
@@ -296,8 +297,7 @@ class _TimelineCard extends StatelessWidget {
           icon: PhosphorIconsBold.shoppingBag,
           color: AppColors.textSecondary,
           headline: 'Booking placed',
-          subline:
-              '${Formatters.date(detail.orderCreatedAt!)} · by customer',
+          subline: '${Formatters.date(detail.orderCreatedAt!)} · by customer',
           done: true,
         ),
       _TimelineStep(
@@ -340,8 +340,7 @@ class _TimelineCard extends StatelessWidget {
           headline: 'Event day',
           subline: Formatters.date(detail.eventDate!),
           done: detail.eventDate!.isBefore(DateTime.now()),
-          isFuture:
-              !detail.eventDate!.isBefore(DateTime.now()),
+          isFuture: !detail.eventDate!.isBefore(DateTime.now()),
         ),
     ];
     return AppCard(
@@ -606,13 +605,11 @@ class _NotesCardState extends ConsumerState<_NotesCard> {
                 hintStyle: AppTextStyles.caption,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(AppSizes.radiusSm),
-                  borderSide:
-                      const BorderSide(color: AppColors.border),
+                  borderSide: const BorderSide(color: AppColors.border),
                 ),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(AppSizes.radiusSm),
-                  borderSide:
-                      const BorderSide(color: AppColors.border),
+                  borderSide: const BorderSide(color: AppColors.border),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(AppSizes.radiusSm),
@@ -696,8 +693,7 @@ class _NotesCardState extends ConsumerState<_NotesCard> {
           ),
           const SizedBox(width: AppSizes.sm),
           Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(
               color: AppColors.primarySoft,
               borderRadius: BorderRadius.circular(AppSizes.radiusPill),
@@ -835,8 +831,7 @@ class _ActionBar extends ConsumerWidget {
                     foregroundColor: Colors.white,
                     minimumSize: const Size.fromHeight(48),
                     shape: RoundedRectangleBorder(
-                      borderRadius:
-                          BorderRadius.circular(AppSizes.radiusMd),
+                      borderRadius: BorderRadius.circular(AppSizes.radiusMd),
                     ),
                     elevation: 0,
                   ),
@@ -1441,9 +1436,8 @@ class _BookingCard extends StatelessWidget {
           _DetailRow(
             icon: PhosphorIconsDuotone.users,
             label: 'Guest count',
-            value: detail.guestCount != null
-                ? '${detail.guestCount} guests'
-                : '—',
+            value:
+                detail.guestCount != null ? '${detail.guestCount} guests' : '—',
           ),
           if (detail.tierLabel != null)
             _DetailRow(
@@ -1504,8 +1498,7 @@ class _BillCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (detail.foodCost != null)
-            _BillRow('Food cost', detail.foodCost!),
+          if (detail.foodCost != null) _BillRow('Food cost', detail.foodCost!),
           if ((detail.deliveryCharge ?? 0) > 0)
             _BillRow('Delivery', detail.deliveryCharge!),
           if ((detail.banquetCharge ?? 0) > 0)
@@ -1544,8 +1537,7 @@ class _BillRow extends StatelessWidget {
       // Total row — promote with primary color and a larger amount so
       // the operator's eye lands on it instantly.
       return Container(
-        padding:
-            const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
           color: AppColors.primarySoft,
           borderRadius: BorderRadius.circular(AppSizes.radiusSm),
@@ -1718,8 +1710,7 @@ class _VendorItemLine extends StatelessWidget {
                 shape: BoxShape.rectangle,
                 borderRadius: BorderRadius.circular(2),
                 border: Border.all(
-                  color:
-                      item.isVeg! ? AppColors.success : AppColors.error,
+                  color: item.isVeg! ? AppColors.success : AppColors.error,
                   width: 1.4,
                 ),
               ),
@@ -1826,8 +1817,7 @@ class _RosterTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isManager =
-        assignment.roleOnEvent == EventAssignmentRole.manager;
+    final isManager = assignment.roleOnEvent == EventAssignmentRole.manager;
     final initial = (assignment.profileName?.isNotEmpty ?? false)
         ? assignment.profileName![0].toUpperCase()
         : '?';
@@ -1837,12 +1827,10 @@ class _RosterTile extends StatelessWidget {
         children: [
           CircleAvatar(
             radius: 16,
-            backgroundColor: isManager
-                ? AppColors.primarySoft
-                : AppColors.surfaceAlt,
-            foregroundColor: isManager
-                ? AppColors.primary
-                : AppColors.textSecondary,
+            backgroundColor:
+                isManager ? AppColors.primarySoft : AppColors.surfaceAlt,
+            foregroundColor:
+                isManager ? AppColors.primary : AppColors.textSecondary,
             child: Text(
               initial,
               style: AppTextStyles.captionBold.copyWith(fontSize: 12),
@@ -1974,7 +1962,8 @@ class _NotFoundView extends StatelessWidget {
     return const EmptyState(
       icon: PhosphorIconsDuotone.warningCircle,
       title: 'Booking not found',
-      message: 'This booking may have been cancelled or moved out of your inbox.',
+      message:
+          'This booking may have been cancelled or moved out of your inbox.',
     );
   }
 }

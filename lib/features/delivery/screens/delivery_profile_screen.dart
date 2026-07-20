@@ -51,9 +51,7 @@ class DeliveryProfileScreen extends ConsumerWidget {
                 Text(driver?.name ?? '—', style: AppTextStyles.heading1),
                 const SizedBox(height: 2),
                 Text(
-                  driver == null
-                      ? ''
-                      : '${driver.phone} · ${driver.vehicle}',
+                  driver == null ? '' : '${driver.phone} · ${driver.vehicle}',
                   style: AppTextStyles.caption,
                 ),
                 const SizedBox(height: AppSizes.md),
@@ -82,8 +80,8 @@ class DeliveryProfileScreen extends ConsumerWidget {
           const SizedBox(height: AppSizes.sm),
           Container(
             color: AppColors.surface,
-            padding: const EdgeInsets.symmetric(
-                horizontal: AppSizes.pagePaddingSm),
+            padding:
+                const EdgeInsets.symmetric(horizontal: AppSizes.pagePaddingSm),
             child: Column(
               children: [
                 _MenuItem(

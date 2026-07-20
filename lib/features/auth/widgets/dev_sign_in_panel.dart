@@ -92,7 +92,8 @@ class _DevSignInPanelState extends ConsumerState<DevSignInPanel> {
       decoration: BoxDecoration(
         color: const Color(0xFFFFF8E1),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE5A100).withValues(alpha: 0.5)),
+        border:
+            Border.all(color: const Color(0xFFE5A100).withValues(alpha: 0.5)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -100,8 +101,7 @@ class _DevSignInPanelState extends ConsumerState<DevSignInPanel> {
           Row(
             children: [
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
                   color: const Color(0xFFE5A100),
                   borderRadius: BorderRadius.circular(4),

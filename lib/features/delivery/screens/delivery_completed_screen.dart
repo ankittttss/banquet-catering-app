@@ -84,14 +84,13 @@ class DeliveryCompletedScreen extends StatelessWidget {
                 style: FilledButton.styleFrom(
                   backgroundColor: AppColors.success,
                   shape: RoundedRectangleBorder(
-                    borderRadius:
-                        BorderRadius.circular(AppSizes.radiusSm),
+                    borderRadius: BorderRadius.circular(AppSizes.radiusSm),
                   ),
                 ),
                 child: Text(
                   'Go online for more orders',
-                  style: AppTextStyles.buttonLabel
-                      .copyWith(color: Colors.white),
+                  style:
+                      AppTextStyles.buttonLabel.copyWith(color: Colors.white),
                 ),
               ),
             ),
@@ -105,12 +104,10 @@ class DeliveryCompletedScreen extends StatelessWidget {
                   side: const BorderSide(color: AppColors.border),
                   foregroundColor: AppColors.textSecondary,
                   shape: RoundedRectangleBorder(
-                    borderRadius:
-                        BorderRadius.circular(AppSizes.radiusSm),
+                    borderRadius: BorderRadius.circular(AppSizes.radiusSm),
                   ),
                 ),
-                child: Text('Back to home',
-                    style: AppTextStyles.buttonLabel),
+                child: Text('Back to home', style: AppTextStyles.buttonLabel),
               ),
             ),
           ],
@@ -148,8 +145,8 @@ class _Stat extends StatelessWidget {
           const SizedBox(height: 2),
           Text(
             label,
-            style: AppTextStyles.captionBold
-                .copyWith(color: color, fontSize: 11),
+            style:
+                AppTextStyles.captionBold.copyWith(color: color, fontSize: 11),
           ),
         ],
       ),

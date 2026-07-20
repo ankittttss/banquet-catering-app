@@ -449,8 +449,9 @@ class _DutyCard extends ConsumerWidget {
                         ? null
                         : () => _toggleCheck(context, ref),
                     style: FilledButton.styleFrom(
-                      backgroundColor:
-                          assignment.isCheckedIn ? AppColors.textPrimary : state.color,
+                      backgroundColor: assignment.isCheckedIn
+                          ? AppColors.textPrimary
+                          : state.color,
                       foregroundColor: Colors.white,
                     ),
                     icon: Icon(

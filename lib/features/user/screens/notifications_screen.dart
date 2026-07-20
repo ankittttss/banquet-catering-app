@@ -26,21 +26,18 @@ class NotificationsScreen extends ConsumerWidget {
         title: const Text('Notifications'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () => context.canPop()
-              ? context.pop()
-              : context.go(AppRoutes.profile),
+          onPressed: () =>
+              context.canPop() ? context.pop() : context.go(AppRoutes.profile),
         ),
         actions: [
           TextButton(
             onPressed: () async {
-              await ref
-                  .read(notificationRepositoryProvider)
-                  .markAllRead();
+              await ref.read(notificationRepositoryProvider).markAllRead();
             },
             child: Text(
               'Mark all read',
-              style: AppTextStyles.captionBold
-                  .copyWith(color: AppColors.primary),
+              style:
+                  AppTextStyles.captionBold.copyWith(color: AppColors.primary),
             ),
           ),
         ],
@@ -68,9 +65,7 @@ class NotificationsScreen extends ConsumerWidget {
               onTap: () async {
                 final n = list[i];
                 if (n.isUnread) {
-                  await ref
-                      .read(notificationRepositoryProvider)
-                      .markRead(n.id);
+                  await ref.read(notificationRepositoryProvider).markRead(n.id);
                 }
                 if (!context.mounted) return;
                 if (n.orderId != null) {
@@ -127,8 +122,7 @@ class _NotificationRow extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(n.title,
-                      style: AppTextStyles.bodyBold
-                          .copyWith(fontSize: 14)),
+                      style: AppTextStyles.bodyBold.copyWith(fontSize: 14)),
                   if (n.body != null) ...[
                     const SizedBox(height: 3),
                     Text(

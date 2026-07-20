@@ -36,10 +36,12 @@ class PhotoPickerError extends PhotoPickerResult {
 /// [PhotoRemoved] / [PhotoPickerCancelled] result.
 ///
 /// [hasExisting] hides the "Remove photo" row when the user has no
-/// avatar set yet.
+/// avatar set yet. [title] defaults to the avatar use-case; other callers
+/// (e.g. admin restaurant images) pass their own.
 Future<PhotoPickerResult> showPhotoPickerSheet(
   BuildContext context, {
   bool hasExisting = false,
+  String title = 'Profile photo',
 }) async {
   final result = await showModalBottomSheet<PhotoPickerResult>(
     context: context,
@@ -47,14 +49,15 @@ Future<PhotoPickerResult> showPhotoPickerSheet(
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
     ),
-    builder: (ctx) => _PhotoSheet(hasExisting: hasExisting),
+    builder: (ctx) => _PhotoSheet(hasExisting: hasExisting, title: title),
   );
   return result ?? const PhotoPickerCancelled();
 }
 
 class _PhotoSheet extends StatelessWidget {
-  const _PhotoSheet({required this.hasExisting});
+  const _PhotoSheet({required this.hasExisting, required this.title});
   final bool hasExisting;
+  final String title;
 
   Future<void> _pick(BuildContext context, ImageSource source) async {
     HapticFeedback.selectionClick();
@@ -70,7 +73,8 @@ class _PhotoSheet extends StatelessWidget {
         imageQuality: 90,
       );
       if (xfile == null) {
-        if (context.mounted) Navigator.pop(context, const PhotoPickerCancelled());
+        if (context.mounted)
+          Navigator.pop(context, const PhotoPickerCancelled());
         return;
       }
 
@@ -125,7 +129,7 @@ class _PhotoSheet extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
               child: Text(
-                'Profile photo',
+                title,
                 style: AppTextStyles.heading2,
               ),
             ),

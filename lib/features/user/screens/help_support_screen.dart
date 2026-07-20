@@ -62,7 +62,15 @@ class _HelpSupportScreenState extends State<HelpSupportScreen> {
             ),
           ),
           const SizedBox(height: AppSizes.sm),
-          const _QuickActionsGrid(),
+          _QuickActionsGrid(
+            onFilterFaq: (topic) {
+              HapticFeedback.selectionClick();
+              setState(() {
+                _query.text = topic;
+                _search = topic;
+              });
+            },
+          ),
           const SizedBox(height: AppSizes.md),
           _SectionTitle(
             title: _search.isEmpty
@@ -75,8 +83,8 @@ class _HelpSupportScreenState extends State<HelpSupportScreen> {
                   horizontal: AppSizes.pagePadding, vertical: AppSizes.lg),
               child: Text(
                 'No FAQs matched "$_search". Try different keywords, or contact us directly below.',
-                style: AppTextStyles.body
-                    .copyWith(color: AppColors.textSecondary),
+                style:
+                    AppTextStyles.body.copyWith(color: AppColors.textSecondary),
               ),
             )
           else
@@ -89,8 +97,7 @@ class _HelpSupportScreenState extends State<HelpSupportScreen> {
           Center(
             child: Text(
               'Average response time: under 10 min',
-              style: AppTextStyles.caption
-                  .copyWith(color: AppColors.textMuted),
+              style: AppTextStyles.caption.copyWith(color: AppColors.textMuted),
             ),
           ),
         ],
@@ -171,10 +178,9 @@ class _SearchField extends StatelessWidget {
       style: AppTextStyles.body,
       decoration: InputDecoration(
         hintText: 'Search for a topic — e.g. refund, delivery',
-        hintStyle:
-            AppTextStyles.body.copyWith(color: AppColors.textMuted),
-        prefixIcon: const Icon(Icons.search_rounded,
-            color: AppColors.textSecondary),
+        hintStyle: AppTextStyles.body.copyWith(color: AppColors.textMuted),
+        prefixIcon:
+            const Icon(Icons.search_rounded, color: AppColors.textSecondary),
         suffixIcon: controller.text.isEmpty
             ? null
             : IconButton(
@@ -201,7 +207,11 @@ class _SearchField extends StatelessWidget {
 // ───────────────────────── Quick actions ─────────────────────────
 
 class _QuickActionsGrid extends StatelessWidget {
-  const _QuickActionsGrid();
+  const _QuickActionsGrid({required this.onFilterFaq});
+
+  /// Filters the FAQ list to a topic keyword — the cards used to show a
+  /// "scroll down" snackbar that did nothing.
+  final ValueChanged<String> onFilterFaq;
 
   @override
   Widget build(BuildContext context) {
@@ -234,26 +244,16 @@ class _QuickActionsGrid extends StatelessWidget {
             label: 'Refunds & billing',
             iconBg: AppColors.catGoldLt,
             iconColor: AppColors.catGold,
-            onTap: () => _scrollToFaq(context, 'refund'),
+            onTap: () => onFilterFaq('refund'),
           ),
           _QuickActionCard(
             icon: Icons.account_circle_rounded,
             label: 'Account & login',
             iconBg: AppColors.catBlueLt,
             iconColor: AppColors.catBlue,
-            onTap: () => _scrollToFaq(context, 'account'),
+            onTap: () => onFilterFaq('account'),
           ),
         ],
-      ),
-    );
-  }
-
-  void _scrollToFaq(BuildContext context, String topic) {
-    HapticFeedback.selectionClick();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        duration: const Duration(seconds: 1),
-        content: Text('Scroll down to see $topic topics'),
       ),
     );
   }
@@ -316,8 +316,8 @@ class _SectionTitle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(AppSizes.pagePadding, AppSizes.md,
-          AppSizes.pagePadding, AppSizes.sm),
+      padding: const EdgeInsets.fromLTRB(
+          AppSizes.pagePadding, AppSizes.md, AppSizes.pagePadding, AppSizes.sm),
       child: Text(title, style: AppTextStyles.heading1),
     );
   }
@@ -425,8 +425,8 @@ class _FaqTileState extends State<_FaqTile> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(
-                  child: Text(widget.item.question,
-                      style: AppTextStyles.bodyBold),
+                  child:
+                      Text(widget.item.question, style: AppTextStyles.bodyBold),
                 ),
                 const SizedBox(width: AppSizes.sm),
                 AnimatedRotation(
@@ -482,14 +482,8 @@ class _ContactCard extends StatelessWidget {
             style: AppTextStyles.body.copyWith(color: AppColors.textSecondary),
           ),
           const SizedBox(height: AppSizes.md),
-          _ContactRow(
-            icon: Icons.chat_bubble_rounded,
-            iconBg: AppColors.primarySoft,
-            iconColor: AppColors.primary,
-            title: 'Chat with us',
-            subtitle: 'Fastest — typical reply in 10 min',
-            onTap: () => _showComingSoon(context, 'Live chat'),
-          ),
+          // "Chat with us" removed — no live-chat backend exists; the row
+          // promised a 10-minute reply and only showed a coming-soon toast.
           _ContactRow(
             icon: Icons.email_rounded,
             iconBg: AppColors.catBlueLt,
@@ -518,13 +512,6 @@ class _ContactCard extends StatelessWidget {
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('Copied: $text')),
-    );
-  }
-
-  void _showComingSoon(BuildContext context, String feature) {
-    HapticFeedback.selectionClick();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('$feature opens soon — use email meanwhile')),
     );
   }
 }
@@ -642,8 +629,7 @@ class _EmergencyCard extends StatelessWidget {
                         const ClipboardData(text: 'urgent@dawat.app'));
                     if (!context.mounted) return;
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                          content: Text('Copied: urgent@dawat.app')),
+                      const SnackBar(content: Text('Copied: urgent@dawat.app')),
                     );
                   },
                   child: const Text('Copy urgent email'),

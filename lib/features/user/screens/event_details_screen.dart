@@ -17,6 +17,7 @@ import '../../../shared/providers/event_providers.dart';
 import '../../../shared/providers/event_tier_providers.dart';
 import '../../../shared/providers/home_providers.dart';
 import '../../../shared/widgets/app_scaffold.dart';
+import '../planning_next_step.dart';
 import '../widgets/address_search_sheet.dart';
 
 /// Visual accents per tier code — keeps the old package colour/icon palette
@@ -73,18 +74,23 @@ class _EventDetailsScreenState extends ConsumerState<EventDetailsScreen> {
     _nameCtrl = TextEditingController(
       text: ref.read(eventDraftProvider).eventName ?? '',
     );
+    // Pre-select the occasion the customer chose on the home grid.
+    _categorySlug = ref.read(eventDraftProvider).categorySlug;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      // Pre-fill the event location from the default saved address if empty,
-      // carrying its coordinates so the restaurant list can sort nearest to
-      // it until the user picks a specific event location.
+      // Pre-fill the event location from the ACTIVE address (the one the
+      // customer selected in the home header chip — falls back to their
+      // default), carrying its coordinates so the restaurant list can sort
+      // nearest to it until the user picks a specific event location.
+      // Previously this read the default address, silently disagreeing with
+      // the address the rest of the app was using.
       final draft = ref.read(eventDraftProvider);
       if (draft.location == null || draft.location!.trim().isEmpty) {
-        final def = ref.read(defaultAddressProvider);
-        if (def != null) {
+        final active = ref.read(activeAddressProvider);
+        if (active != null) {
           ref.read(eventDraftProvider.notifier).setEventLocation(
-                address: def.fullAddress,
-                latitude: def.hasCoords ? def.latitude : null,
-                longitude: def.hasCoords ? def.longitude : null,
+                address: active.fullAddress,
+                latitude: active.hasCoords ? active.latitude : null,
+                longitude: active.hasCoords ? active.longitude : null,
               );
         }
       }
@@ -98,13 +104,20 @@ class _EventDetailsScreenState extends ConsumerState<EventDetailsScreen> {
   }
 
   Future<void> _pickDate() async {
-    final now = DateTime.now();
+    // Bounds run on the IST business clock (like all schedule rules), and
+    // the initial value is clamped into [first, last] — a restored draft
+    // with a stale past date used to violate the picker's assertion.
+    final first = istToday();
+    final last = first.add(const Duration(days: 365));
+    var initial =
+        ref.read(eventDraftProvider).date ?? first.add(const Duration(days: 3));
+    if (initial.isBefore(first)) initial = first;
+    if (initial.isAfter(last)) initial = last;
     final picked = await showDatePicker(
       context: context,
-      initialDate:
-          ref.read(eventDraftProvider).date ?? now.add(const Duration(days: 3)),
-      firstDate: now,
-      lastDate: now.add(const Duration(days: 365)),
+      initialDate: initial,
+      firstDate: first,
+      lastDate: last,
       builder: (ctx, child) => Theme(
         data: Theme.of(ctx).copyWith(
           colorScheme: Theme.of(ctx).colorScheme.copyWith(
@@ -119,13 +132,8 @@ class _EventDetailsScreenState extends ConsumerState<EventDetailsScreen> {
     }
   }
 
-  Future<void> _pickTime() async {
-    final now = DateTime.now();
-    final draft = ref.read(eventDraftProvider);
-    final initial = draft.startTime == null
-        ? const TimeOfDay(hour: 19, minute: 0)
-        : TimeOfDay.fromDateTime(draft.startTime!);
-    final picked = await showTimePicker(
+  Future<TimeOfDay?> _showBrandTimePicker(TimeOfDay initial) {
+    return showTimePicker(
       context: context,
       initialTime: initial,
       builder: (ctx, child) => Theme(
@@ -137,23 +145,56 @@ class _EventDetailsScreenState extends ConsumerState<EventDetailsScreen> {
         child: child!,
       ),
     );
-    if (picked != null) {
-      final date = draft.date ?? now;
-      final start = DateTime(
-        date.year,
-        date.month,
-        date.day,
-        picked.hour,
-        picked.minute,
-      );
-      ref.read(eventDraftProvider.notifier).setStartTime(start);
-      // Default 3-hour duration if end not set.
-      if (draft.endTime == null) {
-        ref
-            .read(eventDraftProvider.notifier)
-            .setEndTime(start.add(const Duration(hours: 3)));
-      }
+  }
+
+  void _timeError(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
+    );
+  }
+
+  Future<void> _pickStartTime() async {
+    final draft = ref.read(eventDraftProvider);
+    final initial = draft.startTime == null
+        ? const TimeOfDay(hour: 19, minute: 0)
+        : TimeOfDay.fromDateTime(draft.startTime!);
+    final picked = await _showBrandTimePicker(initial);
+    if (picked == null || !mounted) return;
+
+    final date = draft.date ?? istToday();
+    final start =
+        DateTime(date.year, date.month, date.day, picked.hour, picked.minute);
+    // A same-day event can't start at a time that's already passed — judged
+    // on the IST business clock (matches the cascade and place_order),
+    // never the device's timezone.
+    if (!start.isAfter(nowInIst())) {
+      _timeError('That time has already passed — pick a later start time.');
+      return;
     }
+    // End time auto-follows: the controller preserves the previous duration
+    // (or defaults to 3 hours) so end can never land before start.
+    ref.read(eventDraftProvider.notifier).setStartTime(start);
+  }
+
+  Future<void> _pickEndTime() async {
+    final draft = ref.read(eventDraftProvider);
+    if (draft.startTime == null) {
+      _timeError('Pick the start time first.');
+      return;
+    }
+    final initial = draft.endTime == null
+        ? TimeOfDay.fromDateTime(draft.startTime!.add(const Duration(hours: 3)))
+        : TimeOfDay.fromDateTime(draft.endTime!);
+    final picked = await _showBrandTimePicker(initial);
+    if (picked == null || !mounted) return;
+
+    final s = draft.startTime!;
+    final end = DateTime(s.year, s.month, s.day, picked.hour, picked.minute);
+    if (!end.isAfter(s)) {
+      _timeError('End time must be after the start time.');
+      return;
+    }
+    ref.read(eventDraftProvider.notifier).setEndTime(end);
   }
 
   Future<void> _pickEventLocation() async {
@@ -175,14 +216,37 @@ class _EventDetailsScreenState extends ConsumerState<EventDetailsScreen> {
   void _applyCategory(EventCategory cat) {
     HapticFeedback.selectionClick();
     setState(() => _categorySlug = cat.slug);
-    ref.read(eventDraftProvider.notifier).setSession(cat.defaultSession);
-    ref.read(eventDraftProvider.notifier).setGuestCount(cat.defaultGuestCount);
+    ref.read(eventDraftProvider.notifier).setCategory(cat);
   }
 
   @override
   Widget build(BuildContext context) {
     final draft = ref.watch(eventDraftProvider);
-    final cats = ref.watch(eventCategoriesProvider).valueOrNull ?? const [];
+    final catsAsync = ref.watch(eventCategoriesProvider);
+    // THE shared cascade — drives the Continue button state and the hint
+    // under it, so this screen agrees with the home card, checkout and the
+    // server about what "complete" means.
+    final step = planningNextStep(draft);
+    // On top of the cascade, Continue requires the tier list to have
+    // actually LOADED (non-empty) with a selection that resolves against
+    // it — loading, error, empty, or a stale/deactivated selection must
+    // not allow navigation. The picker auto-replaces invalid selections
+    // when data lands; this gate covers the window before/without that.
+    final tiersAsync = ref.watch(eventTiersProvider);
+    final activeTiers = tiersAsync.valueOrNull ?? const <EventTier>[];
+    final tierResolved = resolveSelectedTier(activeTiers, draft.tierId) != null;
+    String? tierBlock;
+    if (step.route != AppRoutes.eventDetails && !tierResolved) {
+      tierBlock = tiersAsync.isLoading
+          ? 'Loading packages…'
+          : tiersAsync.hasError
+              ? "Couldn't load packages — use Retry in the package section"
+              : activeTiers.isEmpty
+                  ? 'No packages available yet'
+                  : 'Pick a package for your event';
+    }
+    final blockedHint =
+        step.route == AppRoutes.eventDetails ? step.hint : tierBlock;
 
     return AppScaffold(
       padded: false,
@@ -208,10 +272,38 @@ class _EventDetailsScreenState extends ConsumerState<EventDetailsScreen> {
           ),
           _Section(
             title: 'Event type',
-            child: _CategoryGrid(
-              categories: cats,
-              selectedSlug: _categorySlug,
-              onSelect: _applyCategory,
+            child: catsAsync.when(
+              loading: () => const SizedBox(
+                height: 80,
+                child: Center(child: CircularProgressIndicator()),
+              ),
+              // Honest failure state — previously loading, error and empty
+              // all rendered the same endless spinner.
+              error: (_, __) => _InlineLoadError(
+                message: "Couldn't load occasions",
+                onRetry: () => ref.invalidate(eventCategoriesProvider),
+              ),
+              data: (cats) => cats.isEmpty
+                  ? Text(
+                      'No occasions available yet.',
+                      style: AppTextStyles.caption,
+                    )
+                  : _CategoryGrid(
+                      categories: cats,
+                      selectedSlug: _categorySlug,
+                      onSelect: _applyCategory,
+                    ),
+            ),
+          ),
+          _Section(
+            title: 'Session',
+            required: true,
+            child: _SessionChips(
+              selected: draft.session,
+              onSelect: (s) {
+                HapticFeedback.selectionClick();
+                ref.read(eventDraftProvider.notifier).setSession(s);
+              },
             ),
           ),
           _Section(
@@ -258,9 +350,17 @@ class _EventDetailsScreenState extends ConsumerState<EventDetailsScreen> {
                 _PickerRow(
                   icon: Icons.schedule_rounded,
                   value: draft.startTime == null
-                      ? 'Pick a time'
-                      : _formatTime(draft.startTime!),
-                  onTap: _pickTime,
+                      ? 'Pick a start time'
+                      : 'Starts ${_formatTime(draft.startTime!)}',
+                  onTap: _pickStartTime,
+                ),
+                const SizedBox(height: AppSizes.sm),
+                _PickerRow(
+                  icon: Icons.schedule_rounded,
+                  value: draft.endTime == null
+                      ? 'Pick an end time'
+                      : 'Ends ${_formatTime(draft.endTime!)}',
+                  onTap: _pickEndTime,
                 ),
               ],
             ),
@@ -273,46 +373,100 @@ class _EventDetailsScreenState extends ConsumerState<EventDetailsScreen> {
           Padding(
             padding:
                 const EdgeInsets.symmetric(horizontal: AppSizes.pagePadding),
-            child: FilledButton(
-              onPressed: (draft.date == null ||
-                      draft.tierId == null ||
-                      draft.eventName == null ||
-                      draft.eventName!.trim().isEmpty)
-                  ? null
-                  : () => context.push(AppRoutes.eventVenueType),
-              style: FilledButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                minimumSize: const Size.fromHeight(52),
-                disabledBackgroundColor: AppColors.border,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(AppSizes.radiusSm),
-                ),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Text(
-                    'Continue',
-                    style: AppTextStyles.buttonLabel.copyWith(
-                      color: Colors.white,
-                      fontSize: 15,
-                      height: 1.0,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                FilledButton(
+                  // Gate driven by THE shared cascade (planningNextStep)
+                  // plus the loaded-tier requirement — the same rules the
+                  // home card, checkout and place_order use — so this
+                  // screen can never let something through that a later
+                  // step bounces back.
+                  onPressed: blockedHint != null ? null : _onContinue,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    minimumSize: const Size.fromHeight(52),
+                    disabledBackgroundColor: AppColors.border,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(AppSizes.radiusSm),
                     ),
                   ),
-                  const SizedBox(width: 6),
-                  const Icon(
-                    Icons.chevron_right_rounded,
-                    color: Colors.white,
-                    size: 20,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Text(
+                        'Continue',
+                        style: AppTextStyles.buttonLabel.copyWith(
+                          color: Colors.white,
+                          fontSize: 15,
+                          height: 1.0,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      const Icon(
+                        Icons.chevron_right_rounded,
+                        color: Colors.white,
+                        size: 20,
+                      ),
+                    ],
                   ),
-                ],
-              ),
+                ),
+                if (blockedHint != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: AppSizes.sm),
+                    child: Text(
+                      blockedHint,
+                      textAlign: TextAlign.center,
+                      style: AppTextStyles.caption
+                          .copyWith(color: AppColors.textMuted),
+                    ),
+                  ),
+              ],
             ),
           ),
         ],
       ),
     );
+  }
+
+  /// Continue: commit any mid-edit guest input (blur), then re-read the
+  /// LATEST draft and follow the cascade's route — never a step computed
+  /// before the commit. Fully planned drafts skip straight to restaurant
+  /// browsing; otherwise the next branch screen opens.
+  void _onContinue() {
+    FocusManager.instance.primaryFocus?.unfocus();
+    final latest = ref.read(eventDraftProvider);
+    final step = planningNextStep(latest);
+    if (step.route == AppRoutes.eventDetails) {
+      // A field changed between build and tap (e.g. guest edit committed to
+      // an out-of-range value) — surface the reason, stay here.
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(step.hint), behavior: SnackBarBehavior.floating),
+      );
+      return;
+    }
+    // Re-verify the tier against the LOADED active list at tap time — the
+    // build-time gate normally prevents reaching here otherwise, but the
+    // state can change between frames.
+    final tiers =
+        ref.read(eventTiersProvider).valueOrNull ?? const <EventTier>[];
+    if (resolveSelectedTier(tiers, latest.tierId) == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Pick a package for your event before continuing.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+    HapticFeedback.lightImpact();
+    if (step.route == AppRoutes.userHome) {
+      final t = DateTime.now().millisecondsSinceEpoch;
+      context.push('${AppRoutes.userHome}?scrollTo=restaurants&t=$t');
+      return;
+    }
+    context.push(step.route);
   }
 
   String _formatTime(DateTime t) {
@@ -375,6 +529,91 @@ class _Section extends StatelessWidget {
         ],
       ),
     ).animate().fadeIn(duration: 240.ms);
+  }
+}
+
+// ───────────────────────── Session chips ─────────────────────────
+
+/// Required session selection. A category pre-seeds its default session,
+/// but the customer can always change it here — previously session was ONLY
+/// ever set implicitly by picking a category and had no UI of its own.
+class _SessionChips extends StatelessWidget {
+  const _SessionChips({required this.selected, required this.onSelect});
+
+  static const sessions = ['Lunch', 'High Tea', 'Dinner'];
+
+  final String? selected;
+  final ValueChanged<String> onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: AppSizes.sm,
+      children: [
+        for (final s in sessions)
+          InkWell(
+            onTap: () => onSelect(s),
+            borderRadius: BorderRadius.circular(AppSizes.radiusPill),
+            child: Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSizes.md,
+                vertical: AppSizes.sm,
+              ),
+              decoration: BoxDecoration(
+                color: s == selected ? AppColors.primary : AppColors.surfaceAlt,
+                border: Border.all(
+                  color: s == selected ? AppColors.primary : AppColors.border,
+                ),
+                borderRadius: BorderRadius.circular(AppSizes.radiusPill),
+              ),
+              child: Text(
+                s,
+                style: AppTextStyles.bodyBold.copyWith(
+                  color: s == selected ? Colors.white : AppColors.textPrimary,
+                  fontSize: 14,
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+// ───────────────────────── Inline load error ─────────────────────────
+
+/// Compact in-section failure row: message + Retry. Keeps the section
+/// visible and recoverable instead of an endless spinner.
+class _InlineLoadError extends StatelessWidget {
+  const _InlineLoadError({required this.message, required this.onRetry});
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(AppSizes.md),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceAlt,
+        borderRadius: BorderRadius.circular(AppSizes.radiusSm),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.cloud_off_rounded,
+              size: 18, color: AppColors.textMuted),
+          const SizedBox(width: AppSizes.sm),
+          Expanded(child: Text(message, style: AppTextStyles.caption)),
+          TextButton(
+            onPressed: onRetry,
+            child: Text(
+              'Retry',
+              style: AppTextStyles.bodyBold.copyWith(color: AppColors.primary),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -477,8 +716,10 @@ class _GuestSelector extends StatefulWidget {
 }
 
 class _GuestSelectorState extends State<_GuestSelector> {
-  static const int _min = 5;
-  static const int _max = 5000;
+  // Product guest range — shared with the validation cascade and mirrored
+  // by place_order, so the field, the gate and the server agree.
+  static const int _min = kGuestMin;
+  static const int _max = kGuestMax;
   static const double _sliderMax = 1000;
 
   late final TextEditingController _ctrl;
@@ -564,6 +805,18 @@ class _GuestSelectorState extends State<_GuestSelector> {
                     ),
                   ),
                 ),
+                // Commit every parseable keystroke so the DRAFT can never
+                // lag the visible value (Continue validates the draft).
+                // No clamping mid-typing — rewriting text under the cursor
+                // is hostile; blur/submit normalises. Empty or partial
+                // input simply leaves the draft at its last valid value,
+                // and blur snaps the text back to it.
+                onChanged: (v) {
+                  final parsed = int.tryParse(v.trim());
+                  if (parsed != null && parsed != widget.count) {
+                    widget.onChanged(parsed);
+                  }
+                },
                 onEditingComplete: () {
                   _commit();
                   FocusScope.of(context).unfocus();
@@ -702,43 +955,58 @@ class _TierPicker extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final tiersAsync = ref.watch(eventTiersProvider);
-    final tiers = tiersAsync.valueOrNull ?? const <EventTier>[];
-
-    if (tiers.isEmpty) {
-      return const SizedBox(
+    return tiersAsync.when(
+      loading: () => const SizedBox(
         height: 80,
         child: Center(child: CircularProgressIndicator()),
-      );
-    }
-
-    // Default-select the first tier if the draft doesn't carry one yet, so
-    // the "Browse restaurants" button unlocks as soon as date is set.
-    if (selectedTierId == null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        final first = tiers.first;
-        ref
-            .read(eventDraftProvider.notifier)
-            .setTier(tierId: first.id, tierCode: first.code);
-      });
-    }
-
-    return Column(
-      children: [
-        for (final t in tiers)
-          Padding(
-            padding: const EdgeInsets.only(bottom: AppSizes.sm),
-            child: _TierCard(
-              tier: t,
-              selected: t.id == selectedTierId,
-              onTap: () {
-                HapticFeedback.selectionClick();
-                ref
-                    .read(eventDraftProvider.notifier)
-                    .setTier(tierId: t.id, tierCode: t.code);
-              },
-            ),
-          ),
-      ],
+      ),
+      // Honest failure state with Retry — the old silent fallback list
+      // carried non-UUID tier ids that the live database rejects.
+      error: (_, __) => _InlineLoadError(
+        message: "Couldn't load packages",
+        onRetry: () => ref.invalidate(eventTiersProvider),
+      ),
+      data: (tiers) {
+        if (tiers.isEmpty) {
+          return Text(
+            'No packages available yet — please check back soon.',
+            style: AppTextStyles.caption,
+          );
+        }
+        // Resolve the draft's selection against the ACTIVE list. Null means
+        // unselected OR invalid — a persisted draft may still carry a
+        // legacy fallback id ('budget'/'standard'/'premium') or a tier that
+        // was deactivated since. Either way it's replaced with the first
+        // active tier, so the selected card is always real and visible and
+        // Continue can never proceed on an invisible, invalid tier.
+        final selected = resolveSelectedTier(tiers, selectedTierId);
+        if (selected == null) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            final first = tiers.first;
+            ref
+                .read(eventDraftProvider.notifier)
+                .setTier(tierId: first.id, tierCode: first.code);
+          });
+        }
+        return Column(
+          children: [
+            for (final t in tiers)
+              Padding(
+                padding: const EdgeInsets.only(bottom: AppSizes.sm),
+                child: _TierCard(
+                  tier: t,
+                  selected: t.id == selected?.id,
+                  onTap: () {
+                    HapticFeedback.selectionClick();
+                    ref
+                        .read(eventDraftProvider.notifier)
+                        .setTier(tierId: t.id, tierCode: t.code);
+                  },
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 }

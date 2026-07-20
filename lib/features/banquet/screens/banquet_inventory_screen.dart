@@ -459,8 +459,9 @@ class _InventoryItemRow extends ConsumerWidget {
                   children: [
                     _StatusChip(
                       label: item.isActive ? 'Active' : 'Hidden',
-                      color:
-                          item.isActive ? AppColors.success : AppColors.textMuted,
+                      color: item.isActive
+                          ? AppColors.success
+                          : AppColors.textMuted,
                     ),
                     const SizedBox(width: AppSizes.sm),
                     Text(

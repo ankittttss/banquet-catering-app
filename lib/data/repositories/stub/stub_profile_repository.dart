@@ -38,4 +38,7 @@ class StubProfileRepository implements ProfileRepository {
       _profile = _profile!.copyWith(avatarUrl: null);
     }
   }
+
+  @override
+  Future<void> requestAccountDeletion(String userId) async {}
 }

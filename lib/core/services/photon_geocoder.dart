@@ -17,6 +17,7 @@ class GeocodeResult {
   final String displayAddress;
   final double latitude;
   final double longitude;
+
   /// e.g. "Banjara Hills, Hyderabad" — useful for compact header chips.
   final String shortLabel;
 }
@@ -29,8 +30,7 @@ class GeocodeResult {
 /// empty list — some free CDN edges are flaky from Indian carriers and
 /// having a second source gets the user moving.
 class PhotonGeocoder {
-  PhotonGeocoder({http.Client? client})
-      : _client = client ?? http.Client();
+  PhotonGeocoder({http.Client? client}) : _client = client ?? http.Client();
 
   final http.Client _client;
 
@@ -84,8 +84,7 @@ class PhotonGeocoder {
       params['lat'] = '$lat';
       params['lon'] = '$lng';
     }
-    final uri =
-        Uri.parse('$_base/api/').replace(queryParameters: params);
+    final uri = Uri.parse('$_base/api/').replace(queryParameters: params);
     final res = await _client
         .get(uri, headers: _headers)
         .timeout(const Duration(seconds: 6));
@@ -119,37 +118,34 @@ class PhotonGeocoder {
     if (res.statusCode != 200) return const [];
     final raw = jsonDecode(res.body) as List<dynamic>;
     return raw.whereType<Map<String, dynamic>>().map((m) {
-      final addr =
-          (m['address'] as Map?)?.cast<String, dynamic>() ?? const {};
+      final addr = (m['address'] as Map?)?.cast<String, dynamic>() ?? const {};
       final lat = double.tryParse('${m['lat']}') ?? 0;
       final lon = double.tryParse('${m['lon']}') ?? 0;
       final name = _firstNonEmpty([
-        addr['amenity'] as String?,
-        addr['road'] as String?,
-        addr['neighbourhood'] as String?,
-        addr['suburb'] as String?,
-      ]) ?? (m['display_name'] as String? ?? '').split(',').first.trim();
+            addr['amenity'] as String?,
+            addr['road'] as String?,
+            addr['neighbourhood'] as String?,
+            addr['suburb'] as String?,
+          ]) ??
+          (m['display_name'] as String? ?? '').split(',').first.trim();
       final city = _firstNonEmpty([
-        addr['city'] as String?,
-        addr['town'] as String?,
-        addr['village'] as String?,
-        addr['county'] as String?,
-      ]) ?? '';
+            addr['city'] as String?,
+            addr['town'] as String?,
+            addr['village'] as String?,
+            addr['county'] as String?,
+          ]) ??
+          '';
       final state = addr['state'] as String? ?? '';
       final country = addr['country'] as String? ?? '';
       final full = [name, city, state, country]
           .where((s) => s.isNotEmpty)
           .toSet()
           .join(', ');
-      final short = [name, city]
-          .where((s) => s.isNotEmpty)
-          .toSet()
-          .join(', ');
+      final short = [name, city].where((s) => s.isNotEmpty).toSet().join(', ');
       return GeocodeResult(
         name: name,
-        displayAddress: full.isEmpty
-            ? (m['display_name'] as String? ?? '')
-            : full,
+        displayAddress:
+            full.isEmpty ? (m['display_name'] as String? ?? '') : full,
         latitude: lat,
         longitude: lon,
         shortLabel: short.isEmpty ? name : short,
@@ -186,10 +182,10 @@ class PhotonGeocoder {
   }
 
   GeocodeResult _parseFeature(Map<String, dynamic> feature) {
-    final props = (feature['properties'] as Map?)?.cast<String, dynamic>() ??
-        const {};
-    final geom = (feature['geometry'] as Map?)?.cast<String, dynamic>() ??
-        const {};
+    final props =
+        (feature['properties'] as Map?)?.cast<String, dynamic>() ?? const {};
+    final geom =
+        (feature['geometry'] as Map?)?.cast<String, dynamic>() ?? const {};
     final coords = (geom['coordinates'] as List?) ?? const [];
     final lng = coords.isNotEmpty ? (coords[0] as num).toDouble() : 0.0;
     final lat = coords.length > 1 ? (coords[1] as num).toDouble() : 0.0;

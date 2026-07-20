@@ -58,13 +58,11 @@ class _State extends ConsumerState<PickupChecklistScreen> {
           ),
           const SizedBox(height: AppSizes.lg),
           Center(
-            child: Text('Pickup checklist',
-                style: AppTextStyles.displaySm),
+            child: Text('Pickup checklist', style: AppTextStyles.displaySm),
           ),
           const SizedBox(height: AppSizes.xs),
           Padding(
-            padding:
-                const EdgeInsets.symmetric(horizontal: AppSizes.xxxl),
+            padding: const EdgeInsets.symmetric(horizontal: AppSizes.xxxl),
             child: Text(
               'Verify these items before leaving the restaurant',
               style: AppTextStyles.caption,
@@ -73,23 +71,22 @@ class _State extends ConsumerState<PickupChecklistScreen> {
           ),
           const SizedBox(height: AppSizes.xl),
           Padding(
-            padding: const EdgeInsets.symmetric(
-                horizontal: AppSizes.pagePadding),
+            padding:
+                const EdgeInsets.symmetric(horizontal: AppSizes.pagePadding),
             child: Column(
               children: [
                 for (final item in _items)
                   _CheckRow(
                     item: item,
-                    onTap: () =>
-                        setState(() => item.checked = !item.checked),
+                    onTap: () => setState(() => item.checked = !item.checked),
                   ),
               ],
             ),
           ),
           const SizedBox(height: AppSizes.xl),
           Padding(
-            padding: const EdgeInsets.symmetric(
-                horizontal: AppSizes.pagePadding),
+            padding:
+                const EdgeInsets.symmetric(horizontal: AppSizes.pagePadding),
             child: SizedBox(
               height: AppSizes.buttonHeight,
               width: double.infinity,
@@ -100,17 +97,14 @@ class _State extends ConsumerState<PickupChecklistScreen> {
                   disabledBackgroundColor:
                       AppColors.success.withValues(alpha: 0.4),
                   shape: RoundedRectangleBorder(
-                    borderRadius:
-                        BorderRadius.circular(AppSizes.radiusSm),
+                    borderRadius: BorderRadius.circular(AppSizes.radiusSm),
                   ),
                 ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text(
-                      _busy
-                          ? 'Saving…'
-                          : 'Confirm pickup & start delivery',
+                      _busy ? 'Saving…' : 'Confirm pickup & start delivery',
                       style: AppTextStyles.buttonLabel
                           .copyWith(color: Colors.white),
                     ),
@@ -166,17 +160,12 @@ class _CheckRow extends StatelessWidget {
               width: 24,
               height: 24,
               decoration: BoxDecoration(
-                color: item.checked
-                    ? AppColors.success
-                    : Colors.transparent,
+                color: item.checked ? AppColors.success : Colors.transparent,
                 border: Border.all(
-                  color: item.checked
-                      ? AppColors.success
-                      : AppColors.border,
+                  color: item.checked ? AppColors.success : AppColors.border,
                   width: 2,
                 ),
-                borderRadius:
-                    BorderRadius.circular(AppSizes.radiusXs + 2),
+                borderRadius: BorderRadius.circular(AppSizes.radiusXs + 2),
               ),
               child: item.checked
                   ? const Icon(PhosphorIconsBold.check,

@@ -63,13 +63,14 @@ class CartItem {
   String get signature => '${item.id}|${portion.name}|${spice.name}|$notes';
 
   CartItem copyWith({
+    MenuItem? item,
     int? qty,
     Portion? portion,
     SpiceLevel? spice,
     String? notes,
   }) =>
       CartItem(
-        item: item,
+        item: item ?? this.item,
         qty: qty ?? this.qty,
         portion: portion ?? this.portion,
         spice: spice ?? this.spice,

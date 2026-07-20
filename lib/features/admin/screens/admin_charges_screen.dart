@@ -4,48 +4,52 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
-import '../../../core/constants/app_sizes.dart';
-import '../../../core/constants/app_text_styles.dart';
 import '../../../data/models/charges_config.dart';
 import '../../../shared/providers/charges_providers.dart';
 import '../../../shared/providers/repositories_providers.dart';
-import '../../../shared/widgets/app_card.dart';
 import '../../../shared/widgets/app_error_view.dart';
-import '../../../shared/widgets/app_scaffold.dart';
-import '../../../shared/widgets/primary_button.dart';
+import '../widgets/admin_ui.dart';
 
+/// Global fees/taxes applied to every checkout. Redesigned to the indigo
+/// admin identity; all values persist through the real charges repository.
 class AdminChargesScreen extends ConsumerStatefulWidget {
   const AdminChargesScreen({super.key});
 
   @override
-  ConsumerState<AdminChargesScreen> createState() =>
-      _AdminChargesScreenState();
+  ConsumerState<AdminChargesScreen> createState() => _AdminChargesScreenState();
 }
 
-class _AdminChargesScreenState
-    extends ConsumerState<AdminChargesScreen> {
-  late TextEditingController _banquet;
-  late TextEditingController _buffet;
-  late TextEditingController _service;
-  late TextEditingController _water;
-  late TextEditingController _platform;
-  late TextEditingController _gst;
-  late TextEditingController _serviceTax;
+class _RowSpec {
+  const _RowSpec(this.ctrl, this.label, this.hint, {this.percent = false});
+  final TextEditingController ctrl;
+  final String label;
+  final String hint;
+  final bool percent;
+}
+
+class _AdminChargesScreenState extends ConsumerState<AdminChargesScreen> {
+  final _banquet = TextEditingController();
+  final _buffet = TextEditingController();
+  final _service = TextEditingController();
+  final _water = TextEditingController();
+  final _platform = TextEditingController();
+  final _gst = TextEditingController();
+  final _serviceTax = TextEditingController();
 
   bool _saving = false;
   bool _initialized = false;
+  bool _dirty = false;
 
-  @override
-  void initState() {
-    super.initState();
-    _banquet = TextEditingController();
-    _buffet = TextEditingController();
-    _service = TextEditingController();
-    _water = TextEditingController();
-    _platform = TextEditingController();
-    _gst = TextEditingController();
-    _serviceTax = TextEditingController();
-  }
+  late final List<_RowSpec> _rows = [
+    _RowSpec(_banquet, 'Banquet charge', 'Flat fee for banquet-hall bookings'),
+    _RowSpec(_buffet, 'Buffet setup', 'Live counters, chafing & staff setup'),
+    _RowSpec(_service, 'Service boy', 'Per head, per event'),
+    _RowSpec(_water, 'Water bottles', 'Per guest'),
+    _RowSpec(_platform, 'Platform fee', 'Dawat handling on every order'),
+    _RowSpec(_gst, 'GST', 'Goods & services tax', percent: true),
+    _RowSpec(_serviceTax, 'Service tax', 'Applied on service charges',
+        percent: true),
+  ];
 
   void _hydrate(ChargesConfig c) {
     if (_initialized) return;
@@ -61,13 +65,9 @@ class _AdminChargesScreenState
 
   @override
   void dispose() {
-    _banquet.dispose();
-    _buffet.dispose();
-    _service.dispose();
-    _water.dispose();
-    _platform.dispose();
-    _gst.dispose();
-    _serviceTax.dispose();
+    for (final r in _rows) {
+      r.ctrl.dispose();
+    }
     super.dispose();
   }
 
@@ -86,9 +86,8 @@ class _AdminChargesScreenState
       await ref.read(chargesRepositoryProvider).update(cfg);
       ref.invalidate(chargesConfigProvider);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Charges updated')),
-      );
+      setState(() => _dirty = false);
+      adminToast(context, 'Charges updated for all checkouts', success: true);
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -98,106 +97,209 @@ class _AdminChargesScreenState
   Widget build(BuildContext context) {
     final cfg = ref.watch(chargesConfigProvider);
 
-    return AppScaffold(
-      appBar: AppBar(
-        title: const Text('Charges'),
-        leading: IconButton(
-          icon: const Icon(PhosphorIconsBold.arrowLeft),
-          onPressed: () => context.pop(),
-        ),
-      ),
-      body: cfg.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => AppErrorView(
-            error: e,
-            onRetry: () => ref.invalidate(chargesConfigProvider)),
-        data: (c) {
-          _hydrate(c);
-          return ListView(
-            children: [
-              const SizedBox(height: AppSizes.sm),
-              Text(
-                'Applied to every checkout',
-                style: AppTextStyles.bodyMuted,
+    return AdminScaffold(
+      active: AdminNav.charges,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          AdminBar(title: 'Charges & taxes', onBack: () => context.pop()),
+          Expanded(
+            child: cfg.when(
+              loading: () => const Center(
+                child: CircularProgressIndicator(color: AdminColors.indigo),
               ),
-              const SizedBox(height: AppSizes.lg),
-              AppCard(
-                child: Column(
+              error: (e, _) => AppErrorView(
+                error: e,
+                onRetry: () => ref.invalidate(chargesConfigProvider),
+              ),
+              data: (c) {
+                _hydrate(c);
+                return Column(
                   children: [
-                    _ChargeRow(label: 'Banquet charge', controller: _banquet),
-                    _ChargeRow(label: 'Buffet setup', controller: _buffet),
-                    _ChargeRow(
-                        label: 'Service boy (per head)',
-                        controller: _service),
-                    _ChargeRow(label: 'Water bottles', controller: _water),
-                    _ChargeRow(
-                        label: 'Platform fee', controller: _platform),
-                    _ChargeRow(
-                      label: 'GST %',
-                      controller: _gst,
-                      suffix: '%',
+                    Expanded(
+                      child: ListView(
+                        padding: const EdgeInsets.all(16),
+                        children: [
+                          _InfoBanner(),
+                          const SizedBox(height: 16),
+                          for (final r in _rows) ...[
+                            _ChargeRow(
+                              spec: r,
+                              onChanged: () {
+                                if (!_dirty) setState(() => _dirty = true);
+                              },
+                            ),
+                            const SizedBox(height: 10),
+                          ],
+                          const SizedBox(height: 8),
+                        ],
+                      ),
                     ),
-                    _ChargeRow(
-                      label: 'Service tax %',
-                      controller: _serviceTax,
-                      suffix: '%',
+                    _Footer(
+                      saving: _saving,
+                      enabled: _dirty && !_saving,
+                      onSave: _save,
                     ),
                   ],
-                ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _InfoBanner extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AdminColors.indigo050,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(PhosphorIconsFill.info,
+              size: 20, color: AdminColors.indigo),
+          const SizedBox(width: 10),
+          Expanded(
+            child: RichText(
+              text: const TextSpan(
+                style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    height: 1.45,
+                    color: AdminColors.ink2),
+                children: [
+                  TextSpan(text: 'These apply to '),
+                  TextSpan(
+                      text: 'every customer checkout',
+                      style: TextStyle(fontWeight: FontWeight.w800)),
+                  TextSpan(text: '. Changes take effect immediately.'),
+                ],
               ),
-              const SizedBox(height: AppSizes.xl),
-              PrimaryButton(
-                label: 'Save changes',
-                icon: PhosphorIconsBold.checkCircle,
-                loading: _saving,
-                onPressed: _save,
-              ),
-            ],
-          );
-        },
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 
 class _ChargeRow extends StatelessWidget {
-  const _ChargeRow({
-    required this.label,
-    required this.controller,
-    this.suffix,
-  });
-  final String label;
-  final TextEditingController controller;
-  final String? suffix;
+  const _ChargeRow({required this.spec, required this.onChanged});
+  final _RowSpec spec;
+  final VoidCallback onChanged;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: AppSizes.sm),
+    return AdminCard(
+      padding: const EdgeInsets.all(14),
       child: Row(
         children: [
-          Expanded(child: Text(label, style: AppTextStyles.body)),
-          SizedBox(
-            width: 140,
-            child: TextField(
-              controller: controller,
-              keyboardType:
-                  const TextInputType.numberWithOptions(decimal: true),
-              textAlign: TextAlign.right,
-              inputFormatters: [
-                FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(spec.label, style: AdminText.h3),
+                const SizedBox(height: 2),
+                Text(spec.hint, style: AdminText.cap),
               ],
-              decoration: InputDecoration(
-                prefixText: suffix == null ? '\u20B9 ' : null,
-                suffixText: suffix,
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: AppSizes.sm,
-                  vertical: AppSizes.sm,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Container(
+            width: 128,
+            height: 46,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(11),
+              border: Border.all(color: AdminColors.line, width: 1.5),
+            ),
+            child: Row(
+              children: [
+                if (!spec.percent)
+                  const Padding(
+                    padding: EdgeInsets.only(right: 4),
+                    child: Text('₹',
+                        style: TextStyle(
+                            color: AdminColors.tx3,
+                            fontWeight: FontWeight.w700)),
+                  ),
+                Expanded(
+                  child: TextField(
+                    controller: spec.ctrl,
+                    onChanged: (_) => onChanged(),
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                    textAlign: TextAlign.right,
+                    inputFormatters: [
+                      FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))
+                    ],
+                    style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: AdminColors.tx,
+                        fontFeatures: [FontFeature.tabularFigures()]),
+                    // filled:false + no borders so the field never paints a
+                    // second box inside this one (the app theme fills inputs).
+                    decoration: const InputDecoration(
+                      isCollapsed: true,
+                      filled: false,
+                      border: InputBorder.none,
+                      enabledBorder: InputBorder.none,
+                      focusedBorder: InputBorder.none,
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                  ),
                 ),
-              ),
+                if (spec.percent)
+                  const Padding(
+                    padding: EdgeInsets.only(left: 4),
+                    child: Text('%',
+                        style: TextStyle(
+                            color: AdminColors.tx3,
+                            fontWeight: FontWeight.w700)),
+                  ),
+              ],
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _Footer extends StatelessWidget {
+  const _Footer(
+      {required this.saving, required this.enabled, required this.onSave});
+  final bool saving;
+  final bool enabled;
+  final VoidCallback onSave;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: const BoxDecoration(
+        color: AdminColors.card,
+        border: Border(top: BorderSide(color: AdminColors.line)),
+      ),
+      child: SafeArea(
+        top: false,
+        child: AdminButton(
+          label: saving ? 'Saving…' : 'Save changes',
+          size: 'lg',
+          expand: true,
+          disabled: !enabled,
+          leading: saving ? null : PhosphorIconsBold.check,
+          onPressed: onSave,
+        ),
       ),
     );
   }

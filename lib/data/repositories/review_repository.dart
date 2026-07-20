@@ -1,7 +1,8 @@
 import '../models/review.dart';
 
 abstract interface class ReviewRepository {
-  Future<List<Review>> fetchForRestaurant(String restaurantId, {int limit = 20});
+  Future<List<Review>> fetchForRestaurant(String restaurantId,
+      {int limit = 20});
 
   /// Review written by [userId] for [orderId]. Null when not yet rated.
   Future<Review?> fetchMyReviewForOrder({

@@ -62,12 +62,10 @@ class SupabaseDeliveryRepository implements DeliveryRepository {
     try {
       final stream = supabase
           .from('deliveries')
-          .stream(primaryKey: ['id'])
-          .order('offered_at');
+          .stream(primaryKey: ['id']).order('offered_at');
       await for (final rows in stream) {
         yield rows
-            .where((r) =>
-                r['status'] == 'offered' && r['driver_id'] == null)
+            .where((r) => r['status'] == 'offered' && r['driver_id'] == null)
             .map(_assignmentFromRow)
             .toList(growable: false);
       }
@@ -93,8 +91,7 @@ class SupabaseDeliveryRepository implements DeliveryRepository {
     try {
       final stream = supabase
           .from('deliveries')
-          .stream(primaryKey: ['id'])
-          .order('offered_at', ascending: false);
+          .stream(primaryKey: ['id']).order('offered_at', ascending: false);
       await for (final rows in stream) {
         final active = rows.where((r) {
           if (r['driver_id'] != driverId) return false;
@@ -144,8 +141,7 @@ class SupabaseDeliveryRepository implements DeliveryRepository {
   }
 
   @override
-  Future<void> markDelivered(String assignmentId,
-      {required String otp}) async {
+  Future<void> markDelivered(String assignmentId, {required String otp}) async {
     final row = await supabase
         .from('deliveries')
         .select('delivery_otp')
@@ -173,8 +169,9 @@ class SupabaseDeliveryRepository implements DeliveryRepository {
           .eq('id', driverId)
           .single();
       final current = (profile['total_deliveries'] as num?)?.toInt() ?? 0;
-      await supabase.from('profiles').update(
-          {'total_deliveries': current + 1}).eq('id', driverId);
+      await supabase
+          .from('profiles')
+          .update({'total_deliveries': current + 1}).eq('id', driverId);
     }
   }
 
@@ -218,23 +215,27 @@ class SupabaseDeliveryRepository implements DeliveryRepository {
 
   @override
   Future<String> broadcastOffer(DeliveryAssignment draft) async {
-    final row = await supabase.from('deliveries').insert({
-      'order_id': draft.orderId,
-      'driver_id': draft.driverId,
-      'status': draft.status.dbValue,
-      'pickup_address': draft.pickupAddress,
-      'drop_address': draft.dropAddress,
-      'distance_km': draft.distanceKm,
-      'earning_amount': draft.earningAmount,
-      'item_count': draft.itemCount,
-      'restaurant_name': draft.restaurantName,
-      'customer_name': draft.customerName,
-      'customer_phone': draft.customerPhone,
-      'event_label': draft.eventLabel,
-      'guest_count': draft.guestCount,
-      'delivery_otp': draft.deliveryOtp,
-      'eta_minutes': draft.etaMinutes,
-    }).select().single();
+    final row = await supabase
+        .from('deliveries')
+        .insert({
+          'order_id': draft.orderId,
+          'driver_id': draft.driverId,
+          'status': draft.status.dbValue,
+          'pickup_address': draft.pickupAddress,
+          'drop_address': draft.dropAddress,
+          'distance_km': draft.distanceKm,
+          'earning_amount': draft.earningAmount,
+          'item_count': draft.itemCount,
+          'restaurant_name': draft.restaurantName,
+          'customer_name': draft.customerName,
+          'customer_phone': draft.customerPhone,
+          'event_label': draft.eventLabel,
+          'guest_count': draft.guestCount,
+          'delivery_otp': draft.deliveryOtp,
+          'eta_minutes': draft.etaMinutes,
+        })
+        .select()
+        .single();
     return row['id'] as String;
   }
 
@@ -248,8 +249,7 @@ class SupabaseDeliveryRepository implements DeliveryRepository {
       vehicle: (row['vehicle'] as String?) ?? '',
       vehicleNumber: (row['vehicle_number'] as String?) ?? '',
       rating: (row['rating'] as num?)?.toDouble() ?? 5.0,
-      totalDeliveries:
-          (row['total_deliveries'] as num?)?.toInt() ?? 0,
+      totalDeliveries: (row['total_deliveries'] as num?)?.toInt() ?? 0,
       isOnline: row['is_online'] as bool? ?? false,
       avatarHex: row['avatar_hex'] as String?,
     );
@@ -266,13 +266,11 @@ class SupabaseDeliveryRepository implements DeliveryRepository {
       id: row['id'] as String,
       orderId: row['order_id'] as String,
       status: DeliveryStatus.fromString(row['status'] as String?),
-      offeredAt:
-          ts('offered_at') ?? DateTime.now(),
+      offeredAt: ts('offered_at') ?? DateTime.now(),
       pickupAddress: (row['pickup_address'] as String?) ?? '',
       dropAddress: (row['drop_address'] as String?) ?? '',
       distanceKm: (row['distance_km'] as num?)?.toDouble() ?? 0,
-      earningAmount:
-          (row['earning_amount'] as num?)?.toDouble() ?? 0,
+      earningAmount: (row['earning_amount'] as num?)?.toDouble() ?? 0,
       itemCount: (row['item_count'] as num?)?.toInt() ?? 0,
       restaurantName: (row['restaurant_name'] as String?) ?? '',
       customerName: (row['customer_name'] as String?) ?? '',

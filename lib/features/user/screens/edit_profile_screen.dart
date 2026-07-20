@@ -16,45 +16,45 @@ import '../widgets/photo_picker_sheet.dart';
 // ───────────────────────── Palette (matches HTML mock) ─────────────────────────
 
 class _P {
-  static const Color red   = Color(0xFFE23744);
+  static const Color red = Color(0xFFE23744);
   static const Color redLt = Color(0xFFFFF1F2);
-  static const Color grn   = Color(0xFF1BA672);
+  static const Color grn = Color(0xFF1BA672);
   static const Color grnLt = Color(0xFFEAFAF1);
-  static const Color blu   = Color(0xFF2B6CB0);
+  static const Color blu = Color(0xFF2B6CB0);
   static const Color bluLt = Color(0xFFEBF4FF);
-  static const Color gld   = Color(0xFFC4922A);
+  static const Color gld = Color(0xFFC4922A);
   static const Color gldLt = Color(0xFFFFF8E7);
-  static const Color pur   = Color(0xFF7C3AED);
+  static const Color pur = Color(0xFF7C3AED);
   static const Color purLt = Color(0xFFF3E8FF);
-  static const Color org   = Color(0xFFE97A2B);
+  static const Color org = Color(0xFFE97A2B);
   static const Color orgLt = Color(0xFFFFF4EB);
-  static const Color blk   = Color(0xFF1A1A1A);
-  static const Color g70   = Color(0xFF4F4F4F);
-  static const Color g50   = Color(0xFF828282);
-  static const Color g30   = Color(0xFFBDBDBD);
-  static const Color g15   = Color(0xFFE0E0E0);
-  static const Color g8    = Color(0xFFF2F2F2);
-  static const Color g4    = Color(0xFFF9F9F9);
-  static const Color w     = Color(0xFFFFFFFF);
-  static const Color cr    = Color(0xFFFDFBF9);
-  static const Color bg    = Color(0xFFFAF7F4);
+  static const Color blk = Color(0xFF1A1A1A);
+  static const Color g70 = Color(0xFF4F4F4F);
+  static const Color g50 = Color(0xFF828282);
+  static const Color g30 = Color(0xFFBDBDBD);
+  static const Color g15 = Color(0xFFE0E0E0);
+  static const Color g8 = Color(0xFFF2F2F2);
+  static const Color g4 = Color(0xFFF9F9F9);
+  static const Color w = Color(0xFFFFFFFF);
+  static const Color cr = Color(0xFFFDFBF9);
+  static const Color bg = Color(0xFFFAF7F4);
 }
 
 const _dietaryOptions = <(String, String, Color)>[
-  ('veg',       'Vegetarian',      _P.grn),
-  ('non_veg',   'Non-vegetarian',  _P.red),
-  ('eggetarian','Eggetarian',      _P.gld),
-  ('vegan',     'Vegan',           _P.grn),
-  ('jain',      'Jain',            _P.org),
+  ('veg', 'Vegetarian', _P.grn),
+  ('non_veg', 'Non-vegetarian', _P.red),
+  ('eggetarian', 'Eggetarian', _P.gld),
+  ('vegan', 'Vegan', _P.grn),
+  ('jain', 'Jain', _P.org),
 ];
 
 const _allergyOptions = <(String, String)>[
-  ('peanuts',   '🥜 Peanuts'),
-  ('dairy',     '🥛 Dairy'),
-  ('gluten',    '🌾 Gluten'),
+  ('peanuts', '🥜 Peanuts'),
+  ('dairy', '🥛 Dairy'),
+  ('gluten', '🌾 Gluten'),
   ('shellfish', '🦐 Shellfish'),
-  ('eggs',      '🥚 Eggs'),
-  ('soy',       '🫘 Soy'),
+  ('eggs', '🥚 Eggs'),
+  ('soy', '🫘 Soy'),
 ];
 
 class EditProfileScreen extends ConsumerStatefulWidget {
@@ -161,8 +161,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
       SnackBar(
         content: Row(
           children: [
-            const Icon(Icons.check_circle_rounded,
-                color: _P.grn, size: 18),
+            const Icon(Icons.check_circle_rounded, color: _P.grn, size: 18),
             const SizedBox(width: 8),
             Text(msg, style: const TextStyle(color: _P.w)),
           ],
@@ -262,8 +261,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                         ),
                       )
                     else
-                      const Icon(Icons.check_rounded,
-                          size: 14, color: _P.w),
+                      const Icon(Icons.check_rounded, size: 14, color: _P.w),
                     const SizedBox(width: 5),
                     Text(
                       _justSaved ? 'Saved' : 'Save',
@@ -296,8 +294,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: _P.g8),
         ),
-        child: const Icon(Icons.arrow_back_rounded,
-            size: 18, color: _P.g70),
+        child: const Icon(Icons.arrow_back_rounded, size: 18, color: _P.g70),
       ),
     );
   }
@@ -370,15 +367,14 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                     side: const BorderSide(color: _P.w, width: 3),
                   ),
                   child: InkWell(
-                    onTap: _uploadingPhoto
-                        ? null
-                        : () => _onChangePhoto(profile),
+                    onTap:
+                        _uploadingPhoto ? null : () => _onChangePhoto(profile),
                     borderRadius: BorderRadius.circular(10),
                     child: const SizedBox(
                       width: 32,
                       height: 32,
-                      child: Icon(Icons.camera_alt_rounded,
-                          size: 14, color: _P.w),
+                      child:
+                          Icon(Icons.camera_alt_rounded, size: 14, color: _P.w),
                     ),
                   ),
                 ),
@@ -423,7 +419,8 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
     HapticFeedback.selectionClick();
     final hasExisting =
         profile.avatarUrl != null && profile.avatarUrl!.isNotEmpty;
-    final result = await showPhotoPickerSheet(context, hasExisting: hasExisting);
+    final result =
+        await showPhotoPickerSheet(context, hasExisting: hasExisting);
     if (!mounted) return;
 
     switch (result) {
@@ -558,10 +555,10 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
             value: _gender,
             hint: 'Select gender',
             items: const [
-              ('male',   'Male'),
+              ('male', 'Male'),
               ('female', 'Female'),
               ('non_binary', 'Non-binary'),
-              ('other',  'Prefer not to say'),
+              ('other', 'Prefer not to say'),
             ],
             onChanged: (v) => setState(() => _gender = v),
           ),
@@ -596,9 +593,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
               ),
             ),
           ),
-          hint: _dob == null
-              ? null
-              : 'We\'ll send you a birthday surprise!',
+          hint: _dob == null ? null : 'We\'ll send you a birthday surprise!',
           hintIcon: _dob == null ? null : Icons.star_rounded,
         ),
       ],
@@ -627,8 +622,18 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
 
   String _formatDob(DateTime d) {
     const m = [
-      'Jan','Feb','Mar','Apr','May','Jun',
-      'Jul','Aug','Sep','Oct','Nov','Dec',
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
     ];
     return '${d.day} ${m[d.month - 1]} ${d.year}';
   }
@@ -800,8 +805,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
         children: [
           Row(
             children: [
-              const Icon(Icons.warning_amber_rounded,
-                  size: 14, color: _P.red),
+              const Icon(Icons.warning_amber_rounded, size: 14, color: _P.red),
               const SizedBox(width: 8),
               Text(
                 'DANGER ZONE',
@@ -884,11 +888,27 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
         ],
       ),
     );
-    if (ok == true && mounted) {
+    if (ok != true || !mounted) return;
+    // File a REAL deletion request (account_deletion_requests, phase38) —
+    // this used to show a fake success snackbar without storing anything.
+    final userId = ref.read(currentUserIdProvider);
+    if (userId == null) return;
+    try {
+      await ref.read(profileRepositoryProvider).requestAccountDeletion(userId);
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
               'Account deletion request submitted. Our team will confirm by email.'),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Could not submit the request: ${e.toString().split('\n').first}',
+          ),
         ),
       );
     }
@@ -955,15 +975,13 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                 Text(
                   ' *',
                   style: GoogleFonts.outfit(
-                      fontSize: 14,
-                      color: _P.red,
-                      fontWeight: FontWeight.w700),
+                      fontSize: 14, color: _P.red, fontWeight: FontWeight.w700),
                 ),
               if (verified) ...[
                 const Spacer(),
                 Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 8, vertical: 2),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                   decoration: BoxDecoration(
                     color: _P.grnLt,
                     borderRadius: BorderRadius.circular(6),
@@ -971,8 +989,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.check_rounded,
-                          size: 10, color: _P.grn),
+                      const Icon(Icons.check_rounded, size: 10, color: _P.grn),
                       const SizedBox(width: 3),
                       Text(
                         'Verified',
@@ -1093,8 +1110,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
             hint,
             style: GoogleFonts.outfit(fontSize: 14, color: _P.g30),
           ),
-          icon: const Icon(Icons.keyboard_arrow_down_rounded,
-              color: _P.g30),
+          icon: const Icon(Icons.keyboard_arrow_down_rounded, color: _P.g30),
           style: GoogleFonts.outfit(
             fontSize: 14,
             fontWeight: FontWeight.w500,
@@ -1132,8 +1148,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
         },
         borderRadius: BorderRadius.circular(12),
         child: Padding(
-          padding:
-              const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [

@@ -36,8 +36,7 @@ class StubReviewRepository implements ReviewRepository {
   }) async {
     final existingIdx = orderId == null
         ? -1
-        : _rows.indexWhere(
-            (r) => r.userId == userId && r.orderId == orderId);
+        : _rows.indexWhere((r) => r.userId == userId && r.orderId == orderId);
     final review = Review(
       id: id ??
           (existingIdx >= 0
@@ -48,9 +47,8 @@ class StubReviewRepository implements ReviewRepository {
       orderId: orderId,
       rating: rating,
       comment: comment,
-      createdAt: existingIdx >= 0
-          ? _rows[existingIdx].createdAt
-          : DateTime.now(),
+      createdAt:
+          existingIdx >= 0 ? _rows[existingIdx].createdAt : DateTime.now(),
       userName: 'You',
     );
     if (existingIdx >= 0) {

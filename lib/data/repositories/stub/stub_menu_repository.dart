@@ -1,3 +1,6 @@
+import 'dart:typed_data';
+
+import '../../models/dish_search_result.dart';
 import '../../models/menu_category.dart';
 import '../../models/menu_item.dart';
 import '../../models/restaurant.dart';
@@ -10,22 +13,123 @@ class StubMenuRepository implements MenuRepository {
   Future<List<MenuCategory>> fetchCategories() async => _categories;
 
   @override
-  Future<List<Restaurant>> fetchRestaurants() async => _restaurants;
+  Future<List<Restaurant>> fetchRestaurants() async =>
+      // Customer path — lifecycle-aware like the Supabase impl's is_active
+      // filter: drafts/suspended/archived stay hidden.
+      _restaurants.where((r) => r.isActive).toList(growable: false);
 
   @override
   Future<List<Restaurant>> fetchNearby({
     required double latitude,
     required double longitude,
     double radiusKm = 10,
-  }) async =>
-      _restaurants; // Stub: ignore geo, return full catalog.
+  }) =>
+      fetchRestaurants(); // Stub: ignore geo, return full active catalog.
+
+  /// Shared in-memory stores. [StubAdminRestaurantRepository] mutates these
+  /// directly so admin onboarding/edits show up in the customer stub flows
+  /// within the same session — mirroring how both Supabase repos share the
+  /// same tables.
+  List<Restaurant> get restaurantStore => _restaurants;
+  List<MenuItem> get itemStore => _items;
+
+  @override
+  Future<Set<String>> fetchInactiveRestaurantIds(Set<String> ids) async {
+    final active = _restaurants
+        .where((r) => r.isActive && ids.contains(r.id))
+        .map((r) => r.id)
+        .toSet();
+    return ids.difference(active);
+  }
+
+  // ── Customer search & by-id resolution ──────────────────────────────────
+
+  @override
+  Future<List<Restaurant>> searchRestaurants(
+    String query, {
+    double? latitude,
+    double? longitude,
+  }) async {
+    final q = query.trim().toLowerCase();
+    if (q.length < 2) return const [];
+    return _restaurants
+        .where((r) => r.isActive)
+        .where(
+          (r) =>
+              r.name.toLowerCase().contains(q) ||
+              (r.cuisinesDisplay?.toLowerCase().contains(q) ?? false),
+        )
+        .toList(growable: false);
+  }
+
+  @override
+  Future<List<DishSearchResult>> searchDishes(
+    String query, {
+    double? latitude,
+    double? longitude,
+  }) async {
+    final q = query.trim().toLowerCase();
+    if (q.length < 2) return const [];
+    final activeIds =
+        _restaurants.where((r) => r.isActive).map((r) => r.id).toSet();
+    return _items
+        .where((i) => i.isAvailable && activeIds.contains(i.restaurantId))
+        .where(
+          (i) =>
+              i.name.toLowerCase().contains(q) ||
+              (i.description?.toLowerCase().contains(q) ?? false),
+        )
+        .map(
+          (i) => DishSearchResult(
+            item: i,
+            restaurantName:
+                _restaurants.firstWhere((r) => r.id == i.restaurantId).name,
+          ),
+        )
+        .toList(growable: false);
+  }
+
+  @override
+  Future<Restaurant?> fetchRestaurantById(String id) async {
+    for (final r in _restaurants) {
+      if (r.id == id) return r;
+    }
+    return null;
+  }
+
+  @override
+  Future<List<Restaurant>> fetchRestaurantsByIds(Set<String> ids) async =>
+      _restaurants.where((r) => ids.contains(r.id)).toList(growable: false);
+
+  @override
+  Future<Set<String>> fetchUnavailableItemIds(Set<String> ids) async {
+    final available = _items
+        .where((i) => i.isAvailable && ids.contains(i.id))
+        .map((i) => i.id)
+        .toSet();
+    return ids.difference(available);
+  }
+
+  @override
+  Future<Map<String, double>> fetchItemPrices(Set<String> ids) async => {
+        for (final i in _items)
+          if (i.isAvailable && ids.contains(i.id)) i.id: i.price,
+      };
 
   @override
   Future<List<MenuItem>> fetchMenuItems() async => _items;
 
   @override
-  Future<List<MenuItem>> fetchMenuItemsForRestaurant(String restaurantId) async =>
+  Future<List<MenuItem>> fetchMenuItemsForRestaurant(
+    String restaurantId,
+  ) async =>
       _items.where((i) => i.restaurantId == restaurantId).toList();
+
+  @override
+  Future<List<MenuItem>> fetchMenuItemsForRestaurants(Set<String> ids) async =>
+      _items
+          .where((i) => i.isAvailable && ids.contains(i.restaurantId))
+          .toList(growable: false);
 
   // ── Admin catalog editing (in-memory; persists for the session) ─────────
 
@@ -41,6 +145,7 @@ class StubMenuRepository implements MenuRepository {
     required String name,
     required double price,
     String? description,
+    String? imageUrl,
     bool isVeg = true,
     bool isAvailable = true,
   }) async {
@@ -52,6 +157,7 @@ class StubMenuRepository implements MenuRepository {
         name: name.trim(),
         price: price,
         description: description?.trim(),
+        imageUrl: imageUrl,
         isVeg: isVeg,
         isAvailable: isAvailable,
       ),
@@ -63,6 +169,15 @@ class StubMenuRepository implements MenuRepository {
     final i = _items.indexWhere((m) => m.id == item.id);
     if (i != -1) _items[i] = item;
   }
+
+  @override
+  Future<String> uploadMenuItemImage({
+    required String restaurantId,
+    required Uint8List bytes,
+  }) async =>
+      // Offline mode can't host bytes — return a placeholder so the form flow
+      // still works end-to-end.
+      'https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=600&q=80&auto=format&fit=crop';
 
   @override
   Future<void> setMenuItemAvailability({
@@ -98,8 +213,9 @@ class StubMenuRepository implements MenuRepository {
     MenuCategory(id: 'c5', name: 'Additional', sortOrder: 5),
   ];
 
-  static const _restaurants = [
-    Restaurant(
+  // Growable (not const): the admin stub onboards/edits rows in place.
+  final List<Restaurant> _restaurants = [
+    const Restaurant(
       id: 'r1',
       name: 'Spice Route Catering',
       logoUrl:
@@ -117,7 +233,7 @@ class StubMenuRepository implements MenuRepository {
       tag: 'Bestseller',
       popularityScore: 100,
     ),
-    Restaurant(
+    const Restaurant(
       id: 'r2',
       name: 'Royal Banquet Kitchen',
       logoUrl:
@@ -135,7 +251,7 @@ class StubMenuRepository implements MenuRepository {
       tag: 'Event Special',
       popularityScore: 90,
     ),
-    Restaurant(
+    const Restaurant(
       id: 'r3',
       name: 'Coastal Kitchen',
       logoUrl:
@@ -154,7 +270,7 @@ class StubMenuRepository implements MenuRepository {
       isPureVeg: true,
       popularityScore: 85,
     ),
-    Restaurant(
+    const Restaurant(
       id: 'r4',
       name: 'Maharaj Rasoi',
       logoUrl:
@@ -172,7 +288,7 @@ class StubMenuRepository implements MenuRepository {
       tag: 'Royal Thali',
       popularityScore: 70,
     ),
-    Restaurant(
+    const Restaurant(
       id: 'r5',
       name: 'Delhi Darbar Catering',
       logoUrl:
@@ -190,7 +306,7 @@ class StubMenuRepository implements MenuRepository {
       tag: 'Tandoor Special',
       popularityScore: 65,
     ),
-    Restaurant(
+    const Restaurant(
       id: 'r6',
       name: 'Sattvik Events',
       logoUrl:

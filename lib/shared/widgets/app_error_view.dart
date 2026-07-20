@@ -39,8 +39,8 @@ class AppErrorView extends StatelessWidget {
             const SizedBox(width: AppSizes.sm),
             Expanded(
               child: Text(title,
-                  style: AppTextStyles.caption
-                      .copyWith(color: AppColors.error)),
+                  style:
+                      AppTextStyles.caption.copyWith(color: AppColors.error)),
             ),
             if (onRetry != null)
               TextButton(
@@ -70,12 +70,10 @@ class AppErrorView extends StatelessWidget {
             ),
             const SizedBox(height: AppSizes.lg),
             Text(title,
-                style: AppTextStyles.heading2,
-                textAlign: TextAlign.center),
+                style: AppTextStyles.heading2, textAlign: TextAlign.center),
             const SizedBox(height: AppSizes.sm),
             Text(ex.message,
-                style: AppTextStyles.bodyMuted,
-                textAlign: TextAlign.center),
+                style: AppTextStyles.bodyMuted, textAlign: TextAlign.center),
             if (onRetry != null) ...[
               const SizedBox(height: AppSizes.xl),
               PrimaryButton(

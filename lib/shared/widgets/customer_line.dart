@@ -48,8 +48,7 @@ class CustomerLine extends StatelessWidget {
   String get _shortId =>
       bookingId.length >= 8 ? '#${bookingId.substring(0, 8)}' : '#$bookingId';
 
-  bool get _hasNamedIdentifier =>
-      _has(name) || _has(phone) || _has(email);
+  bool get _hasNamedIdentifier => _has(name) || _has(phone) || _has(email);
 
   @override
   Widget build(BuildContext context) {

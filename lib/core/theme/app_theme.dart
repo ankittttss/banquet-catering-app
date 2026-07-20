@@ -38,7 +38,6 @@ class AppTheme {
       scaffoldBackgroundColor: AppColors.pageBg,
       splashFactory: InkRipple.splashFactory,
       textTheme: _textTheme(),
-
       appBarTheme: AppBarTheme(
         backgroundColor: AppColors.pageBg,
         foregroundColor: AppColors.textPrimary,
@@ -50,7 +49,6 @@ class AppTheme {
           statusBarColor: Colors.transparent,
         ),
       ),
-
       cardTheme: CardThemeData(
         color: AppColors.surface,
         elevation: 0,
@@ -60,7 +58,6 @@ class AppTheme {
           side: const BorderSide(color: AppColors.border),
         ),
       ),
-
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
           backgroundColor: AppColors.primary,
@@ -76,7 +73,6 @@ class AppTheme {
           textStyle: AppTextStyles.buttonLabel,
         ),
       ),
-
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
           foregroundColor: AppColors.primary,
@@ -88,7 +84,6 @@ class AppTheme {
           textStyle: AppTextStyles.buttonLabel,
         ),
       ),
-
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
           foregroundColor: AppColors.primary,
@@ -98,7 +93,6 @@ class AppTheme {
           ),
         ),
       ),
-
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: AppColors.surface,
@@ -116,8 +110,7 @@ class AppTheme {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(AppSizes.radiusMd),
-          borderSide:
-              const BorderSide(color: AppColors.primary, width: 1.4),
+          borderSide: const BorderSide(color: AppColors.primary, width: 1.4),
         ),
         errorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(AppSizes.radiusMd),
@@ -132,13 +125,11 @@ class AppTheme {
         prefixIconColor: AppColors.textSecondary,
         suffixIconColor: AppColors.textSecondary,
       ),
-
       dividerTheme: const DividerThemeData(
         color: AppColors.divider,
         thickness: 1,
         space: 1,
       ),
-
       chipTheme: ChipThemeData(
         backgroundColor: AppColors.surface,
         selectedColor: AppColors.primary,
@@ -154,7 +145,6 @@ class AppTheme {
           side: BorderSide.none,
         ),
       ),
-
       bottomSheetTheme: const BottomSheetThemeData(
         backgroundColor: AppColors.surface,
         modalBackgroundColor: AppColors.surface,
@@ -166,17 +156,14 @@ class AppTheme {
         ),
         showDragHandle: true,
       ),
-
       snackBarTheme: SnackBarThemeData(
         backgroundColor: AppColors.textPrimary,
-        contentTextStyle:
-            AppTextStyles.body.copyWith(color: Colors.white),
+        contentTextStyle: AppTextStyles.body.copyWith(color: Colors.white),
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(AppSizes.radiusMd),
         ),
       ),
-
       dialogTheme: DialogThemeData(
         backgroundColor: AppColors.surface,
         surfaceTintColor: Colors.transparent,
@@ -186,11 +173,9 @@ class AppTheme {
         titleTextStyle: AppTextStyles.heading2,
         contentTextStyle: AppTextStyles.body,
       ),
-
       progressIndicatorTheme: const ProgressIndicatorThemeData(
         color: AppColors.primary,
       ),
-
       scrollbarTheme: ScrollbarThemeData(
         thumbColor: WidgetStateProperty.all(Colors.transparent),
         trackColor: WidgetStateProperty.all(Colors.transparent),
@@ -200,7 +185,6 @@ class AppTheme {
         thumbVisibility: WidgetStateProperty.all(false),
         trackVisibility: WidgetStateProperty.all(false),
       ),
-
       tabBarTheme: TabBarThemeData(
         labelColor: AppColors.primary,
         unselectedLabelColor: AppColors.textSecondary,

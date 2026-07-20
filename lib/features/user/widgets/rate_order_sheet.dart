@@ -87,9 +87,7 @@ class _RateOrderSheetState extends ConsumerState<_RateOrderSheet> {
             restaurantId: widget.restaurantId,
             orderId: widget.orderId,
             rating: _rating,
-            comment: _comment.text.trim().isEmpty
-                ? null
-                : _comment.text.trim(),
+            comment: _comment.text.trim().isEmpty ? null : _comment.text.trim(),
           );
       if (!mounted) return;
       ref.invalidate(restaurantReviewsProvider(widget.restaurantId));
@@ -144,8 +142,8 @@ class _RateOrderSheetState extends ConsumerState<_RateOrderSheet> {
               const SizedBox(height: 4),
               Text(
                 widget.restaurantName,
-                style: AppTextStyles.body
-                    .copyWith(color: AppColors.textSecondary),
+                style:
+                    AppTextStyles.body.copyWith(color: AppColors.textSecondary),
               ),
               const SizedBox(height: AppSizes.lg),
               _StarRow(
@@ -163,8 +161,8 @@ class _RateOrderSheetState extends ConsumerState<_RateOrderSheet> {
                 style: AppTextStyles.body,
                 decoration: InputDecoration(
                   hintText: 'Share a few words (optional)',
-                  hintStyle: AppTextStyles.body
-                      .copyWith(color: AppColors.textMuted),
+                  hintStyle:
+                      AppTextStyles.body.copyWith(color: AppColors.textMuted),
                   filled: true,
                   fillColor: AppColors.surfaceAlt,
                   contentPadding: const EdgeInsets.all(AppSizes.md),
@@ -178,8 +176,7 @@ class _RateOrderSheetState extends ConsumerState<_RateOrderSheet> {
                 const SizedBox(height: AppSizes.sm),
                 Text(
                   _error!,
-                  style: AppTextStyles.caption
-                      .copyWith(color: AppColors.error),
+                  style: AppTextStyles.caption.copyWith(color: AppColors.error),
                 ),
               ],
               const SizedBox(height: AppSizes.sm),
@@ -190,8 +187,7 @@ class _RateOrderSheetState extends ConsumerState<_RateOrderSheet> {
                   style: FilledButton.styleFrom(
                     backgroundColor: AppColors.primary,
                     shape: RoundedRectangleBorder(
-                      borderRadius:
-                          BorderRadius.circular(AppSizes.radiusMd),
+                      borderRadius: BorderRadius.circular(AppSizes.radiusMd),
                     ),
                   ),
                   onPressed: _submitting ? null : _submit,

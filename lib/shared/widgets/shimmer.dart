@@ -37,9 +37,7 @@ class ShimmerBox extends StatelessWidget {
         color: base,
         borderRadius: radius,
       ),
-    )
-        .animate(onPlay: (c) => c.repeat())
-        .shimmer(
+    ).animate(onPlay: (c) => c.repeat()).shimmer(
           duration: 1400.ms,
           color: Colors.white.withValues(alpha: 0.6),
         );

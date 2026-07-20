@@ -110,8 +110,7 @@ class _Tile extends StatelessWidget {
                 color: AppColors.primarySoft,
                 borderRadius: BorderRadius.circular(AppSizes.radiusMd),
               ),
-              child: Icon(tile.icon,
-                  color: AppColors.primary, size: 30),
+              child: Icon(tile.icon, color: AppColors.primary, size: 30),
             ),
             const SizedBox(width: AppSizes.md),
             Expanded(
@@ -126,8 +125,7 @@ class _Tile extends StatelessWidget {
             ),
             if (tile.comingSoon)
               Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 8, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
                   color: AppColors.primarySoft,
                   borderRadius: BorderRadius.circular(6),

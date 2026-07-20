@@ -26,13 +26,17 @@ class CheckoutTotals {
   final double banquetCharge;
   final double deliveryCharge;
   final double buffetSetup;
+
   /// Per-unit service boy charge (charges.serviceBoyCost).
   final double serviceBoyUnitCost;
+
   /// Customer-chosen number of service boys.
   final int serviceBoyCount;
+
   /// Total service-boy line: unit × count.
   final double serviceBoyCost;
   final double waterBottleCost;
+
   /// Total rupees from the customer's Setup & equipment selection (tents,
   /// tables, live counters, etc.). Only non-zero on the private-property path —
   /// the Setup screen is gated behind that branch and the hall provides
@@ -77,8 +81,7 @@ class CheckoutTotals {
   }) {
     final scale = guestCount.clamp(1, 100000);
     final boys = serviceBoyCount.clamp(0, 999);
-    final food =
-        cart.fold<double>(0, (s, i) => s + i.billedLineTotal(scale));
+    final food = cart.fold<double>(0, (s, i) => s + i.billedLineTotal(scale));
     final delivery =
         deliveryByRestaurant.values.fold<double>(0, (s, d) => s + d);
     final serviceBoyTotal = charges.serviceBoyCost * boys;
@@ -96,9 +99,8 @@ class CheckoutTotals {
         setupEquip +
         charges.platformFee;
     final gst = subtotal * (charges.gstPercent / 100);
-    final serviceTax = includeServiceTax
-        ? subtotal * (charges.serviceTaxPercent / 100)
-        : 0.0;
+    final serviceTax =
+        includeServiceTax ? subtotal * (charges.serviceTaxPercent / 100) : 0.0;
     final total = subtotal + gst + serviceTax;
     return CheckoutTotals(
       foodCost: food,

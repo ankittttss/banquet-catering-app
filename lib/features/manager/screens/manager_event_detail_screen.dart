@@ -58,8 +58,7 @@ class ManagerEventDetailScreen extends ConsumerWidget {
           loading: () => const _DetailLoading(),
           error: (e, _) => AppErrorView(
             error: e,
-            onRetry: () =>
-                ref.invalidate(managerEventDetailProvider(eventId)),
+            onRetry: () => ref.invalidate(managerEventDetailProvider(eventId)),
           ),
           data: (detail) {
             if (detail == null) return const _NotFoundView();
@@ -94,8 +93,7 @@ class ManagerEventDetailScreen extends ConsumerWidget {
                 ],
                 if (detail.vendorLots.isNotEmpty) ...[
                   const SizedBox(height: AppSizes.lg),
-                  _SectionTitle(
-                      'Restaurants (${detail.vendorLots.length})'),
+                  _SectionTitle('Restaurants (${detail.vendorLots.length})'),
                   for (final lot in detail.vendorLots) ...[
                     _VendorLotCard(lot: lot),
                     const SizedBox(height: AppSizes.sm),
@@ -232,9 +230,8 @@ class _ManagerEventSummaryCard extends StatelessWidget {
     final serviceBoyCount = rows
         .where((r) => r.roleOnEvent == EventAssignmentRole.serviceBoy)
         .length;
-    final managerCount = rows
-        .where((r) => r.roleOnEvent == EventAssignmentRole.manager)
-        .length;
+    final managerCount =
+        rows.where((r) => r.roleOnEvent == EventAssignmentRole.manager).length;
     final paymentLabel = _payLabel(detail.paymentStatus);
     final totalLabel = detail.total != null && detail.total! > 0
         ? Formatters.currency(detail.total!)
@@ -520,11 +517,10 @@ class _TimelineCard extends StatelessWidget {
     final myManagerAssignment = staffAsync.valueOrNull
         ?.where((a) => a.roleOnEvent == EventAssignmentRole.manager)
         .fold<EventAssignment?>(
-      null,
-      (acc, a) => acc == null || a.assignedAt.isBefore(acc.assignedAt)
-          ? a
-          : acc,
-    );
+          null,
+          (acc, a) =>
+              acc == null || a.assignedAt.isBefore(acc.assignedAt) ? a : acc,
+        );
     final boys = staffAsync.valueOrNull
             ?.where((a) => a.roleOnEvent == EventAssignmentRole.serviceBoy)
             .length ??
@@ -535,8 +531,7 @@ class _TimelineCard extends StatelessWidget {
           icon: PhosphorIconsBold.shoppingBag,
           color: AppColors.textSecondary,
           headline: 'Booking placed',
-          subline:
-              '${Formatters.date(detail.orderCreatedAt!)} · by customer',
+          subline: '${Formatters.date(detail.orderCreatedAt!)} · by customer',
           done: true,
         ),
       if (myManagerAssignment != null)
@@ -550,9 +545,7 @@ class _TimelineCard extends StatelessWidget {
       _TimelineStep(
         icon: PhosphorIconsBold.handshake,
         color: boys > 0 ? AppColors.success : AppColors.warning,
-        headline: boys > 0
-            ? 'Service boys staffed'
-            : 'Staff service boys',
+        headline: boys > 0 ? 'Service boys staffed' : 'Staff service boys',
         subline: boys > 0
             ? '$boys ${boys == 1 ? 'service boy' : 'service boys'} on the roster'
             : 'Use "Add boy" on the home screen to staff this event',
@@ -842,9 +835,8 @@ class _BookingCard extends StatelessWidget {
           _DetailRow(
             icon: PhosphorIconsDuotone.users,
             label: 'Guest count',
-            value: detail.guestCount != null
-                ? '${detail.guestCount} guests'
-                : '—',
+            value:
+                detail.guestCount != null ? '${detail.guestCount} guests' : '—',
           ),
           if (detail.tierLabel != null)
             _DetailRow(
@@ -907,8 +899,7 @@ class _BillCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (detail.foodCost != null)
-            _BillRow('Food cost', detail.foodCost!),
+          if (detail.foodCost != null) _BillRow('Food cost', detail.foodCost!),
           if ((detail.deliveryCharge ?? 0) > 0)
             _BillRow('Delivery', detail.deliveryCharge!),
           if ((detail.banquetCharge ?? 0) > 0)
@@ -1121,8 +1112,7 @@ class _VendorItemLine extends StatelessWidget {
                 shape: BoxShape.rectangle,
                 borderRadius: BorderRadius.circular(2),
                 border: Border.all(
-                  color:
-                      item.isVeg! ? AppColors.success : AppColors.error,
+                  color: item.isVeg! ? AppColors.success : AppColors.error,
                   width: 1.4,
                 ),
               ),
@@ -1222,8 +1212,7 @@ class _RosterTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isManager =
-        assignment.roleOnEvent == EventAssignmentRole.manager;
+    final isManager = assignment.roleOnEvent == EventAssignmentRole.manager;
     final initial = (assignment.profileName?.isNotEmpty ?? false)
         ? assignment.profileName![0].toUpperCase()
         : '?';

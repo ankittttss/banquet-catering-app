@@ -6,24 +6,29 @@ import '../../../core/constants/app_sizes.dart';
 import '../../../core/constants/app_text_styles.dart';
 import '../../../core/router/app_routes.dart';
 
-/// Sticky header used across the 3-step plan-your-event flow. Renders the
-/// back button, screen title, "Step N of 3 · Label", and a 3-segment
-/// progress bar that fills based on [step].
+/// Sticky header used across the plan-your-event flow. Renders the back
+/// button, screen title, and a neutral section label.
+///
+/// The subtitle deliberately shows the section name (e.g. "Venue"), NOT a
+/// "Step N of M" count, and there is intentionally NO segmented progress bar:
+/// the private-property branch adds property + setup screens after the venue
+/// step, so any fixed denominator — or a fully-filled 2-of-2 bar on the venue
+/// screen — would misstate how far along the customer actually is. The label
+/// stays honest and count-free.
 class PlanFlowHeader extends StatelessWidget {
   const PlanFlowHeader({
     super.key,
     required this.title,
-    required this.step,
     required this.stepLabel,
     this.subtitleOverride,
   });
 
   final String title;
-  final int step;
   final String stepLabel;
-  /// When set, replaces the default "Step N of 3 · {stepLabel}" line —
-  /// used by sub-screens that aren't a top-level step (e.g. the recce
-  /// booking, which is auxiliary to the main flow).
+
+  /// When set, replaces the default neutral section label — used by
+  /// sub-screens that want a bespoke line (e.g. "Optional add-ons for your
+  /// property").
   final String? subtitleOverride;
 
   @override
@@ -68,34 +73,12 @@ class PlanFlowHeader extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      subtitleOverride ?? 'Step $step of 3 · $stepLabel',
-                      style:
-                          AppTextStyles.bodyMuted.copyWith(fontSize: 13),
+                      subtitleOverride ?? stepLabel,
+                      style: AppTextStyles.bodyMuted.copyWith(fontSize: 13),
                     ),
                   ],
                 ),
               ),
-            ],
-          ),
-          const SizedBox(height: AppSizes.md),
-          Row(
-            children: [
-              for (var i = 1; i <= 3; i++) ...[
-                if (i > 1) const SizedBox(width: AppSizes.sm),
-                Expanded(
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 240),
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: i <= step
-                          ? AppColors.primary
-                          : AppColors.primary.withValues(alpha: 0.14),
-                      borderRadius:
-                          BorderRadius.circular(AppSizes.radiusPill),
-                    ),
-                  ),
-                ),
-              ],
             ],
           ),
         ],
@@ -179,8 +162,7 @@ class PlanFlowFooter extends StatelessWidget {
                     horizontal: AppSizes.lg,
                   ),
                   shape: RoundedRectangleBorder(
-                    borderRadius:
-                        BorderRadius.circular(AppSizes.radiusMd),
+                    borderRadius: BorderRadius.circular(AppSizes.radiusMd),
                   ),
                 ),
                 child: Row(

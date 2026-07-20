@@ -43,8 +43,7 @@ class OrderSuccessScreen extends StatelessWidget {
                       .fadeIn(delay: 320.ms)
                       .slideY(begin: 0.2, end: 0, duration: 360.ms),
                   const SizedBox(height: AppSizes.xs),
-                  Text('Your booking reference',
-                          style: AppTextStyles.bodyMuted)
+                  Text('Your booking reference', style: AppTextStyles.bodyMuted)
                       .animate()
                       .fadeIn(delay: 440.ms),
                   const SizedBox(height: AppSizes.xs),
@@ -55,8 +54,7 @@ class OrderSuccessScreen extends StatelessWidget {
                     ),
                     decoration: BoxDecoration(
                       color: AppColors.primarySoft,
-                      borderRadius:
-                          BorderRadius.circular(AppSizes.radiusPill),
+                      borderRadius: BorderRadius.circular(AppSizes.radiusPill),
                     ),
                     child: Text(
                       '#$_shortId',
@@ -129,7 +127,8 @@ class _Actions extends StatelessWidget {
 
   void _share(BuildContext context) {
     HapticFeedback.lightImpact();
-    final text = 'My catering booking is confirmed on Dawat — reference #$orderId';
+    final text =
+        'My catering booking is confirmed on Dawat — reference #$orderId';
     Clipboard.setData(ClipboardData(text: text));
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Booking details copied to clipboard')),
@@ -170,8 +169,8 @@ class _Actions extends StatelessWidget {
           onPressed: () => context.go(AppRoutes.userHome),
           child: Text(
             'Back to home',
-            style: AppTextStyles.bodyBold
-                .copyWith(color: AppColors.textSecondary),
+            style:
+                AppTextStyles.bodyBold.copyWith(color: AppColors.textSecondary),
           ),
         ),
       ],
@@ -237,24 +236,74 @@ class _ConfettiBit {
 }
 
 const _confettiBits = [
-  _ConfettiBit(left: 30, top: 80, size: 14, icon: PhosphorIconsFill.sparkle,
-      color: AppColors.accent, opacity: 0.7),
-  _ConfettiBit(left: 90, top: 140, size: 10, icon: PhosphorIconsFill.star,
-      color: AppColors.primary, opacity: 0.5),
-  _ConfettiBit(left: 200, top: 100, size: 16, icon: PhosphorIconsFill.sparkle,
-      color: AppColors.accentDark, opacity: 0.6),
-  _ConfettiBit(left: 280, top: 180, size: 12, icon: PhosphorIconsFill.star,
-      color: AppColors.accent, opacity: 0.6),
-  _ConfettiBit(left: 50, top: 220, size: 8, icon: PhosphorIconsFill.heart,
-      color: AppColors.primary, opacity: 0.45),
-  _ConfettiBit(left: 250, top: 260, size: 10, icon: PhosphorIconsFill.sparkle,
-      color: AppColors.accent, opacity: 0.5),
-  _ConfettiBit(left: 150, top: 320, size: 14, icon: PhosphorIconsFill.star,
-      color: AppColors.accentDark, opacity: 0.55),
-  _ConfettiBit(left: 320, top: 380, size: 9, icon: PhosphorIconsFill.heart,
-      color: AppColors.primary, opacity: 0.5),
-  _ConfettiBit(left: 20, top: 420, size: 12, icon: PhosphorIconsFill.sparkle,
-      color: AppColors.accent, opacity: 0.6),
-  _ConfettiBit(left: 290, top: 480, size: 10, icon: PhosphorIconsFill.star,
-      color: AppColors.accent, opacity: 0.55),
+  _ConfettiBit(
+      left: 30,
+      top: 80,
+      size: 14,
+      icon: PhosphorIconsFill.sparkle,
+      color: AppColors.accent,
+      opacity: 0.7),
+  _ConfettiBit(
+      left: 90,
+      top: 140,
+      size: 10,
+      icon: PhosphorIconsFill.star,
+      color: AppColors.primary,
+      opacity: 0.5),
+  _ConfettiBit(
+      left: 200,
+      top: 100,
+      size: 16,
+      icon: PhosphorIconsFill.sparkle,
+      color: AppColors.accentDark,
+      opacity: 0.6),
+  _ConfettiBit(
+      left: 280,
+      top: 180,
+      size: 12,
+      icon: PhosphorIconsFill.star,
+      color: AppColors.accent,
+      opacity: 0.6),
+  _ConfettiBit(
+      left: 50,
+      top: 220,
+      size: 8,
+      icon: PhosphorIconsFill.heart,
+      color: AppColors.primary,
+      opacity: 0.45),
+  _ConfettiBit(
+      left: 250,
+      top: 260,
+      size: 10,
+      icon: PhosphorIconsFill.sparkle,
+      color: AppColors.accent,
+      opacity: 0.5),
+  _ConfettiBit(
+      left: 150,
+      top: 320,
+      size: 14,
+      icon: PhosphorIconsFill.star,
+      color: AppColors.accentDark,
+      opacity: 0.55),
+  _ConfettiBit(
+      left: 320,
+      top: 380,
+      size: 9,
+      icon: PhosphorIconsFill.heart,
+      color: AppColors.primary,
+      opacity: 0.5),
+  _ConfettiBit(
+      left: 20,
+      top: 420,
+      size: 12,
+      icon: PhosphorIconsFill.sparkle,
+      color: AppColors.accent,
+      opacity: 0.6),
+  _ConfettiBit(
+      left: 290,
+      top: 480,
+      size: 10,
+      icon: PhosphorIconsFill.star,
+      color: AppColors.accent,
+      opacity: 0.55),
 ];

@@ -8,14 +8,14 @@ import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_sizes.dart';
 import '../../../core/constants/app_text_styles.dart';
 import '../../../core/utils/formatters.dart';
+import '../../../core/utils/geo.dart';
 import '../../../data/models/menu_category.dart';
 import '../../../data/models/menu_item.dart';
 import '../../../data/models/restaurant.dart';
-import '../../../data/models/restaurant_offer.dart';
 import '../../../shared/providers/cart_providers.dart';
 import '../../../shared/providers/favorites_providers.dart';
 import '../../../shared/providers/menu_providers.dart';
-import '../../../shared/providers/offers_providers.dart';
+import '../../../shared/providers/search_results_providers.dart';
 import '../../../shared/widgets/app_scaffold.dart';
 import '../../../shared/widgets/safe_net_image.dart';
 import '../../../shared/widgets/selected_items_sheet.dart';
@@ -28,8 +28,68 @@ class RestaurantDetailScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final restaurants =
-        ref.watch(restaurantsProvider).valueOrNull ?? const <Restaurant>[];
+    // Resolve directly by id (ANY lifecycle state) so deep links, favorites
+    // and search hits outside the nearby radius get an honest page instead
+    // of a blank "Restaurant" shell.
+    final byId = ref.watch(restaurantByIdProvider(restaurantId));
+    final restaurant = byId.valueOrNull;
+
+    if (restaurant == null) {
+      if (byId.isLoading) {
+        return const AppScaffold(
+          body: Center(child: CircularProgressIndicator()),
+        );
+      }
+      if (byId.hasError) {
+        return AppScaffold(
+          appBar: AppBar(
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back_rounded),
+              onPressed: () => context.pop(),
+            ),
+          ),
+          body: Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('Couldn\'t load this restaurant',
+                    style: AppTextStyles.heading2),
+                const SizedBox(height: AppSizes.md),
+                OutlinedButton(
+                  onPressed: () =>
+                      ref.invalidate(restaurantByIdProvider(restaurantId)),
+                  child: const Text('Retry'),
+                ),
+              ],
+            ),
+          ),
+        );
+      }
+      // Fetched fine, row simply doesn't exist anymore.
+      return const _UnavailableView(name: null);
+    }
+
+    // Suspended / archived / draft — never orderable, don't render the menu.
+    if (restaurant.status != RestaurantStatus.published) {
+      return _UnavailableView(name: restaurant.name);
+    }
+
+    // Published — can it serve the customer's selected location?
+    final coords = ref.watch(customerCoordsProvider);
+    final serviceability = serviceabilityOf(
+      restaurant,
+      customerLat: coords.lat,
+      customerLng: coords.lng,
+    );
+    final distanceKm = distanceToRestaurantKm(
+      restaurant,
+      customerLat: coords.lat,
+      customerLng: coords.lng,
+    );
+    // Unknown range (no address yet) must not block — never punish missing
+    // data; checkout re-verifies anyway.
+    final orderable = serviceability != Serviceability.outOfRange;
+
     // Fetch menu items for THIS restaurant only — the catalog-wide provider
     // hits a 1000-row cap and misses most restaurants' menus.
     final items =
@@ -41,11 +101,6 @@ class RestaurantDetailScreen extends ConsumerWidget {
     // Guest-scaled total so the bar matches the cart's item total.
     final cartTotal = ref.watch(cartBilledFoodTotalProvider);
 
-    final restaurant = restaurants.firstWhere(
-      (r) => r.id == restaurantId,
-      orElse: () =>
-          const Restaurant(id: '', name: 'Restaurant', deliveryCharge: 0),
-    );
     final catMap = {for (final c in categories) c.id: c};
     final grouped = <String, List<MenuItem>>{};
     for (final it in items) {
@@ -64,9 +119,12 @@ class RestaurantDetailScreen extends ConsumerWidget {
               _HeroSliver(restaurant: restaurant, ref: ref),
               SliverToBoxAdapter(child: _InfoBlock(restaurant: restaurant)),
               SliverToBoxAdapter(child: _StatsStrip(restaurant: restaurant)),
-              SliverToBoxAdapter(
-                child: _OffersScroll(restaurantId: restaurantId),
-              ),
+              if (!orderable)
+                SliverToBoxAdapter(
+                  child: _OutOfRangeBanner(distanceKm: distanceKm),
+                ),
+              // Offers strip removed for the MVP (no offers product); the
+              // restaurant_offers table stays in the DB for later.
               if (items.isEmpty)
                 const SliverFillRemaining(
                   hasScrollBody: false,
@@ -84,8 +142,10 @@ class RestaurantDetailScreen extends ConsumerWidget {
                   ),
                   SliverList.builder(
                     itemCount: grouped[catId]!.length,
-                    itemBuilder: (_, i) =>
-                        _MenuItemRow(item: grouped[catId]![i]),
+                    itemBuilder: (_, i) => _MenuItemRow(
+                      item: grouped[catId]![i],
+                      orderable: orderable,
+                    ),
                   ),
                 ],
               SliverToBoxAdapter(
@@ -102,6 +162,105 @@ class RestaurantDetailScreen extends ConsumerWidget {
               bottom: 0,
               child: _ViewCartBar(count: cartCount, total: cartTotal),
             ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Full-page state for suspended / archived / deleted restaurants — replaces
+/// the old blank "Restaurant" shell (which even let customers order).
+class _UnavailableView extends StatelessWidget {
+  const _UnavailableView({required this.name});
+  final String? name;
+
+  @override
+  Widget build(BuildContext context) {
+    return AppScaffold(
+      appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_rounded),
+          onPressed: () => context.pop(),
+        ),
+      ),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(AppSizes.xl),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 72,
+                height: 72,
+                decoration: const BoxDecoration(
+                  color: AppColors.surfaceAlt,
+                  shape: BoxShape.circle,
+                ),
+                alignment: Alignment.center,
+                child: const Icon(Icons.storefront_rounded,
+                    size: 36, color: AppColors.textMuted),
+              ),
+              const SizedBox(height: AppSizes.lg),
+              Text(
+                name == null
+                    ? 'Restaurant not found'
+                    : '$name is currently unavailable',
+                style: AppTextStyles.heading2,
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: AppSizes.xs),
+              Text(
+                name == null
+                    ? 'It may have been removed from Dawat.'
+                    : 'This restaurant isn\'t taking orders right now. '
+                        'Please check back later.',
+                textAlign: TextAlign.center,
+                style: AppTextStyles.bodyMuted,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Amber banner for published-but-too-far kitchens: browsable, not orderable.
+class _OutOfRangeBanner extends StatelessWidget {
+  const _OutOfRangeBanner({required this.distanceKm});
+  final double? distanceKm;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(
+        AppSizes.pagePadding,
+        AppSizes.xs,
+        AppSizes.pagePadding,
+        AppSizes.xs,
+      ),
+      padding: const EdgeInsets.all(AppSizes.md),
+      decoration: BoxDecoration(
+        color: AppColors.accentSoft,
+        borderRadius: BorderRadius.circular(AppSizes.radiusSm),
+        border: Border.all(color: AppColors.accent.withValues(alpha: 0.35)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.location_off_rounded,
+              size: 18, color: AppColors.accentDark),
+          const SizedBox(width: AppSizes.sm),
+          Expanded(
+            child: Text(
+              'Doesn\'t deliver to your selected location'
+              '${distanceKm == null ? '' : ' — ${distanceKm!.toStringAsFixed(0)} km away'} '
+              '(serves within ${kServiceRadiusKm.toStringAsFixed(0)} km). '
+              'You can browse the menu, but ordering is disabled.',
+              style: AppTextStyles.caption
+                  .copyWith(color: AppColors.accentDark, height: 1.35),
+            ),
+          ),
         ],
       ),
     );
@@ -350,82 +509,6 @@ class _Separator extends StatelessWidget {
       Container(width: 1, height: 36, color: AppColors.border);
 }
 
-// ───────────────────────── Offers scroll ─────────────────────────
-
-class _OffersScroll extends ConsumerWidget {
-  const _OffersScroll({required this.restaurantId});
-  final String restaurantId;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final async = ref.watch(restaurantOffersProvider(restaurantId));
-    return async.when(
-      loading: () => const SizedBox.shrink(),
-      error: (_, __) => const SizedBox.shrink(),
-      data: (list) {
-        if (list.isEmpty) return const SizedBox.shrink();
-        return SizedBox(
-          height: 72,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(
-              horizontal: AppSizes.pagePadding,
-              vertical: AppSizes.sm,
-            ),
-            itemCount: list.length,
-            separatorBuilder: (_, __) => const SizedBox(width: AppSizes.sm),
-            itemBuilder: (_, i) => _OfferCard(offer: list[i]),
-          ),
-        );
-      },
-    );
-  }
-}
-
-class _OfferCard extends StatelessWidget {
-  const _OfferCard({required this.offer});
-  final RestaurantOffer offer;
-
-  @override
-  Widget build(BuildContext context) {
-    final accent = AppColors.fromHex(offer.accentHex, fallback: AppColors.info);
-    final bg = AppColors.fromHex(offer.bgHex, fallback: AppColors.catBlueLt);
-    return Container(
-      width: 220,
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppSizes.md,
-        vertical: AppSizes.sm,
-      ),
-      decoration: BoxDecoration(
-        color: bg,
-        border: Border.all(color: accent.withValues(alpha: 0.4), width: 1.2),
-        borderRadius: BorderRadius.circular(AppSizes.radiusSm),
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            offer.title,
-            style: AppTextStyles.bodyBold.copyWith(color: accent),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          if (offer.subtitle != null) ...[
-            const SizedBox(height: 2),
-            Text(
-              offer.subtitle!,
-              style: AppTextStyles.caption.copyWith(fontSize: 11),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
 // ───────────────────────── Menu list ─────────────────────────
 
 class _MenuCategoryHeader extends StatelessWidget {
@@ -447,8 +530,12 @@ class _MenuCategoryHeader extends StatelessWidget {
 }
 
 class _MenuItemRow extends ConsumerWidget {
-  const _MenuItemRow({required this.item});
+  const _MenuItemRow({required this.item, required this.orderable});
   final MenuItem item;
+
+  /// False when the restaurant can't serve the customer's location — the
+  /// menu stays browsable but ADD is disabled.
+  final bool orderable;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -490,7 +577,7 @@ class _MenuItemRow extends ConsumerWidget {
             ),
           ),
           const SizedBox(width: AppSizes.md),
-          _ThumbWithAdd(item: item, qty: lineQty),
+          _ThumbWithAdd(item: item, qty: lineQty, orderable: orderable),
         ],
       ),
     );
@@ -505,9 +592,14 @@ class _MenuItemRow extends ConsumerWidget {
 }
 
 class _ThumbWithAdd extends ConsumerWidget {
-  const _ThumbWithAdd({required this.item, required this.qty});
+  const _ThumbWithAdd({
+    required this.item,
+    required this.qty,
+    required this.orderable,
+  });
   final MenuItem item;
   final int qty;
+  final bool orderable;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -536,10 +628,27 @@ class _ThumbWithAdd extends ConsumerWidget {
             right: 8,
             bottom: 2,
             child: qty == 0
-                ? _AddButton(onTap: () {
-                    HapticFeedback.selectionClick();
-                    ref.read(cartProvider.notifier).add(item);
-                  })
+                ? _AddButton(
+                    enabled: orderable,
+                    onTap: () {
+                      if (!orderable) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              'This restaurant doesn\'t deliver to your '
+                              'selected location.',
+                            ),
+                            behavior: SnackBarBehavior.floating,
+                          ),
+                        );
+                        return;
+                      }
+                      HapticFeedback.selectionClick();
+                      ref.read(cartProvider.notifier).add(item);
+                    },
+                  )
+                // Removing stays allowed even when out of range — helps the
+                // customer clean up a cart built from an old address.
                 : _AddedBadge(
                     onRemove: () {
                       HapticFeedback.selectionClick();
@@ -562,8 +671,9 @@ class _ThumbWithAdd extends ConsumerWidget {
 }
 
 class _AddButton extends StatelessWidget {
-  const _AddButton({required this.onTap});
+  const _AddButton({required this.onTap, this.enabled = true});
   final VoidCallback onTap;
+  final bool enabled;
 
   @override
   Widget build(BuildContext context) {
@@ -585,7 +695,7 @@ class _AddButton extends StatelessWidget {
           child: Text(
             'ADD',
             style: AppTextStyles.captionBold.copyWith(
-              color: AppColors.success,
+              color: enabled ? AppColors.success : AppColors.textMuted,
               fontSize: 13,
               letterSpacing: 1,
             ),

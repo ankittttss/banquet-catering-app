@@ -27,6 +27,40 @@ class SupabaseBanquetRepository implements BanquetRepository {
   }
 
   @override
+  Future<BanquetVenue?> fetchActiveVenueById(String id) async {
+    // .eq('is_active', true) is belt-and-suspenders — the customer read
+    // policy (venues_public_read_active) already hides inactive rows, so a
+    // deleted/deactivated venue simply returns null.
+    final row = await supabase
+        .from('banquet_venues')
+        .select()
+        .eq('id', id)
+        .eq('is_active', true)
+        .maybeSingle();
+    return row == null ? null : BanquetVenue.fromMap(row);
+  }
+
+  @override
+  Future<List<BanquetVenue>> venuesNear({
+    required double latitude,
+    required double longitude,
+    double radiusKm = 50,
+    int? minCapacity,
+  }) async {
+    final rows = await supabase.rpc<dynamic>('banquet_venues_near', params: {
+      'p_lat': latitude,
+      'p_lng': longitude,
+      'p_radius_km': radiusKm,
+      'p_min_capacity': minCapacity,
+    });
+    if (rows is! List) return const [];
+    return rows
+        .whereType<Map<String, dynamic>>()
+        .map<BanquetVenue>(BanquetVenue.fromMap)
+        .toList(growable: false);
+  }
+
+  @override
   Future<List<BanquetInboxEvent>> fetchInbox() async {
     // Newest received first — operators want to see what just landed,
     // not what's happening earliest on the calendar.
@@ -97,8 +131,7 @@ class SupabaseBanquetRepository implements BanquetRepository {
     try {
       final stream = supabase
           .from('events')
-          .stream(primaryKey: ['id'])
-          .order('created_at', ascending: false);
+          .stream(primaryKey: ['id']).order('created_at', ascending: false);
       await for (final rows in stream) {
         final events = rows
             .where((r) => r['banquet_venue_id'] != null)
@@ -133,8 +166,7 @@ class SupabaseBanquetRepository implements BanquetRepository {
     // operator-update RLS policy was written to allow).
     await supabase
         .from('events')
-        .update({'banquet_notes': notes})
-        .eq('id', eventId);
+        .update({'banquet_notes': notes}).eq('id', eventId);
   }
 
   @override
@@ -144,9 +176,7 @@ class SupabaseBanquetRepository implements BanquetRepository {
         .select()
         .eq('role', 'manager')
         .order('name');
-    return rows
-        .map<UserProfile>(UserProfile.fromMap)
-        .toList(growable: false);
+    return rows.map<UserProfile>(UserProfile.fromMap).toList(growable: false);
   }
 
   @override
@@ -173,5 +203,82 @@ class SupabaseBanquetRepository implements BanquetRepository {
       'per_guest': perGuest,
       'is_active': isActive,
     }).eq('id', itemId);
+  }
+
+  // ── Admin venue management ────────────────────────────────────────────
+
+  @override
+  Future<List<BanquetVenue>> fetchVenuesAdmin() async {
+    // No is_active filter — the admin sees drafts too. RLS restricts this
+    // to admins via venues_admin_write / venues_owner_rw anyway; customers
+    // go through fetchAllVenues.
+    final rows = await supabase.from('banquet_venues').select().order('name');
+    return rows.map<BanquetVenue>(BanquetVenue.fromMap).toList(growable: false);
+  }
+
+  @override
+  Future<BanquetVenue> createVenue({
+    required String ownerProfileId,
+    required String name,
+    String? address,
+    double? latitude,
+    double? longitude,
+    int? capacity,
+    required bool isActive,
+  }) async {
+    final row = await supabase
+        .from('banquet_venues')
+        .insert({
+          'owner_profile_id': ownerProfileId,
+          'name': name,
+          'address': address,
+          'latitude': latitude,
+          'longitude': longitude,
+          'capacity': capacity,
+          'is_active': isActive,
+        })
+        .select()
+        .single();
+    return BanquetVenue.fromMap(row);
+  }
+
+  @override
+  Future<BanquetVenue> updateVenue({
+    required String venueId,
+    required String ownerProfileId,
+    required String name,
+    String? address,
+    double? latitude,
+    double? longitude,
+    int? capacity,
+    required bool isActive,
+  }) async {
+    // Full-state write: nulls intentionally clear address/coords/capacity
+    // (the DB guard rejects an active venue losing its location).
+    final row = await supabase
+        .from('banquet_venues')
+        .update({
+          'owner_profile_id': ownerProfileId,
+          'name': name,
+          'address': address,
+          'latitude': latitude,
+          'longitude': longitude,
+          'capacity': capacity,
+          'is_active': isActive,
+        })
+        .eq('id', venueId)
+        .select()
+        .single();
+    return BanquetVenue.fromMap(row);
+  }
+
+  @override
+  Future<List<UserProfile>> fetchBanquetOperators() async {
+    final rows = await supabase
+        .from('profiles')
+        .select()
+        .eq('role', 'banquet')
+        .order('name');
+    return rows.map<UserProfile>(UserProfile.fromMap).toList(growable: false);
   }
 }

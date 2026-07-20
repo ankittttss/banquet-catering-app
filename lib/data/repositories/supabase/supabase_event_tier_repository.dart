@@ -1,4 +1,5 @@
 import '../../../core/supabase/supabase_client.dart';
+import '../../../core/utils/geo.dart';
 import '../../models/event_tier.dart';
 import '../../models/restaurant.dart';
 import '../event_tier_repository.dart';
@@ -11,9 +12,7 @@ class SupabaseEventTierRepository implements EventTierRepository {
         .select()
         .eq('is_active', true)
         .order('sort_order', ascending: true);
-    return rows
-        .map<EventTier>(EventTier.fromMap)
-        .toList(growable: false);
+    return rows.map<EventTier>(EventTier.fromMap).toList(growable: false);
   }
 
   @override
@@ -21,7 +20,7 @@ class SupabaseEventTierRepository implements EventTierRepository {
     required String tierId,
     double? latitude,
     double? longitude,
-    double radiusKm = 25,
+    double radiusKm = kServiceRadiusKm,
   }) async {
     final rows = await supabase.rpc<dynamic>(
       'restaurants_for_event',

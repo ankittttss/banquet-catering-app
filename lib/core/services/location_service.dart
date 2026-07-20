@@ -55,7 +55,8 @@ class LocationException implements Exception {
   final LocationError kind;
   final Object? cause;
   @override
-  String toString() => 'LocationException($kind${cause == null ? '' : ': $cause'})';
+  String toString() =>
+      'LocationException($kind${cause == null ? '' : ': $cause'})';
 }
 
 class LocationService {
@@ -111,8 +112,7 @@ class LocationService {
       final raw = jsonDecode(res.body) as List<dynamic>;
       return raw.map<AddressSuggestion>((e) {
         final m = e as Map<String, dynamic>;
-        final addr =
-            (m['address'] as Map<String, dynamic>?) ?? const {};
+        final addr = (m['address'] as Map<String, dynamic>?) ?? const {};
         final line1 = _firstNonEmpty([
           addr['amenity'] as String?,
           addr['road'] as String?,
@@ -161,8 +161,7 @@ class LocationService {
     return _reverseViaPlatform(lat, lng);
   }
 
-  Future<ResolvedAddress> _reverseViaPlatform(
-      double lat, double lng) async {
+  Future<ResolvedAddress> _reverseViaPlatform(double lat, double lng) async {
     try {
       final placemarks = await placemarkFromCoordinates(lat, lng);
       if (placemarks.isEmpty) {
@@ -185,8 +184,7 @@ class LocationService {
     }
   }
 
-  Future<ResolvedAddress> _reverseViaNominatim(
-      double lat, double lng) async {
+  Future<ResolvedAddress> _reverseViaNominatim(double lat, double lng) async {
     try {
       final res = await http.get(
         Uri.parse(
@@ -202,8 +200,7 @@ class LocationService {
         return ResolvedAddress(lat: lat, lng: lng);
       }
       final data = jsonDecode(res.body) as Map<String, dynamic>;
-      final addr =
-          (data['address'] as Map<String, dynamic>?) ?? const {};
+      final addr = (data['address'] as Map<String, dynamic>?) ?? const {};
       final line1 = _firstNonEmpty([
         addr['road'] as String?,
         addr['neighbourhood'] as String?,

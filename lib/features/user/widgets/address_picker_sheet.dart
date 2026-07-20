@@ -54,8 +54,7 @@ class AddressPickerSheet extends ConsumerWidget {
                 height: 4,
                 decoration: BoxDecoration(
                   color: AppColors.border,
-                  borderRadius:
-                      BorderRadius.circular(AppSizes.radiusPill),
+                  borderRadius: BorderRadius.circular(AppSizes.radiusPill),
                 ),
               ),
             ),
@@ -76,9 +75,7 @@ class AddressPickerSheet extends ConsumerWidget {
                   addr: a,
                   active: selected?.id == a.id,
                   onTap: () {
-                    ref
-                        .read(selectedAddressIdProvider.notifier)
-                        .state = a.id;
+                    ref.read(selectedAddressIdProvider.notifier).state = a.id;
                     Navigator.of(context).pop();
                   },
                 ),
@@ -93,11 +90,9 @@ class AddressPickerSheet extends ConsumerWidget {
               style: OutlinedButton.styleFrom(
                 foregroundColor: AppColors.primary,
                 side: const BorderSide(color: AppColors.primary),
-                padding: const EdgeInsets.symmetric(
-                    vertical: AppSizes.md),
+                padding: const EdgeInsets.symmetric(vertical: AppSizes.md),
                 shape: RoundedRectangleBorder(
-                  borderRadius:
-                      BorderRadius.circular(AppSizes.radiusSm),
+                  borderRadius: BorderRadius.circular(AppSizes.radiusSm),
                 ),
               ),
             ),
@@ -136,11 +131,8 @@ class _Tile extends StatelessWidget {
                   width: 38,
                   height: 38,
                   decoration: BoxDecoration(
-                    color: active
-                        ? AppColors.primary
-                        : AppColors.surface,
-                    borderRadius:
-                        BorderRadius.circular(AppSizes.radiusSm),
+                    color: active ? AppColors.primary : AppColors.surface,
+                    borderRadius: BorderRadius.circular(AppSizes.radiusSm),
                   ),
                   child: Icon(
                     _iconFor(addr.label),
@@ -155,8 +147,7 @@ class _Tile extends StatelessWidget {
                     children: [
                       Row(
                         children: [
-                          Text(addr.label.label,
-                              style: AppTextStyles.bodyBold),
+                          Text(addr.label.label, style: AppTextStyles.bodyBold),
                           if (addr.isDefault) ...[
                             const SizedBox(width: AppSizes.sm),
                             Container(
@@ -164,8 +155,7 @@ class _Tile extends StatelessWidget {
                                   horizontal: 6, vertical: 1),
                               decoration: BoxDecoration(
                                 color: AppColors.catGreenLt,
-                                borderRadius:
-                                    BorderRadius.circular(4),
+                                borderRadius: BorderRadius.circular(4),
                               ),
                               child: Text(
                                 'Default',

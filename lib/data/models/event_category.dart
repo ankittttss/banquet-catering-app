@@ -34,8 +34,7 @@ class EventCategory {
         bgHex: map['bg_hex'] as String? ?? '#FFF1F2',
         iconHex: map['icon_hex'] as String? ?? '#E23744',
         sortOrder: (map['sort_order'] as num?)?.toInt() ?? 0,
-        defaultGuestCount:
-            (map['default_guest_count'] as num?)?.toInt() ?? 25,
+        defaultGuestCount: (map['default_guest_count'] as num?)?.toInt() ?? 25,
         defaultSession: map['default_session'] as String? ?? 'Dinner',
       );
 }

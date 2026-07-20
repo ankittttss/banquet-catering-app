@@ -32,4 +32,20 @@ class MenuItem {
         isVeg: (map['is_veg'] as bool?) ?? true,
         isAvailable: (map['is_available'] as bool?) ?? true,
       );
+
+  MenuItem copyWith({
+    double? price,
+    bool? isAvailable,
+  }) =>
+      MenuItem(
+        id: id,
+        restaurantId: restaurantId,
+        categoryId: categoryId,
+        name: name,
+        price: price ?? this.price,
+        description: description,
+        imageUrl: imageUrl,
+        isVeg: isVeg,
+        isAvailable: isAvailable ?? this.isAvailable,
+      );
 }

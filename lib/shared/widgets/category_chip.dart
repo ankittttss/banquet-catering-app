@@ -22,8 +22,7 @@ class CategoryChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final bg = selected ? AppColors.primary : AppColors.surface;
     final fg = selected ? Colors.white : AppColors.textPrimary;
-    final border =
-        selected ? AppColors.primary : AppColors.border;
+    final border = selected ? AppColors.primary : AppColors.border;
 
     return Material(
       color: Colors.transparent,
