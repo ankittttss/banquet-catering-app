@@ -13,6 +13,7 @@ import '../../../shared/providers/event_tier_providers.dart';
 import '../../../shared/widgets/app_scaffold.dart';
 import '../../../shared/widgets/empty_state.dart';
 import '../event_plan_summary.dart';
+import '../plan_edit_context.dart';
 
 /// Read-only overview of the customer's in-progress event: what is planned,
 /// and an honest verdict on whether it is actually orderable.
@@ -60,6 +61,10 @@ class EventPlanScreen extends ConsumerWidget {
                 _Section(
                   icon: PhosphorIconsFill.calendarBlank,
                   title: 'Event',
+                  // Edits name/session/date/time/guests. Occasion + location
+                  // stay read-only on that screen (they fire immediate,
+                  // unconfirmed mutations — deferred to Phase 3).
+                  onEdit: () => context.push(PlanEditContext.editEvent()),
                   rows: [
                     if (s.eventName != null) ('Event name', s.eventName!),
                     if (s.occasionText != null) ('Occasion', s.occasionText!),
@@ -70,6 +75,8 @@ class EventPlanScreen extends ConsumerWidget {
                   ],
                 ),
                 const SizedBox(height: AppSizes.sm),
+                // Location editing is deferred to Phase 3's transactional
+                // change flow — read-only here (no Edit action).
                 _Section(
                   icon: PhosphorIconsFill.mapPin,
                   title: 'Location',
@@ -79,6 +86,7 @@ class EventPlanScreen extends ConsumerWidget {
                 _Section(
                   icon: PhosphorIconsFill.forkKnife,
                   title: 'Package',
+                  onEdit: () => context.push(PlanEditContext.editPackage()),
                   rows: [
                     ('Selected', s.packageText),
                     if (s.packageRangeText != null)
@@ -91,6 +99,9 @@ class EventPlanScreen extends ConsumerWidget {
                 ),
                 const SizedBox(height: AppSizes.sm),
                 if (s.isPrivateProperty) ...[
+                  // Property DETAILS editing is deferred to Phase 3
+                  // (addressLine1/cityPincode can disagree with the confirmed
+                  // event coordinates) — read-only here.
                   _Section(
                     icon: PhosphorIconsFill.house,
                     title: 'Private property',
@@ -100,6 +111,7 @@ class EventPlanScreen extends ConsumerWidget {
                   _Section(
                     icon: PhosphorIconsFill.wrench,
                     title: 'Setup & equipment',
+                    onEdit: () => context.push(PlanEditContext.editSetup()),
                     rows: [
                       (
                         'Add-ons',
@@ -110,6 +122,7 @@ class EventPlanScreen extends ConsumerWidget {
                     ],
                   ),
                 ] else
+                  // Banquet venue change is deferred to Phase 3 — read-only.
                   _Section(
                     icon: PhosphorIconsFill.buildings,
                     title: 'Banquet venue',
@@ -214,6 +227,7 @@ class _Section extends StatelessWidget {
     required this.rows,
     this.check,
     this.onRetry,
+    this.onEdit,
   });
 
   final IconData icon;
@@ -225,6 +239,11 @@ class _Section extends StatelessWidget {
 
   /// Supplied only for a failed live check — re-runs the lookup.
   final VoidCallback? onRetry;
+
+  /// When set, an "Edit" action opens the owning screen in edit mode. Deferred
+  /// sections (location, banquet venue, private-property details) leave this
+  /// null and stay read-only.
+  final VoidCallback? onEdit;
 
   @override
   Widget build(BuildContext context) {
@@ -274,6 +293,26 @@ class _Section extends StatelessWidget {
                     'Retry',
                     style: AppTextStyles.captionBold
                         .copyWith(color: AppColors.primary),
+                  ),
+                ),
+              if (onEdit != null)
+                TextButton.icon(
+                  onPressed: onEdit,
+                  icon: const Icon(Icons.edit_outlined, size: 15),
+                  // Style the label directly (not via styleFrom.textStyle),
+                  // matching Retry — passing an inherit:true TextStyle to the
+                  // button crashes TextStyle.lerp during state animations.
+                  label: Text(
+                    'Edit',
+                    style: AppTextStyles.captionBold
+                        .copyWith(color: AppColors.primary),
+                  ),
+                  style: TextButton.styleFrom(
+                    foregroundColor: AppColors.primary,
+                    minimumSize: const Size(0, 32),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: AppSizes.sm),
+                    visualDensity: VisualDensity.compact,
                   ),
                 ),
             ],
