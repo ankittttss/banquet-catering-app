@@ -25,6 +25,7 @@ import '../../../shared/widgets/menu_item_thumb.dart';
 import '../../../shared/widgets/primary_button.dart';
 import '../../../shared/widgets/pick_toggle.dart';
 import '../../../shared/widgets/veg_dot.dart';
+import '../widgets/event_plan_chip.dart';
 
 class MenuScreen extends ConsumerWidget {
   const MenuScreen({super.key});
@@ -45,6 +46,8 @@ class MenuScreen extends ConsumerWidget {
           icon: const Icon(PhosphorIconsBold.arrowLeft),
           onPressed: () => context.pop(),
         ),
+        // Compact by design — the menu owns the vertical space here.
+        actions: const [EventPlanAction()],
       ),
       body: Column(
         children: [

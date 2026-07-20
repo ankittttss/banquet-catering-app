@@ -19,6 +19,7 @@ import '../../../shared/providers/search_results_providers.dart';
 import '../../../shared/widgets/app_scaffold.dart';
 import '../../../shared/widgets/safe_net_image.dart';
 import '../../../shared/widgets/selected_items_sheet.dart';
+import '../widgets/event_plan_chip.dart';
 import '../widgets/reviews_section.dart';
 
 class RestaurantDetailScreen extends ConsumerWidget {
@@ -290,6 +291,19 @@ class _HeroSliver extends StatelessWidget {
         onTap: () => context.pop(),
       ),
       actions: [
+        // Compact entry to the event plan — the photo header owns this space,
+        // so it matches the circular action language instead of a bar.
+        Tooltip(
+          message: 'Event plan',
+          child: Semantics(
+            button: true,
+            label: 'Event plan',
+            child: _CircleAction(
+              icon: Icons.event_available_rounded,
+              onTap: () => openEventPlan(context, ref),
+            ),
+          ),
+        ),
         _CircleAction(
           icon: isFav ? Icons.favorite_rounded : Icons.favorite_border_rounded,
           color: isFav ? AppColors.primary : AppColors.textPrimary,

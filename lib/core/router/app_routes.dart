@@ -15,6 +15,10 @@ class AppRoutes {
   static const eventVenueType = '/user/event/venue';
   static const eventProperty = '/user/event/property';
   static const eventSetup = '/user/event/setup';
+
+  /// Read-only overview of the in-progress event. Edit actions land here in
+  /// Phase 2; Phase 1 renders the plan and the "Plan an event" empty state.
+  static const eventPlan = '/user/event/plan';
   static const menu = '/user/menu';
   static const restaurantDetail = '/user/restaurants/:id'; // template
   static const search = '/user/search';
