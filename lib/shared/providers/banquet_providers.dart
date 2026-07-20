@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/models/banquet_venue.dart';
 import '../../data/models/user_profile.dart';
+import '../../data/models/venue_type.dart';
 import 'event_providers.dart';
 import 'repositories_providers.dart';
 
@@ -83,4 +84,57 @@ final banquetOperatorsProvider =
     FutureProvider.autoDispose<List<UserProfile>>((ref) async {
   final repo = ref.watch(banquetRepositoryProvider);
   return repo.fetchBanquetOperators();
+});
+
+/// Whether the banquet venue currently on the draft is still usable.
+enum VenueCheckState {
+  /// No banquet venue is selected (or the flow isn't banquet-hall).
+  none,
+
+  /// The venue exists, is active, and fits the guest count.
+  valid,
+
+  /// The venue is active but its known capacity is below the guest count.
+  tooSmall,
+
+  /// The venue was deleted or deactivated since it was selected.
+  unavailable,
+}
+
+/// Result of reconciling the draft's selected banquet venue against LIVE
+/// data. Carries the fresh venue row (address/capacity) for the summary card.
+class VenueCheck {
+  const VenueCheck(this.state, {this.venue});
+  final VenueCheckState state;
+  final BanquetVenue? venue;
+
+  bool get isBlocking =>
+      state == VenueCheckState.tooSmall || state == VenueCheckState.unavailable;
+}
+
+/// Re-validates the draft's selected banquet venue against live data by id:
+/// the venue must still exist, still be active (the `fetchActiveVenueById`
+/// read is active-only under RLS) and still fit the current guest count.
+///
+/// This is a client-side COMPLEMENT to the server: `place_order` remains the
+/// final authority (it re-checks active + capacity + coordinates), but this
+/// lets the venue screen surface a stale/too-small selection immediately
+/// instead of only at checkout. A network error surfaces as AsyncError so
+/// the screen can offer Retry and keep Continue blocked — it never silently
+/// clears a selection.
+final selectedBanquetVenueCheckProvider =
+    FutureProvider.autoDispose<VenueCheck>((ref) async {
+  final draft = ref.watch(eventDraftProvider);
+  if (draft.venueType != VenueType.banquetHall ||
+      draft.banquetVenueId == null) {
+    return const VenueCheck(VenueCheckState.none);
+  }
+  final repo = ref.watch(banquetRepositoryProvider);
+  final venue = await repo.fetchActiveVenueById(draft.banquetVenueId!);
+  if (venue == null) return const VenueCheck(VenueCheckState.unavailable);
+  final tooSmall = venue.capacity != null && draft.guestCount > venue.capacity!;
+  return VenueCheck(
+    tooSmall ? VenueCheckState.tooSmall : VenueCheckState.valid,
+    venue: venue,
+  );
 });

@@ -64,7 +64,6 @@ class _PrivatePropertyScreenState extends ConsumerState<PrivatePropertyScreen> {
           children: [
             const PlanFlowHeader(
               title: 'About your property',
-              step: 2,
               stepLabel: 'Venue',
               subtitleOverride: 'So the team comes ready',
             ),

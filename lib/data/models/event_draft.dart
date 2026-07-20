@@ -18,6 +18,7 @@ class EventDraft {
     this.tierCode,
     this.banquetVenueId,
     this.banquetVenueName,
+    this.banquetVenueCapacity,
     this.serviceBoyCount,
     this.venueType,
     this.propertyDraft,
@@ -58,6 +59,14 @@ class EventDraft {
   /// inbox.
   final String? banquetVenueId;
   final String? banquetVenueName;
+
+  /// Capacity of the selected banquet venue, captured at selection time.
+  /// Null when unknown (the venue row had no capacity). This lets the shared
+  /// planning cascade detect — offline, without a fetch — that a later
+  /// guest-count increase pushed the party past the hall it fits, so Home,
+  /// Event Details and Checkout all stop treating that stale hall as a done
+  /// step. `place_order` re-checks LIVE capacity as the final authority.
+  final int? banquetVenueCapacity;
 
   /// Customer-chosen number of service boys. When null, falls back to
   /// suggestedServiceBoys (1 per 10 guests, min 1).
@@ -107,6 +116,7 @@ class EventDraft {
     String? tierCode,
     String? banquetVenueId,
     String? banquetVenueName,
+    int? banquetVenueCapacity,
     int? serviceBoyCount,
     VenueType? venueType,
     PrivatePropertyDraft? propertyDraft,
@@ -127,6 +137,7 @@ class EventDraft {
         tierCode: tierCode ?? this.tierCode,
         banquetVenueId: banquetVenueId ?? this.banquetVenueId,
         banquetVenueName: banquetVenueName ?? this.banquetVenueName,
+        banquetVenueCapacity: banquetVenueCapacity ?? this.banquetVenueCapacity,
         serviceBoyCount: serviceBoyCount ?? this.serviceBoyCount,
         venueType: venueType ?? this.venueType,
         propertyDraft: propertyDraft ?? this.propertyDraft,
@@ -157,6 +168,8 @@ class EventDraft {
         if (tierCode != null) 'tierCode': tierCode,
         if (banquetVenueId != null) 'banquetVenueId': banquetVenueId,
         if (banquetVenueName != null) 'banquetVenueName': banquetVenueName,
+        if (banquetVenueCapacity != null)
+          'banquetVenueCapacity': banquetVenueCapacity,
         if (serviceBoyCount != null) 'serviceBoyCount': serviceBoyCount,
         if (venueType != null) 'venueType': venueType!.dbValue,
         if (propertyDraft != null) 'propertyDraft': propertyDraft!.toJson(),
@@ -188,6 +201,7 @@ class EventDraft {
       tierCode: json['tierCode'] as String?,
       banquetVenueId: json['banquetVenueId'] as String?,
       banquetVenueName: json['banquetVenueName'] as String?,
+      banquetVenueCapacity: (json['banquetVenueCapacity'] as num?)?.toInt(),
       serviceBoyCount: (json['serviceBoyCount'] as num?)?.toInt(),
       venueType: VenueType.fromDbValue(json['venueType'] as String?),
       propertyDraft: json['propertyDraft'] is Map<String, dynamic>

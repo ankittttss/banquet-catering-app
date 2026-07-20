@@ -24,6 +24,8 @@ void main() {
     String? tierId = '00000000-0000-4000-8000-000000000111',
     VenueType? venueType = VenueType.banquetHall,
     String? banquetVenueId = 'v1',
+    int? banquetVenueCapacity,
+    int guestCount = 50,
     PrivatePropertyDraft? propertyDraft,
   }) =>
       EventDraft(
@@ -35,10 +37,12 @@ void main() {
         location: location,
         eventLatitude: lat,
         eventLongitude: lng,
+        guestCount: guestCount,
         tierId: tierId,
         tierCode: tierId == null ? null : 'STANDARD',
         venueType: venueType,
         banquetVenueId: banquetVenueId,
+        banquetVenueCapacity: banquetVenueCapacity,
         propertyDraft: propertyDraft,
       );
 
@@ -116,6 +120,26 @@ void main() {
       final gap =
           checkoutPlanningGap(banquetDraft(banquetVenueId: null), now: now);
       expect(gap!.route, AppRoutes.eventVenueType);
+    });
+
+    test(
+        'a venue picked earlier but now too small for the guest count blocks '
+        'checkout → venue screen (no slipping through to place_order)', () {
+      final gap = checkoutPlanningGap(
+        banquetDraft(guestCount: 300, banquetVenueCapacity: 200),
+        now: now,
+      );
+      expect(gap, isNotNull);
+      expect(gap!.route, AppRoutes.eventVenueType);
+      expect(gap.message, contains('no longer fits'));
+    });
+
+    test('a captured venue that still fits the party passes checkout', () {
+      final gap = checkoutPlanningGap(
+        banquetDraft(guestCount: 150, banquetVenueCapacity: 200),
+        now: now,
+      );
+      expect(gap, isNull);
     });
 
     test('incomplete private-property details → property screen', () {

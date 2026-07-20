@@ -174,6 +174,25 @@ PlanningStep planningNextStep(EventDraft d, {DateTime? now}) {
           );
   }
 
+  // A banquet hall picked earlier stays "done" only while it still fits the
+  // party. A later guest-count bump past the capacity captured at selection
+  // re-opens the venue step HERE — in the ONE shared cascade — so Event
+  // Details' Continue, Home's "Continue planning" and the checkout gate all
+  // agree the hall must be reconfirmed, instead of routing straight past the
+  // venue screen to the restaurant browser and only failing at place_order.
+  // Uses the draft's captured capacity (no network read); unknown capacity is
+  // never blocked, exactly like the picker query, the tap gate and the server
+  // — place_order re-checks LIVE capacity as the final authority.
+  if (!isPrivate &&
+      d.banquetVenueCapacity != null &&
+      d.guestCount > d.banquetVenueCapacity!) {
+    return const PlanningStep(
+      hint: 'Your banquet hall no longer fits your guest count — pick a '
+          'larger venue',
+      route: AppRoutes.eventVenueType,
+    );
+  }
+
   // ── Everything planned — go browse restaurants / add dishes ──
   return const PlanningStep(
     hint: 'Add dishes to finalise the menu',

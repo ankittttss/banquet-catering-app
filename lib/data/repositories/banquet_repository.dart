@@ -12,6 +12,13 @@ abstract interface class BanquetRepository {
   /// (RLS: banquet_venues has a public-read policy for exactly this.)
   Future<List<BanquetVenue>> fetchAllVenues();
 
+  /// A single venue by id, but ONLY when it is still active — returns null
+  /// when the venue was deleted or deactivated. Relies on the existing
+  /// `venues_public_read_active` policy (customers can only read active
+  /// rows), so it needs no new access. Used to re-validate a previously
+  /// selected banquet venue against live data.
+  Future<BanquetVenue?> fetchActiveVenueById(String id);
+
   /// Active venues with valid coordinates within [radiusKm] of the event
   /// point, nearest-first, each carrying [BanquetVenue.distanceKm]. Venues
   /// whose KNOWN capacity is below [minCapacity] are excluded; unknown

@@ -59,9 +59,8 @@ class _SetupEquipmentScreenState extends ConsumerState<SetupEquipmentScreen> {
         bottom: false,
         child: Column(
           children: [
-            PlanFlowHeader(
+            const PlanFlowHeader(
               title: 'Setup & equipment',
-              step: 2,
               stepLabel: 'Venue',
               subtitleOverride: 'Optional add-ons for your property',
             ),

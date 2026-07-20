@@ -11,6 +11,14 @@ class StubBanquetRepository implements BanquetRepository {
   Future<List<BanquetVenue>> fetchAllVenues() async => const [];
 
   @override
+  Future<BanquetVenue?> fetchActiveVenueById(String id) async {
+    for (final v in _venues) {
+      if (v.id == id && v.isActive) return v;
+    }
+    return null;
+  }
+
+  @override
   Future<List<BanquetVenue>> venuesNear({
     required double latitude,
     required double longitude,

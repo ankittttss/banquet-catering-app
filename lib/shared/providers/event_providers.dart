@@ -77,7 +77,11 @@ class EventDraftController extends Notifier<EventDraft> {
     // to the composed title.
     if (trimmed == null || trimmed.isEmpty) {
       // copyWith with eventName == null keeps the existing value, so to
-      // actually clear we have to rebuild manually.
+      // actually clear we have to rebuild manually. This is an UNRELATED edit
+      // (the venue isn't changing), so every other field — including the
+      // captured banquetVenueCapacity that guards the guest-count check — must
+      // be carried over verbatim, or clearing the name would silently drop the
+      // capacity while keeping the venue and defeat that guard.
       final s = state;
       state = EventDraft(
         eventName: null,
@@ -94,6 +98,7 @@ class EventDraftController extends Notifier<EventDraft> {
         tierCode: s.tierCode,
         banquetVenueId: s.banquetVenueId,
         banquetVenueName: s.banquetVenueName,
+        banquetVenueCapacity: s.banquetVenueCapacity,
         serviceBoyCount: s.serviceBoyCount,
         venueType: s.venueType,
         propertyDraft: s.propertyDraft,
@@ -170,6 +175,7 @@ class EventDraftController extends Notifier<EventDraft> {
       tierCode: s.tierCode,
       banquetVenueId: null,
       banquetVenueName: null,
+      banquetVenueCapacity: null,
       serviceBoyCount: s.serviceBoyCount,
       venueType: s.venueType,
       propertyDraft: property,
@@ -230,6 +236,7 @@ class EventDraftController extends Notifier<EventDraft> {
     String? address,
     double? latitude,
     double? longitude,
+    int? capacity,
   }) {
     final s = state;
     final venueLocation = (address != null && address.trim().isNotEmpty)
@@ -250,6 +257,9 @@ class EventDraftController extends Notifier<EventDraft> {
       tierCode: s.tierCode,
       banquetVenueId: venueId,
       banquetVenueName: venueName,
+      // Snapshot the capacity so the shared cascade can later notice a
+      // guest-count bump that outgrows this hall — without a network read.
+      banquetVenueCapacity: capacity,
       serviceBoyCount: s.serviceBoyCount,
       venueType: s.venueType,
       propertyDraft: s.propertyDraft,
@@ -304,6 +314,7 @@ class EventDraftController extends Notifier<EventDraft> {
         tierCode: s.tierCode,
         banquetVenueId: s.banquetVenueId,
         banquetVenueName: s.banquetVenueName,
+        banquetVenueCapacity: s.banquetVenueCapacity,
         serviceBoyCount: s.serviceBoyCount,
         venueType: type,
         propertyDraft: null,
@@ -325,6 +336,7 @@ class EventDraftController extends Notifier<EventDraft> {
         tierCode: s.tierCode,
         banquetVenueId: null,
         banquetVenueName: null,
+        banquetVenueCapacity: null,
         serviceBoyCount: s.serviceBoyCount,
         venueType: type,
         propertyDraft: s.propertyDraft ?? const PrivatePropertyDraft(),

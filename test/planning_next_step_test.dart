@@ -29,6 +29,7 @@ void main() {
     String? tierId = '00000000-0000-4000-8000-000000000111',
     VenueType? venueType = VenueType.banquetHall,
     String? banquetVenueId = 'v1',
+    int? banquetVenueCapacity,
     PrivatePropertyDraft? propertyDraft,
   }) {
     final d = date ?? DateTime(2026, 8, 20);
@@ -49,6 +50,7 @@ void main() {
       tierCode: tierId == null ? null : 'STANDARD',
       venueType: venueType,
       banquetVenueId: banquetVenueId,
+      banquetVenueCapacity: banquetVenueCapacity,
       propertyDraft: propertyDraft,
     );
   }
@@ -230,6 +232,29 @@ void main() {
         banquetVenueId: null,
       ));
       expect(s.route, AppRoutes.eventProperty);
+    });
+
+    test(
+        'banquet venue captured for a smaller party is re-opened once guests '
+        'exceed its capacity (the venue id alone must NOT read as done)', () {
+      final s = step(draft(guestCount: 300, banquetVenueCapacity: 200));
+      expect(s.route, AppRoutes.eventVenueType);
+      expect(s.hint, contains('no longer fits'));
+    });
+
+    test('a captured venue that still fits stays done → browse', () {
+      final s = step(draft(guestCount: 150, banquetVenueCapacity: 200));
+      expect(s.route, AppRoutes.userHome);
+    });
+
+    test('guests exactly at capacity still fit → browse', () {
+      final s = step(draft(guestCount: 200, banquetVenueCapacity: 200));
+      expect(s.route, AppRoutes.userHome);
+    });
+
+    test('unknown captured capacity (null) is never blocked → browse', () {
+      final s = step(draft(guestCount: 4000, banquetVenueCapacity: null));
+      expect(s.route, AppRoutes.userHome);
     });
   });
 

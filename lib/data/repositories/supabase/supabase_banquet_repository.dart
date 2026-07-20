@@ -27,6 +27,20 @@ class SupabaseBanquetRepository implements BanquetRepository {
   }
 
   @override
+  Future<BanquetVenue?> fetchActiveVenueById(String id) async {
+    // .eq('is_active', true) is belt-and-suspenders — the customer read
+    // policy (venues_public_read_active) already hides inactive rows, so a
+    // deleted/deactivated venue simply returns null.
+    final row = await supabase
+        .from('banquet_venues')
+        .select()
+        .eq('id', id)
+        .eq('is_active', true)
+        .maybeSingle();
+    return row == null ? null : BanquetVenue.fromMap(row);
+  }
+
+  @override
   Future<List<BanquetVenue>> venuesNear({
     required double latitude,
     required double longitude,

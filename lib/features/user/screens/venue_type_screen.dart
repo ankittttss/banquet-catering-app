@@ -15,6 +15,7 @@ import '../../../data/models/banquet_venue.dart';
 import '../../../data/models/venue_type.dart';
 import '../../../shared/providers/banquet_providers.dart';
 import '../../../shared/providers/event_providers.dart';
+import '../planning_next_step.dart';
 import '../widgets/plan_flow_chrome.dart';
 
 /// Best-effort background lookup for a venue saved WITHOUT coordinates:
@@ -46,52 +47,92 @@ Future<void> _geocodeVenueCoords(
   }
 }
 
+/// Open the banquet picker. On a fresh pick with [proceedOnPick] the flow
+/// continues straight to the restaurant browser; when re-opened via
+/// "Change venue" ([proceedOnPick] = false) it just returns, and
+/// [selectedBanquetVenueCheckProvider] re-validates the new choice.
+Future<void> _openBanquetPicker(
+  BuildContext context,
+  WidgetRef ref, {
+  required bool proceedOnPick,
+}) async {
+  final picked = await showModalBottomSheet<Object>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    builder: (_) => const _BanquetPickerSheet(),
+  );
+  if (!context.mounted) return;
+  if (picked == _BanquetPickerSheet.changeLocationResult) {
+    // Navigate from the LIVE screen context (never the popped sheet's), and
+    // go() so the stack is replaced rather than stacking a duplicate
+    // Event Details page.
+    context.go(AppRoutes.eventDetails);
+    return;
+  }
+  if (picked != true) return; // dismissed without picking
+  if (proceedOnPick) {
+    // Push (not go) so the planning steps stay on the back stack.
+    final t = DateTime.now().millisecondsSinceEpoch;
+    context.push('${AppRoutes.userHome}?scrollTo=restaurants&t=$t');
+  }
+}
+
 class VenueTypeScreen extends ConsumerWidget {
   const VenueTypeScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final draft = ref.watch(eventDraftProvider);
+
+    // Prerequisite guard (screen-level, reusing the shared planning cascade
+    // to avoid router redirect-loops): the venue step needs a complete Event
+    // Details section. When planningNextStep still points back to Event
+    // Details, that section is incomplete — gate here rather than let the
+    // customer pick a venue for a half-planned event.
+    final step = planningNextStep(draft);
+    if (step.route == AppRoutes.eventDetails) {
+      return _IncompleteDetailsView(hint: step.hint);
+    }
+
     final selected = draft.venueType;
+    final hasVenue = draft.banquetVenueId != null;
+    final venueCheck = selected == VenueType.banquetHall
+        ? ref.watch(selectedBanquetVenueCheckProvider)
+        : null;
+
+    // Continue is enabled for: private property; banquet with no venue yet
+    // (Continue opens the picker); or banquet with a live VALID venue. It is
+    // blocked while checking, on a check error, or when the selection is too
+    // small / unavailable — the summary card drives re-selection there.
+    final bool canContinue;
+    if (selected == null) {
+      canContinue = false;
+    } else if (selected == VenueType.privateProperty) {
+      canContinue = true;
+    } else if (!hasVenue) {
+      canContinue = true;
+    } else {
+      canContinue = venueCheck!.maybeWhen(
+        data: (c) => c.state == VenueCheckState.valid,
+        orElse: () => false,
+      );
+    }
 
     Future<void> onContinue() async {
       HapticFeedback.lightImpact();
-      if (selected == VenueType.banquetHall) {
-        // Hall path needs a specific venue selected before we can route
-        // the booking to a banquet operator. If the draft already has one
-        // from an earlier visit, skip the sheet and head straight to the
-        // restaurant browser.
-        final alreadyPicked = draft.banquetVenueId != null;
-        if (!alreadyPicked) {
-          final picked = await showModalBottomSheet<Object>(
-            context: context,
-            isScrollControlled: true,
-            backgroundColor: Colors.transparent,
-            builder: (_) => const _BanquetPickerSheet(),
-          );
-          if (!context.mounted) return;
-          if (picked == _BanquetPickerSheet.changeLocationResult) {
-            // The customer wants to fix the event location. Navigate from
-            // THIS screen's (mounted-checked) context, never the sheet's,
-            // and use go() so the stack is replaced — pushing would stack
-            // a duplicate Event Details page on the
-            // Event Details → venue → picker path, while popping would
-            // miss it entirely on the home "Continue planning" → venue
-            // path (no Event Details below us there).
-            context.go(AppRoutes.eventDetails);
-            return;
-          }
-          if (picked != true) return;
-        }
-        if (!context.mounted) return;
-        // Push (not go) so the planning steps stay on the back stack —
-        // the user can return to change guests / venue / details without
-        // restarting the order.
-        final t = DateTime.now().millisecondsSinceEpoch;
-        context.push('${AppRoutes.userHome}?scrollTo=restaurants&t=$t');
-      } else {
+      if (selected == VenueType.privateProperty) {
         context.push(AppRoutes.eventProperty);
+        return;
       }
+      // Banquet: no venue yet → open the picker (and proceed on a pick);
+      // a valid selection → straight to the restaurant browser.
+      if (!hasVenue) {
+        await _openBanquetPicker(context, ref, proceedOnPick: true);
+        return;
+      }
+      final t = DateTime.now().millisecondsSinceEpoch;
+      context.push('${AppRoutes.userHome}?scrollTo=restaurants&t=$t');
     }
 
     return Scaffold(
@@ -102,7 +143,6 @@ class VenueTypeScreen extends ConsumerWidget {
           children: [
             const PlanFlowHeader(
               title: "Where's the event?",
-              step: 2,
               stepLabel: 'Venue',
             ),
             Expanded(
@@ -132,14 +172,22 @@ class VenueTypeScreen extends ConsumerWidget {
                     selected: selected == VenueType.banquetHall,
                     title: 'Banquet hall',
                     subtitle: 'A curated venue from our network',
-                    overline: 'EASIEST · WE COORDINATE EVERYTHING',
+                    overline: 'EASIEST · A VENUE FROM OUR NETWORK',
                     overlineColor: AppColors.primary,
                     accentColor: AppColors.primary,
+                    // Honest, workflow-backed value props only: the hall fee
+                    // is a real charge in place_order; the venue is the event
+                    // location, so the catering is delivered there; the
+                    // booking is routed to the venue operator for confirmation;
+                    // service staff are an add-on. (We deliberately avoid
+                    // "no equipment to rent" — the app simply has no banquet
+                    // equipment add-on flow; that doesn't guarantee any given
+                    // hall provides equipment.)
                     bullets: const [
-                      'Hall fee included in quote',
-                      'In-house kitchen prep',
-                      'Trained service staff',
-                      'No equipment to rent',
+                      'Hall fee in your quote',
+                      'We deliver to the venue',
+                      'Operator-confirmed booking',
+                      'Add service staff',
                     ],
                     imageUrl:
                         'https://images.unsplash.com/photo-1530023367847-a683933f4172?auto=format&fit=crop&w=900&q=80',
@@ -151,20 +199,31 @@ class VenueTypeScreen extends ConsumerWidget {
                           .setVenueType(VenueType.banquetHall);
                     },
                   ),
+                  if (selected == VenueType.banquetHall && hasVenue) ...[
+                    const SizedBox(height: AppSizes.md),
+                    _SelectedVenueCard(
+                      check: venueCheck!,
+                      guestCount: draft.guestCount,
+                      onChange: () => _openBanquetPicker(context, ref,
+                          proceedOnPick: false),
+                      onRetry: () =>
+                          ref.invalidate(selectedBanquetVenueCheckProvider),
+                    ),
+                  ],
                   const SizedBox(height: AppSizes.lg),
                   _VenueCard(
                     type: VenueType.privateProperty,
                     selected: selected == VenueType.privateProperty,
                     title: 'Private property',
                     subtitle: 'Your home, farmhouse, terrace, lawn',
-                    overline: 'MOST PERSONAL · WE BRING EVERYTHING TO YOU',
+                    overline: 'MOST PERSONAL · HOSTED AT YOUR PLACE',
                     overlineColor: AppColors.success,
                     accentColor: AppColors.success,
                     badgeLabel: 'NEW · MOST FLEXIBLE',
                     bullets: const [
-                      'Cook live or pre-served',
-                      'Setup, decor, equipment add-ons',
-                      'Discreet service team',
+                      'Hosted at your place',
+                      'Setup & equipment add-ons',
+                      'Add service staff',
                     ],
                     imageUrl:
                         'https://images.unsplash.com/photo-1519225421980-715cb0215aed?auto=format&fit=crop&w=900&q=80',
@@ -186,7 +245,321 @@ class VenueTypeScreen extends ConsumerWidget {
                   ? 'Hall or private property'
                   : selected.label,
               buttonLabel: 'Continue',
-              onPressed: selected == null ? null : () => onContinue(),
+              onPressed: canContinue ? () => onContinue() : null,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ───────────────── Selected banquet venue (live re-validated) ─────────────────
+
+class _SelectedVenueCard extends StatelessWidget {
+  const _SelectedVenueCard({
+    required this.check,
+    required this.guestCount,
+    required this.onChange,
+    required this.onRetry,
+  });
+
+  final AsyncValue<VenueCheck> check;
+  final int guestCount;
+  final VoidCallback onChange;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return check.when(
+      loading: () => _Shell(
+        borderColor: AppColors.border,
+        child: Row(
+          children: [
+            const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+            const SizedBox(width: AppSizes.md),
+            Text('Checking your venue…', style: AppTextStyles.body),
+          ],
+        ),
+      ),
+      error: (_, __) => _Warn(
+        color: AppColors.error,
+        icon: Icons.wifi_off_rounded,
+        title: "Couldn't verify this venue",
+        body: 'Check your connection and try again — you can continue once '
+            "it's confirmed.",
+        actionLabel: 'Retry',
+        onAction: onRetry,
+      ),
+      data: (c) {
+        switch (c.state) {
+          case VenueCheckState.none:
+            return const SizedBox.shrink();
+          case VenueCheckState.valid:
+            return _ValidVenue(venue: c.venue!, onChange: onChange);
+          case VenueCheckState.tooSmall:
+            final cap = c.venue?.capacity;
+            return _Warn(
+              color: AppColors.accentDark,
+              icon: Icons.groups_rounded,
+              title: 'This venue no longer fits your guests',
+              body: cap == null
+                  ? 'It can\'t seat $guestCount guests. Pick a bigger venue.'
+                  : '${c.venue!.name} seats up to $cap — you have $guestCount '
+                      'guests. Pick a bigger venue.',
+              actionLabel: 'Pick a bigger venue',
+              onAction: onChange,
+            );
+          case VenueCheckState.unavailable:
+            return _Warn(
+              color: AppColors.accentDark,
+              icon: Icons.error_outline_rounded,
+              title: 'This venue is no longer available',
+              body: 'It was removed or deactivated. Choose another venue to '
+                  'continue.',
+              actionLabel: 'Choose another venue',
+              onAction: onChange,
+            );
+        }
+      },
+    );
+  }
+}
+
+class _ValidVenue extends StatelessWidget {
+  const _ValidVenue({required this.venue, required this.onChange});
+  final BanquetVenue venue;
+  final VoidCallback onChange;
+
+  @override
+  Widget build(BuildContext context) {
+    return _Shell(
+      borderColor: AppColors.success,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: AppColors.catGreenLt,
+                  borderRadius: BorderRadius.circular(AppSizes.radiusSm),
+                ),
+                child: const Icon(Icons.apartment_rounded,
+                    color: AppColors.success, size: 22),
+              ),
+              const SizedBox(width: AppSizes.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.check_circle_rounded,
+                            size: 15, color: AppColors.success),
+                        const SizedBox(width: 4),
+                        Text('Selected venue',
+                            style: AppTextStyles.captionBold
+                                .copyWith(color: AppColors.success)),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    Text(venue.name,
+                        style: AppTextStyles.bodyBold,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (venue.address != null) ...[
+            const SizedBox(height: AppSizes.sm),
+            Text(venue.address!,
+                style: AppTextStyles.caption,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis),
+          ],
+          const SizedBox(height: AppSizes.sm),
+          Row(
+            children: [
+              if (venue.capacity != null)
+                Text('Up to ${venue.capacity} guests',
+                    style: AppTextStyles.captionBold
+                        .copyWith(color: AppColors.primary)),
+              const Spacer(),
+              TextButton(
+                onPressed: onChange,
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: AppSizes.sm, vertical: 4),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                child: Text('Change venue',
+                    style: AppTextStyles.bodyBold
+                        .copyWith(color: AppColors.primary)),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Warning/blocking summary for a stale, too-small or unverifiable selection.
+class _Warn extends StatelessWidget {
+  const _Warn({
+    required this.color,
+    required this.icon,
+    required this.title,
+    required this.body,
+    required this.actionLabel,
+    required this.onAction,
+  });
+  final Color color;
+  final IconData icon;
+  final String title;
+  final String body;
+  final String actionLabel;
+  final VoidCallback onAction;
+
+  @override
+  Widget build(BuildContext context) {
+    return _Shell(
+      borderColor: color,
+      background: AppColors.catGoldLt,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(icon, color: color, size: 20),
+              const SizedBox(width: AppSizes.sm),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title,
+                        style: AppTextStyles.bodyBold.copyWith(color: color)),
+                    const SizedBox(height: 2),
+                    Text(body, style: AppTextStyles.caption),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSizes.sm),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: FilledButton(
+              onPressed: onAction,
+              style: FilledButton.styleFrom(
+                backgroundColor: color,
+                visualDensity: VisualDensity.compact,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(AppSizes.radiusSm),
+                ),
+              ),
+              child: Text(actionLabel),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Shell extends StatelessWidget {
+  const _Shell(
+      {required this.child, required this.borderColor, this.background});
+  final Widget child;
+  final Color borderColor;
+  final Color? background;
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(AppSizes.md),
+      decoration: BoxDecoration(
+        color: background ?? AppColors.surface,
+        borderRadius: BorderRadius.circular(AppSizes.radiusLg),
+        border: Border.all(color: borderColor.withValues(alpha: 0.5)),
+      ),
+      child: child,
+    );
+  }
+}
+
+/// Shown when someone reaches the venue step before Event Details is
+/// complete (deep link / stale navigation). Sends them back to finish it.
+class _IncompleteDetailsView extends StatelessWidget {
+  const _IncompleteDetailsView({required this.hint});
+  final String hint;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.surfaceWarm,
+      body: SafeArea(
+        bottom: false,
+        child: Column(
+          children: [
+            const PlanFlowHeader(
+              title: "Where's the event?",
+              stepLabel: 'Venue',
+            ),
+            Expanded(
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: AppSizes.xl),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 64,
+                        height: 64,
+                        alignment: Alignment.center,
+                        decoration: const BoxDecoration(
+                          color: AppColors.primarySoft,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.event_note_rounded,
+                            color: AppColors.primary, size: 30),
+                      ),
+                      const SizedBox(height: AppSizes.md),
+                      Text('Finish your event details first',
+                          style: AppTextStyles.heading2,
+                          textAlign: TextAlign.center),
+                      const SizedBox(height: AppSizes.xs),
+                      Text(hint,
+                          style: AppTextStyles.bodyMuted,
+                          textAlign: TextAlign.center),
+                      const SizedBox(height: AppSizes.lg),
+                      FilledButton(
+                        onPressed: () => context.go(AppRoutes.eventDetails),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          minimumSize: const Size(220, 48),
+                          shape: RoundedRectangleBorder(
+                            borderRadius:
+                                BorderRadius.circular(AppSizes.radiusSm),
+                          ),
+                        ),
+                        child: const Text('Go to event details'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ),
           ],
         ),
@@ -602,6 +975,7 @@ class _BanquetPickerSheet extends ConsumerWidget {
                                 address: rows[i].address,
                                 latitude: rows[i].latitude,
                                 longitude: rows[i].longitude,
+                                capacity: rows[i].capacity,
                               );
                               // Venue has no pin? Recover it from the address in
                               // the background — doesn't block the tap.
