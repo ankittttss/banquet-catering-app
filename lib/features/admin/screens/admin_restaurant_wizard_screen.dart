@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,23 +6,31 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show PostgrestException;
 
 import '../../../core/constants/app_colors.dart';
-import '../../../core/constants/app_sizes.dart';
-import '../../../core/constants/app_text_styles.dart';
-import '../../../core/services/photon_geocoder.dart';
+import '../../../data/models/menu_category.dart';
 import '../../../data/models/menu_item.dart';
 import '../../../data/models/restaurant.dart';
 import '../../../shared/providers/admin_restaurant_providers.dart';
 import '../../../shared/providers/menu_providers.dart';
 import '../../../shared/providers/repositories_providers.dart';
-import '../../../shared/widgets/app_scaffold.dart';
 import '../../../shared/widgets/restaurant_card.dart';
-import '../../../shared/widgets/veg_dot.dart';
 import '../../user/widgets/photo_picker_sheet.dart';
+import '../widgets/admin_ui.dart';
 import '../widgets/menu_item_form_sheet.dart';
-import '../widgets/restaurant_status_badge.dart';
 
-// Admin console indigo.
-const _indigo = Color(0xFF4338CA);
+/// Fixed cuisine vocabulary, mirroring the Admin Console design. Admins can
+/// still add one outside this list (see [AdminChipSelect.allowCustom]) — the
+/// list exists to keep the common cases spelled consistently, since the
+/// customer-facing kitchen search matches on this text.
+const _cuisineOptions = [
+  'North Indian',
+  'South Indian',
+  'Mughlai',
+  'Gujarati',
+  'Punjabi',
+  'Chinese',
+  'Continental',
+  'Chaat',
+];
 
 const _emojiPresets = ['🍽️', '🍛', '🥘', '🍗', '🥗', '🍜', '🫓', '🍰'];
 const _bgPresets = [
@@ -37,6 +43,24 @@ const _bgPresets = [
   '#FCE8F0',
   '#F3E8FF',
 ];
+
+/// Cuisines are stored as one human display string ("North Indian · Mughlai").
+/// These two helpers are the only place that format is interpreted, so the
+/// chip picker can round-trip existing free-text records without a migration.
+///
+/// Legacy rows were typed by hand, so the split tolerates comma separators and
+/// stray whitespace as well as the "·" the app writes.
+List<String> splitCuisines(String? display) {
+  if (display == null || display.trim().isEmpty) return const [];
+  return display
+      .split(RegExp(r'[·,]'))
+      .map((s) => s.trim())
+      .where((s) => s.isNotEmpty)
+      .toList();
+}
+
+/// Inverse of [splitCuisines] — the exact format written back to the record.
+String joinCuisines(List<String> values) => values.join(' · ');
 
 /// 5-step restaurant onboarding: Basics → Location & pricing → Images →
 /// Menu → Preview & publish.
@@ -77,16 +101,13 @@ class _AdminRestaurantWizardScreenState
 
   // Step 1 — basics.
   final _nameCtrl = TextEditingController();
-  final _cuisinesCtrl = TextEditingController();
   final _tagCtrl = TextEditingController();
+  List<String> _cuisines = [];
   bool _pureVeg = false;
 
-  // Step 2 — location & pricing.
-  final _addressCtrl = TextEditingController();
-  final _geocoder = PhotonGeocoder();
-  Timer? _geoDebounce;
-  List<GeocodeResult> _suggestions = const [];
-  bool _searching = false;
+  // Step 2 — location & pricing. The address text + pin are owned by
+  // [AdminAddressPin]; we keep only the resolved values.
+  String _address = '';
   double? _lat;
   double? _lng;
   final _priceCtrl = TextEditingController();
@@ -122,10 +143,10 @@ class _AdminRestaurantWizardScreenState
       }
       _draft = r;
       _nameCtrl.text = r.name;
-      _cuisinesCtrl.text = r.cuisinesDisplay ?? '';
+      _cuisines = splitCuisines(r.cuisinesDisplay);
       _tagCtrl.text = r.tag ?? '';
       _pureVeg = r.isPureVeg;
-      _addressCtrl.text = r.address ?? '';
+      _address = r.address ?? '';
       _lat = r.latitude;
       _lng = r.longitude;
       if (r.pricePerPlate != null) {
@@ -155,12 +176,9 @@ class _AdminRestaurantWizardScreenState
 
   @override
   void dispose() {
-    _geoDebounce?.cancel();
     for (final c in [
       _nameCtrl,
-      _cuisinesCtrl,
       _tagCtrl,
-      _addressCtrl,
       _priceCtrl,
       _minGuestsCtrl,
       _deliveryChargeCtrl,
@@ -187,7 +205,7 @@ class _AdminRestaurantWizardScreenState
         // is an update — abandoning the wizard loses nothing.
         _draft = await repo.createDraft(
           name: name,
-          cuisinesDisplay: _cuisinesCtrl.text,
+          cuisinesDisplay: joinCuisines(_cuisines),
           isPureVeg: _pureVeg,
           tag: _tagCtrl.text,
         );
@@ -195,7 +213,7 @@ class _AdminRestaurantWizardScreenState
         _draft = await repo.update(
           _draft!.id,
           name: name,
-          cuisinesDisplay: _cuisinesCtrl.text.trim(),
+          cuisinesDisplay: joinCuisines(_cuisines),
           isPureVeg: _pureVeg,
           tag: _tagCtrl.text, // empty clears
         );
@@ -210,8 +228,7 @@ class _AdminRestaurantWizardScreenState
       final repo = ref.read(adminRestaurantRepositoryProvider);
       _draft = await repo.update(
         _draft!.id,
-        address:
-            _addressCtrl.text.trim().isEmpty ? null : _addressCtrl.text.trim(),
+        address: _address.trim().isEmpty ? null : _address.trim(),
         latitude: _lat,
         longitude: _lng,
         pricePerPlate: double.tryParse(_priceCtrl.text.trim()),
@@ -246,12 +263,7 @@ class _AdminRestaurantWizardScreenState
       ref.invalidate(menuItemsProvider);
       if (!mounted) return;
       HapticFeedback.mediumImpact();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('"${_draft!.name}" is live for customers 🎉'),
-          backgroundColor: AppColors.success,
-        ),
-      );
+      adminToast(context, '"${_draft!.name}" is live for customers 🎉');
       context.pop();
     });
   }
@@ -259,11 +271,21 @@ class _AdminRestaurantWizardScreenState
   void _saveDraftAndExit() {
     // Every step already persisted — just leave.
     ref.invalidate(adminRestaurantListProvider);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('"${_draft?.name ?? 'Draft'}" saved as draft'),
-      ),
-    );
+    adminToast(context, '"${_draft?.name ?? 'Draft'}" saved as draft');
+    context.pop();
+  }
+
+  /// Back behaviour for the header arrow: step back through the wizard first,
+  /// and only leave the screen from the first step. (Previously the arrow
+  /// always exited, which read as "discard" mid-flow.)
+  void _onHeaderBack() {
+    if (_step > 0 && !_busy) {
+      setState(() {
+        _error = null;
+        _step -= 1;
+      });
+      return;
+    }
     context.pop();
   }
 
@@ -287,36 +309,6 @@ class _AdminRestaurantWizardScreenState
     final s = e.toString();
     if (s.startsWith('Bad state: ')) return s.substring('Bad state: '.length);
     return s.split('\n').first;
-  }
-
-  // ── Geocoding (step 2) ────────────────────────────────────────────────────
-
-  void _onAddressChanged(String value) {
-    _lat = null; // typed text invalidates the previously pinned point
-    _lng = null;
-    _geoDebounce?.cancel();
-    if (value.trim().length < 3) {
-      setState(() => _suggestions = const []);
-      return;
-    }
-    _geoDebounce = Timer(const Duration(milliseconds: 450), () async {
-      setState(() => _searching = true);
-      final results = await _geocoder.search(value, limit: 5);
-      if (!mounted) return;
-      setState(() {
-        _searching = false;
-        _suggestions = results;
-      });
-    });
-  }
-
-  void _pickSuggestion(GeocodeResult r) {
-    setState(() {
-      _addressCtrl.text = r.displayAddress;
-      _lat = r.latitude;
-      _lng = r.longitude;
-      _suggestions = const [];
-    });
   }
 
   // ── Images (step 3) ───────────────────────────────────────────────────────
@@ -367,36 +359,27 @@ class _AdminRestaurantWizardScreenState
   @override
   Widget build(BuildContext context) {
     final published = _draft?.status == RestaurantStatus.published;
-    return AppScaffold(
-      padded: false,
-      appBar: AppBar(
-        title: Text(_draft == null ? 'Onboard restaurant' : _draft!.name),
-        leading: IconButton(
-          icon: const Icon(PhosphorIconsBold.arrowLeft),
-          onPressed: () => context.pop(),
-        ),
-        actions: [
-          if (_draft != null && !published)
-            TextButton(
-              onPressed: _busy ? null : _saveDraftAndExit,
-              child: const Text('Save & exit'),
-            ),
-        ],
-      ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _ProgressHeader(step: _step, titles: _titles),
-                Expanded(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(
-                      AppSizes.pagePadding,
-                      AppSizes.md,
-                      AppSizes.pagePadding,
-                      AppSizes.xl,
-                    ),
+    return AdminScaffold(
+      active: AdminNav.kitchens,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          AdminBar(
+            title: _draft == null ? 'Onboard kitchen' : _draft!.name,
+            subtitle: 'Step ${_step + 1} of ${_titles.length} · '
+                '${_titles[_step]}',
+            onBack: _onHeaderBack,
+            trailing:
+                _draft == null ? null : AdminBadge(status: _draft!.status),
+          ),
+          _StepBar(step: _step, count: _titles.length),
+          Expanded(
+            child: _loading
+                ? const Center(
+                    child: CircularProgressIndicator(color: AdminColors.indigo),
+                  )
+                : SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
                     child: switch (_step) {
                       0 => _buildBasics(),
                       1 => _buildLocationPricing(),
@@ -405,39 +388,43 @@ class _AdminRestaurantWizardScreenState
                       _ => _buildPreview(),
                     },
                   ),
-                ),
-                _Footer(
-                  step: _step,
-                  busy: _busy,
-                  error: _error,
-                  onBack: _step == 0 || _busy
-                      ? null
-                      : () => setState(() {
-                            _error = null;
-                            _step -= 1;
-                          }),
-                  primaryLabel: switch (_step) {
-                    0 => _draft == null
-                        ? 'Create draft & continue'
-                        : 'Save & continue',
-                    1 => 'Save & continue',
-                    2 => 'Save & continue',
-                    3 => 'Continue',
-                    // Editing an already-live restaurant: nothing to publish.
-                    _ => published ? 'Done' : 'Publish now',
+          ),
+          _Footer(
+            step: _step,
+            busy: _busy,
+            error: _error,
+            onBack: _step == 0 || _busy
+                ? null
+                : () => setState(() {
+                      _error = null;
+                      _step -= 1;
+                    }),
+            // Persistent draft escape hatch, as in the design — available on
+            // every step once the draft row exists and isn't already live.
+            onSaveDraft: (_draft != null && !published && !_busy)
+                ? _saveDraftAndExit
+                : null,
+            primaryLabel: switch (_step) {
+              0 =>
+                _draft == null ? 'Create draft & continue' : 'Save & continue',
+              1 => 'Save & continue',
+              2 => 'Save & continue',
+              3 => 'Continue',
+              // Editing an already-live restaurant: nothing to publish.
+              _ => published ? 'Done' : 'Publish now',
+            },
+            onPrimary: _busy
+                ? null
+                : switch (_step) {
+                    0 => _saveBasics,
+                    1 => _saveLocationAndPricing,
+                    2 => _saveBranding,
+                    3 => () => setState(() => _step = 4),
+                    _ => published ? () => context.pop() : _publish,
                   },
-                  onPrimary: _busy
-                      ? null
-                      : switch (_step) {
-                          0 => _saveBasics,
-                          1 => _saveLocationAndPricing,
-                          2 => _saveBranding,
-                          3 => () => setState(() => _step = 4),
-                          _ => published ? () => context.pop() : _publish,
-                        },
-                ),
-              ],
-            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -447,42 +434,48 @@ class _AdminRestaurantWizardScreenState
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _label('Restaurant name *'),
-        TextField(
-          controller: _nameCtrl,
-          textCapitalization: TextCapitalization.words,
-          decoration: _dec('e.g. Spice Route Catering'),
-        ),
-        const SizedBox(height: AppSizes.md),
-        _label('Cuisines'),
-        TextField(
-          controller: _cuisinesCtrl,
-          textCapitalization: TextCapitalization.words,
-          decoration: _dec('e.g. North Indian · Mughlai · Biryani'),
-        ),
-        const SizedBox(height: AppSizes.md),
-        _label('Card tag (optional)'),
-        TextField(
-          controller: _tagCtrl,
-          textCapitalization: TextCapitalization.words,
-          decoration: _dec('e.g. Bestseller / Event Special'),
-        ),
-        const SizedBox(height: AppSizes.sm),
-        SwitchListTile.adaptive(
-          contentPadding: EdgeInsets.zero,
-          activeThumbColor: AppColors.veg,
-          title: Text('Pure veg kitchen', style: AppTextStyles.bodyBold),
-          subtitle: Text(
-            'Shows the pure-veg badge and the veg-only home filter',
-            style: AppTextStyles.caption,
+        AdminField(
+          label: 'Kitchen name',
+          required: true,
+          child: TextField(
+            controller: _nameCtrl,
+            style: adminTextStyle,
+            textCapitalization: TextCapitalization.words,
+            decoration: adminInput('e.g. Spice Route Catering'),
           ),
+        ),
+        const SizedBox(height: 16),
+        AdminField(
+          label: 'Cuisines',
+          hint: 'Tap to select',
+          child: AdminChipSelect(
+            options: _cuisineOptions,
+            selected: _cuisines,
+            allowCustom: true,
+            customHint: 'Other cuisine…',
+            onChanged: (next) => setState(() => _cuisines = next),
+          ),
+        ),
+        const SizedBox(height: 16),
+        AdminField(
+          label: 'Card tag',
+          hint: 'Optional',
+          child: TextField(
+            controller: _tagCtrl,
+            style: adminTextStyle,
+            textCapitalization: TextCapitalization.words,
+            decoration: adminInput('e.g. Bestseller / Event Special'),
+          ),
+        ),
+        const SizedBox(height: 16),
+        _VegCard(
           value: _pureVeg,
           onChanged: (v) => setState(() => _pureVeg = v),
         ),
-        const SizedBox(height: AppSizes.sm),
-        _hint(
-          'The restaurant is created as a hidden draft — customers can\'t '
-          'see it until you publish in the last step.',
+        const SizedBox(height: 16),
+        const AdminHint(
+          'The kitchen is created as a hidden draft — customers cannot see it '
+          'until you publish in the last step.',
         ),
       ],
     );
@@ -494,128 +487,99 @@ class _AdminRestaurantWizardScreenState
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _label('Address *'),
-        TextField(
-          controller: _addressCtrl,
-          onChanged: _onAddressChanged,
-          maxLines: 2,
-          minLines: 1,
-          decoration: _dec('Search the restaurant address…').copyWith(
-            suffixIcon: _searching
-                ? const Padding(
-                    padding: EdgeInsets.all(12),
-                    child: SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    ),
-                  )
-                : _lat != null
-                    ? const Icon(
-                        PhosphorIconsFill.mapPin,
-                        color: AppColors.success,
-                        size: 20,
-                      )
-                    : null,
+        AdminField(
+          label: 'Address',
+          required: true,
+          child: AdminAddressPin(
+            initialText: _address,
+            pinned: _lat != null && _lng != null,
+            onTyping: () => setState(() {
+              // Typed text invalidates the previously pinned point.
+              _lat = null;
+              _lng = null;
+            }),
+            onPick: (address, lat, lng) => setState(() {
+              _address = address;
+              _lat = lat;
+              _lng = lng;
+            }),
           ),
         ),
-        if (_suggestions.isNotEmpty)
-          Container(
-            margin: const EdgeInsets.only(top: AppSizes.xs),
-            decoration: BoxDecoration(
-              color: AppColors.surface,
-              borderRadius: BorderRadius.circular(AppSizes.radiusSm),
-              border: Border.all(color: AppColors.border),
-            ),
-            child: Column(
-              children: [
-                for (final s in _suggestions)
-                  ListTile(
-                    dense: true,
-                    leading: const Icon(PhosphorIconsRegular.mapPin, size: 18),
-                    title: Text(s.name, style: AppTextStyles.bodyBold),
-                    subtitle: Text(
-                      s.displayAddress,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppTextStyles.caption,
-                    ),
-                    onTap: () => _pickSuggestion(s),
-                  ),
-              ],
-            ),
-          ),
-        const SizedBox(height: AppSizes.xs),
-        _hint(
-          _lat == null
-              ? 'Pick a suggestion to pin the map location — it powers the '
-                  '"nearest first" sorting customers see.'
-              : 'Location pinned ✓',
+        const SizedBox(height: 10),
+        const AdminHint(
+          'Pick a suggestion to pin the map location — it powers the '
+          '"nearest first" sorting customers see.',
         ),
-        const SizedBox(height: AppSizes.md),
+        const SizedBox(height: 16),
         Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _label('Price per plate (₹) *'),
-                  TextField(
-                    controller: _priceCtrl,
-                    keyboardType: TextInputType.number,
-                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                    decoration: _dec('e.g. 300'),
-                  ),
-                ],
+              child: AdminField(
+                label: 'Price per plate (₹)',
+                required: true,
+                child: TextField(
+                  controller: _priceCtrl,
+                  style: adminTextStyle,
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  decoration: adminInput('300'),
+                ),
               ),
             ),
-            const SizedBox(width: AppSizes.md),
+            const SizedBox(width: 12),
             Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _label('Min guests *'),
-                  TextField(
-                    controller: _minGuestsCtrl,
-                    keyboardType: TextInputType.number,
-                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                    decoration: _dec('e.g. 10'),
-                  ),
-                ],
+              child: AdminField(
+                label: 'Min guests',
+                required: true,
+                child: TextField(
+                  controller: _minGuestsCtrl,
+                  style: adminTextStyle,
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  decoration: adminInput('10'),
+                ),
               ),
             ),
           ],
         ),
-        const SizedBox(height: AppSizes.md),
-        _label('Delivery charge (₹)'),
-        TextField(
-          controller: _deliveryChargeCtrl,
-          keyboardType: TextInputType.number,
-          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-          decoration: _dec('e.g. 1200'),
+        const SizedBox(height: 16),
+        AdminField(
+          label: 'Delivery charge (₹)',
+          child: TextField(
+            controller: _deliveryChargeCtrl,
+            style: adminTextStyle,
+            keyboardType: TextInputType.number,
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            decoration: adminInput('1200'),
+          ),
         ),
-        const SizedBox(height: AppSizes.md),
-        _label('Prep / delivery time (minutes)'),
-        Row(
-          children: [
-            Expanded(
-              child: TextField(
-                controller: _etaMinCtrl,
-                keyboardType: TextInputType.number,
-                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                decoration: _dec('From, e.g. 30'),
+        const SizedBox(height: 16),
+        AdminField(
+          label: 'Prep / delivery time (minutes)',
+          child: Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _etaMinCtrl,
+                  style: adminTextStyle,
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  decoration: adminInput('From, e.g. 30'),
+                ),
               ),
-            ),
-            const SizedBox(width: AppSizes.md),
-            Expanded(
-              child: TextField(
-                controller: _etaMaxCtrl,
-                keyboardType: TextInputType.number,
-                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                decoration: _dec('To, e.g. 45'),
+              const SizedBox(width: 12),
+              Expanded(
+                child: TextField(
+                  controller: _etaMaxCtrl,
+                  style: adminTextStyle,
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  decoration: adminInput('To, e.g. 45'),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ],
     );
@@ -628,74 +592,89 @@ class _AdminRestaurantWizardScreenState
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _label('Card logo * (square works best)'),
-        _ImageTile(
-          url: d.logoUrl,
-          uploading: _uploadingLogo,
-          emptyLabel: 'Upload logo',
-          onTap: _busy ? null : () => _pickImage(cover: false),
+        AdminField(
+          label: 'Card logo',
+          required: true,
+          hint: 'Square works best',
+          child: AdminImageTile(
+            url: d.logoUrl,
+            uploading: _uploadingLogo,
+            emptyLabel: 'Upload logo',
+            onTap: _busy ? null : () => _pickImage(cover: false),
+          ),
         ),
-        const SizedBox(height: AppSizes.md),
-        _label('Cover image (optional, wide)'),
-        _ImageTile(
-          url: d.coverImageUrl,
-          uploading: _uploadingCover,
-          emptyLabel: 'Upload cover',
-          onTap: _busy ? null : () => _pickImage(cover: true),
+        const SizedBox(height: 16),
+        AdminField(
+          label: 'Cover image',
+          hint: 'Optional',
+          child: AdminImageTile(
+            url: d.coverImageUrl,
+            uploading: _uploadingCover,
+            emptyLabel: 'Upload cover',
+            onTap: _busy ? null : () => _pickImage(cover: true),
+          ),
         ),
-        const SizedBox(height: AppSizes.lg),
-        _label('Fallback emoji (shown while the image loads)'),
-        Wrap(
-          spacing: AppSizes.sm,
-          runSpacing: AppSizes.sm,
-          children: [
-            for (final e in _emojiPresets)
-              InkWell(
-                onTap: () => setState(() => _emoji = e),
-                borderRadius: BorderRadius.circular(AppSizes.radiusSm),
-                child: Container(
-                  width: 44,
-                  height: 44,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: _emoji == e
-                        ? AppColors.fromHex(_bgHex)
-                        : AppColors.surfaceAlt,
-                    borderRadius: BorderRadius.circular(AppSizes.radiusSm),
-                    border: Border.all(
-                      color: _emoji == e ? _indigo : AppColors.border,
-                      width: _emoji == e ? 2 : 1,
+        const SizedBox(height: 16),
+        AdminField(
+          label: 'Fallback emoji',
+          hint: 'Shown while loading',
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final e in _emojiPresets)
+                InkWell(
+                  onTap: () => setState(() => _emoji = e),
+                  borderRadius: BorderRadius.circular(11),
+                  child: Container(
+                    width: 46,
+                    height: 46,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: _emoji == e
+                          ? AppColors.fromHex(_bgHex)
+                          : AdminColors.bg,
+                      borderRadius: BorderRadius.circular(11),
+                      border: Border.all(
+                        color:
+                            _emoji == e ? AdminColors.indigo : AdminColors.line,
+                        width: _emoji == e ? 2 : 1.5,
+                      ),
                     ),
-                  ),
-                  child: Text(e, style: const TextStyle(fontSize: 22)),
-                ),
-              ),
-          ],
-        ),
-        const SizedBox(height: AppSizes.lg),
-        _label('Card background tint'),
-        Wrap(
-          spacing: AppSizes.sm,
-          runSpacing: AppSizes.sm,
-          children: [
-            for (final hex in _bgPresets)
-              InkWell(
-                onTap: () => setState(() => _bgHex = hex),
-                borderRadius: BorderRadius.circular(AppSizes.radiusPill),
-                child: Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    color: AppColors.fromHex(hex),
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: _bgHex == hex ? _indigo : AppColors.border,
-                      width: _bgHex == hex ? 2.5 : 1,
-                    ),
+                    child: Text(e, style: const TextStyle(fontSize: 22)),
                   ),
                 ),
-              ),
-          ],
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        AdminField(
+          label: 'Card background tint',
+          child: Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              for (final hex in _bgPresets)
+                InkWell(
+                  onTap: () => setState(() => _bgHex = hex),
+                  borderRadius: BorderRadius.circular(99),
+                  child: Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: AppColors.fromHex(hex),
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: _bgHex == hex
+                            ? AdminColors.indigo
+                            : AdminColors.line,
+                        width: _bgHex == hex ? 2.5 : 1.5,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
         ),
       ],
     );
@@ -708,6 +687,12 @@ class _AdminRestaurantWizardScreenState
     final itemsAsync = ref.watch(adminRestaurantMenuProvider(d.id));
     final items = itemsAsync.valueOrNull ?? const <MenuItem>[];
     final available = items.where((i) => i.isAvailable).length;
+    // Category names for the "Starters · ₹220" sub-line on each dish row.
+    final categoryNames = <String, String>{
+      for (final c in ref.watch(menuCategoriesProvider).valueOrNull ??
+          const <MenuCategory>[])
+        c.id: c.name,
+    };
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -717,39 +702,40 @@ class _AdminRestaurantWizardScreenState
             Expanded(
               child: Text(
                 '$available available · ${items.length} total',
-                style: AppTextStyles.bodyMuted,
+                style: AdminText.body,
               ),
             ),
-            FilledButton.icon(
-              style: FilledButton.styleFrom(
-                backgroundColor: _indigo,
-                foregroundColor: Colors.white,
-              ),
-              onPressed: _busy ? null : () => _addOrEditItem(),
-              icon: const Icon(PhosphorIconsBold.plus, size: 16),
-              label: const Text('Add item'),
+            AdminButton(
+              label: 'Add dish',
+              size: 'sm',
+              leading: PhosphorIconsBold.plus,
+              disabled: _busy,
+              onPressed: () => _addOrEditItem(),
             ),
           ],
         ),
-        const SizedBox(height: AppSizes.sm),
+        const SizedBox(height: 12),
         if (available == 0)
-          _hint('At least one available menu item is required to publish.'),
-        const SizedBox(height: AppSizes.sm),
+          const AdminHint(
+            'At least one available dish is required to publish.',
+          ),
+        const SizedBox(height: 12),
         if (itemsAsync.isLoading && items.isEmpty)
           const Center(
             child: Padding(
-              padding: EdgeInsets.all(AppSizes.xl),
-              child: CircularProgressIndicator(),
+              padding: EdgeInsets.all(28),
+              child: CircularProgressIndicator(color: AdminColors.indigo),
             ),
           )
         else
           for (final item in items) ...[
             _MenuItemRow(
               item: item,
+              categoryName: categoryNames[item.categoryId],
               onEdit: () => _addOrEditItem(existing: item),
               onToggle: (v) => _toggleItem(item, v),
             ),
-            const SizedBox(height: AppSizes.sm),
+            const SizedBox(height: 10),
           ],
       ],
     );
@@ -794,59 +780,54 @@ class _AdminRestaurantWizardScreenState
             d.longitude != null
       ),
       ('Logo or cover image', d.logoUrl != null || d.coverImageUrl != null),
-      ('At least 1 available menu item', hasAvailableItem),
+      ('At least 1 available dish', hasAvailableItem),
     ];
     final ready = checks.every((c) => c.$2);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Row(
-          children: [
-            Text('Customer preview', style: AppTextStyles.heading2),
-            const Spacer(),
-            RestaurantStatusBadge(status: d.status),
-          ],
-        ),
-        const SizedBox(height: AppSizes.xs),
+        const AdminOverline('Customer preview'),
+        const SizedBox(height: 6),
         Text(
-          'This is the exact card customers will see on the home feed.',
-          style: AppTextStyles.caption,
+          'The exact card customers will see on the home feed.',
+          style: AdminText.cap,
         ),
-        const SizedBox(height: AppSizes.md),
+        const SizedBox(height: 12),
         RestaurantCard(restaurant: d, interactive: false),
-        const SizedBox(height: AppSizes.lg),
-        Text('Publish checklist', style: AppTextStyles.heading2),
-        const SizedBox(height: AppSizes.sm),
-        Container(
-          padding: const EdgeInsets.all(AppSizes.md),
-          decoration: BoxDecoration(
-            color: AppColors.surface,
-            borderRadius: BorderRadius.circular(AppSizes.radiusMd),
-            border: Border.all(color: AppColors.border),
-          ),
+        const SizedBox(height: 22),
+        Text('Publish checklist', style: AdminText.h2),
+        const SizedBox(height: 10),
+        AdminCard(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
           child: Column(
             children: [
               for (final (label, ok) in checks)
                 Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  padding: const EdgeInsets.symmetric(vertical: 7),
                   child: Row(
                     children: [
-                      Icon(
-                        ok
-                            ? PhosphorIconsFill.checkCircle
-                            : PhosphorIconsRegular.circle,
-                        size: 18,
-                        color: ok ? AppColors.success : AppColors.textMuted,
+                      Container(
+                        width: 22,
+                        height: 22,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: ok ? AdminColors.liveBg : AdminColors.draftBg,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          ok ? PhosphorIconsBold.check : PhosphorIconsBold.x,
+                          size: 12,
+                          color: ok ? AdminColors.live : AdminColors.tx3,
+                        ),
                       ),
-                      const SizedBox(width: AppSizes.sm),
+                      const SizedBox(width: 11),
                       Expanded(
                         child: Text(
                           label,
-                          style: AppTextStyles.body.copyWith(
-                            color: ok
-                                ? AppColors.textPrimary
-                                : AppColors.textMuted,
+                          style: AdminText.body.copyWith(
+                            color: ok ? AdminColors.tx : AdminColors.tx3,
+                            fontWeight: ok ? FontWeight.w600 : FontWeight.w500,
                           ),
                         ),
                       ),
@@ -856,124 +837,115 @@ class _AdminRestaurantWizardScreenState
             ],
           ),
         ),
-        const SizedBox(height: AppSizes.sm),
-        if (!ready)
-          _hint(
-            'You can still save as a draft — the missing details can be '
-            'added later from the management page.',
+        const SizedBox(height: 12),
+        if (ready)
+          Container(
+            padding: const EdgeInsets.all(13),
+            decoration: BoxDecoration(
+              color: AdminColors.liveBg,
+              borderRadius: BorderRadius.circular(11),
+            ),
+            child: Row(
+              children: [
+                const Icon(PhosphorIconsFill.checkCircle,
+                    size: 18, color: AdminColors.live),
+                const SizedBox(width: 9),
+                Expanded(
+                  child: Text(
+                    'All checks pass — ready to go live.',
+                    style: AdminText.cap.copyWith(
+                      color: AdminColors.live,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          )
+        else
+          const AdminHint(
+            'You can still save as a draft — the missing details can be added '
+            'later from the management page.',
           ),
       ],
     );
   }
-
-  // ── Small shared bits ─────────────────────────────────────────────────────
-
-  Widget _label(String text) => Padding(
-        padding: const EdgeInsets.only(bottom: AppSizes.xs),
-        child: Text(
-          text,
-          style: AppTextStyles.captionBold.copyWith(
-            color: AppColors.textSecondary,
-          ),
-        ),
-      );
-
-  Widget _hint(String text) => Container(
-        padding: const EdgeInsets.all(AppSizes.sm + 2),
-        decoration: BoxDecoration(
-          color: AppColors.catBlueLt,
-          borderRadius: BorderRadius.circular(AppSizes.radiusSm),
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Icon(
-              PhosphorIconsRegular.info,
-              size: 16,
-              color: AppColors.catBlue,
-            ),
-            const SizedBox(width: AppSizes.sm),
-            Expanded(
-              child: Text(
-                text,
-                style: AppTextStyles.caption.copyWith(color: AppColors.catBlue),
-              ),
-            ),
-          ],
-        ),
-      );
-
-  InputDecoration _dec(String hint) => InputDecoration(
-        hintText: hint,
-        hintStyle: AppTextStyles.body.copyWith(color: AppColors.textMuted),
-        isDense: true,
-        filled: true,
-        fillColor: AppColors.surfaceAlt,
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: AppSizes.md,
-          vertical: AppSizes.md,
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(AppSizes.radiusSm),
-          borderSide: const BorderSide(color: AppColors.border),
-        ),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(AppSizes.radiusSm),
-          borderSide: const BorderSide(color: AppColors.border),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(AppSizes.radiusSm),
-          borderSide: const BorderSide(color: _indigo, width: 1.4),
-        ),
-      );
 }
 
-// ───────────────────────── Progress header ─────────────────────────
+// ───────────────────────── Step progress bar ─────────────────────────
 
-class _ProgressHeader extends StatelessWidget {
-  const _ProgressHeader({required this.step, required this.titles});
-
+class _StepBar extends StatelessWidget {
+  const _StepBar({required this.step, required this.count});
   final int step;
-  final List<String> titles;
+  final int count;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(
-        AppSizes.pagePadding,
-        AppSizes.sm,
-        AppSizes.pagePadding,
-        AppSizes.md,
-      ),
-      decoration: const BoxDecoration(
-        color: AppColors.surface,
-        border: Border(bottom: BorderSide(color: AppColors.divider)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      color: AdminColors.card,
+      child: Row(
         children: [
-          Text(
-            'Step ${step + 1} of ${titles.length} · ${titles[step]}',
-            style: AppTextStyles.captionBold
-                .copyWith(color: AppColors.textSecondary),
-          ),
-          const SizedBox(height: AppSizes.sm),
-          Row(
-            children: [
-              for (var i = 0; i < titles.length; i++) ...[
-                Expanded(
-                  child: Container(
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: i <= step ? _indigo : AppColors.border,
-                      borderRadius: BorderRadius.circular(AppSizes.radiusPill),
-                    ),
-                  ),
+          for (var i = 0; i < count; i++) ...[
+            Expanded(
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 220),
+                height: 4,
+                decoration: BoxDecoration(
+                  color: i <= step ? AdminColors.indigo : AdminColors.line,
+                  borderRadius: BorderRadius.circular(99),
                 ),
-                if (i < titles.length - 1) const SizedBox(width: 4),
-              ],
-            ],
+              ),
+            ),
+            if (i < count - 1) const SizedBox(width: 4),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+// ───────────────────────── Pure-veg card ─────────────────────────
+
+class _VegCard extends StatelessWidget {
+  const _VegCard({required this.value, required this.onChanged});
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return AdminCard(
+      onTap: () => onChanged(!value),
+      padding: const EdgeInsets.all(14),
+      borderColor: value ? AdminColors.live : null,
+      child: Row(
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: value ? AdminColors.liveBg : AdminColors.bg,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: AdminVegMark(isVeg: true),
           ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Pure veg kitchen', style: AdminText.h3),
+                const SizedBox(height: 2),
+                Text(
+                  'Shows the pure-veg badge and the veg-only home filter',
+                  style: AdminText.cap,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          AdminToggle(value: value, onChanged: onChanged),
         ],
       ),
     );
@@ -988,6 +960,7 @@ class _Footer extends StatelessWidget {
     required this.busy,
     required this.error,
     required this.onBack,
+    required this.onSaveDraft,
     required this.primaryLabel,
     required this.onPrimary,
   });
@@ -996,161 +969,75 @@ class _Footer extends StatelessWidget {
   final bool busy;
   final String? error;
   final VoidCallback? onBack;
+  final VoidCallback? onSaveDraft;
   final String primaryLabel;
   final VoidCallback? onPrimary;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: EdgeInsets.fromLTRB(
-        AppSizes.pagePadding,
-        AppSizes.md,
-        AppSizes.pagePadding,
-        AppSizes.md + MediaQuery.of(context).padding.bottom,
-      ),
+      // AdminScaffold already applies the bottom SafeArea, so no manual
+      // MediaQuery padding here (that would double-inset the footer).
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
       decoration: const BoxDecoration(
-        color: AppColors.surface,
-        border: Border(top: BorderSide(color: AppColors.divider)),
+        color: AdminColors.card,
+        border: Border(top: BorderSide(color: AdminColors.line)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           if (error != null) ...[
-            Text(
-              error!,
-              style: AppTextStyles.caption.copyWith(color: AppColors.error),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(PhosphorIconsFill.warningCircle,
+                    size: 15, color: AdminColors.danger),
+                const SizedBox(width: 7),
+                Expanded(
+                  child: Text(
+                    error!,
+                    style: AdminText.cap.copyWith(color: AdminColors.danger),
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: AppSizes.sm),
+            const SizedBox(height: 10),
           ],
           Row(
             children: [
               if (step > 0) ...[
-                OutlinedButton(
+                AdminButton(
+                  label: 'Back',
+                  variant: AdminBtn.ghost,
+                  size: 'lg',
+                  leading: PhosphorIconsBold.arrowLeft,
+                  disabled: onBack == null,
                   onPressed: onBack,
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size(0, 48),
-                    side: const BorderSide(color: AppColors.border),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(AppSizes.radiusSm),
-                    ),
-                  ),
-                  child: Text(
-                    'Back',
-                    style: AppTextStyles.buttonLabel
-                        .copyWith(color: AppColors.textSecondary),
-                  ),
                 ),
-                const SizedBox(width: AppSizes.md),
+                const SizedBox(width: 10),
               ],
               Expanded(
-                child: FilledButton(
+                child: AdminButton(
+                  label: busy ? 'Working…' : primaryLabel,
+                  size: 'lg',
+                  expand: true,
+                  disabled: busy || onPrimary == null,
                   onPressed: onPrimary,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: _indigo,
-                    minimumSize: const Size.fromHeight(48),
-                    disabledBackgroundColor: AppColors.border,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(AppSizes.radiusSm),
-                    ),
-                  ),
-                  child: busy
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
-                        )
-                      : Text(
-                          primaryLabel,
-                          style: AppTextStyles.buttonLabel
-                              .copyWith(color: Colors.white),
-                        ),
                 ),
               ),
             ],
           ),
+          if (onSaveDraft != null) ...[
+            const SizedBox(height: 8),
+            AdminButton(
+              label: 'Save draft & exit',
+              variant: AdminBtn.ghost,
+              expand: true,
+              onPressed: onSaveDraft,
+            ),
+          ],
         ],
-      ),
-    );
-  }
-}
-
-// ───────────────────────── Image tile ─────────────────────────
-
-class _ImageTile extends StatelessWidget {
-  const _ImageTile({
-    required this.url,
-    required this.uploading,
-    required this.emptyLabel,
-    required this.onTap,
-  });
-
-  final String? url;
-  final bool uploading;
-  final String emptyLabel;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: uploading ? null : onTap,
-      borderRadius: BorderRadius.circular(AppSizes.radiusMd),
-      child: Container(
-        height: 120,
-        decoration: BoxDecoration(
-          color: AppColors.surfaceAlt,
-          borderRadius: BorderRadius.circular(AppSizes.radiusMd),
-          border: Border.all(color: AppColors.border),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: uploading
-            ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
-            : url == null
-                ? Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(
-                        PhosphorIconsRegular.uploadSimple,
-                        size: 24,
-                        color: AppColors.textMuted,
-                      ),
-                      const SizedBox(height: AppSizes.xs),
-                      Text(
-                        emptyLabel,
-                        style: AppTextStyles.caption
-                            .copyWith(color: AppColors.textMuted),
-                      ),
-                    ],
-                  )
-                : Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      Image.network(url!, fit: BoxFit.cover),
-                      Positioned(
-                        right: AppSizes.sm,
-                        bottom: AppSizes.sm,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: 0.55),
-                            borderRadius:
-                                BorderRadius.circular(AppSizes.radiusXs),
-                          ),
-                          child: Text(
-                            'Change',
-                            style: AppTextStyles.captionBold
-                                .copyWith(color: Colors.white, fontSize: 10),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
       ),
     );
   }
@@ -1161,30 +1048,27 @@ class _ImageTile extends StatelessWidget {
 class _MenuItemRow extends StatelessWidget {
   const _MenuItemRow({
     required this.item,
+    required this.categoryName,
     required this.onEdit,
     required this.onToggle,
   });
 
   final MenuItem item;
+
+  /// Resolved category label ("Starters"); null while categories load or if
+  /// the dish points at a category that no longer exists.
+  final String? categoryName;
   final VoidCallback onEdit;
   final ValueChanged<bool> onToggle;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppSizes.md,
-        vertical: AppSizes.sm,
-      ),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(AppSizes.radiusMd),
-        border: Border.all(color: AppColors.border),
-      ),
+    return AdminCard(
+      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
       child: Row(
         children: [
-          VegDot(isVeg: item.isVeg),
-          const SizedBox(width: AppSizes.sm),
+          AdminVegMark(isVeg: item.isVeg),
+          const SizedBox(width: 11),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1193,25 +1077,26 @@ class _MenuItemRow extends StatelessWidget {
                   item.name,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: AppTextStyles.bodyBold,
+                  style: AdminText.h3,
                 ),
+                const SizedBox(height: 2),
                 Text(
-                  '₹${item.price.toStringAsFixed(0)}',
-                  style: AppTextStyles.caption,
+                  categoryName == null
+                      ? '₹${item.price.toStringAsFixed(0)}'
+                      : '$categoryName · ₹${item.price.toStringAsFixed(0)}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AdminText.cap,
                 ),
               ],
             ),
           ),
-          IconButton(
-            icon: const Icon(PhosphorIconsRegular.pencilSimple, size: 18),
-            color: AppColors.textSecondary,
-            onPressed: onEdit,
+          AdminIconButton(
+            icon: PhosphorIconsRegular.pencilSimple,
+            onTap: onEdit,
           ),
-          Switch.adaptive(
-            value: item.isAvailable,
-            activeThumbColor: _indigo,
-            onChanged: onToggle,
-          ),
+          const SizedBox(width: 6),
+          AdminToggle(value: item.isAvailable, onChanged: onToggle),
         ],
       ),
     );
