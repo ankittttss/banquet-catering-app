@@ -23,6 +23,70 @@ void main() {
 
   EventDraftController ctrl() => container.read(eventDraftProvider.notifier);
 
+  group('switching away from a selected banquet venue', () {
+    test('clears the hall AND the event location it set (no stale hall pin)',
+        () {
+      ctrl().setVenueType(VenueType.banquetHall);
+      ctrl().setBanquetVenue(
+        venueId: 'v1',
+        venueName: 'Grand Palace',
+        address: 'Grand Palace, Gachibowli',
+        latitude: 17.44,
+        longitude: 78.35,
+        capacity: 500,
+      );
+      // The hall IS the event location at this point.
+      expect(container.read(eventDraftProvider).location,
+          'Grand Palace, Gachibowli');
+
+      ctrl().setVenueType(VenueType.privateProperty);
+
+      final d = container.read(eventDraftProvider);
+      expect(d.banquetVenueId, isNull);
+      expect(d.banquetVenueName, isNull);
+      expect(d.banquetVenueCapacity, isNull);
+      // The hall's address/pin must NOT survive as the "private" location —
+      // the property screen would otherwise accept the old venue as the place.
+      expect(d.location, isNull);
+      expect(d.eventLatitude, isNull);
+      expect(d.eventLongitude, isNull);
+      expect(d.hasEventCoords, isFalse);
+      expect(d.venueType, VenueType.privateProperty);
+    });
+
+    test('the old hall address never becomes the property address', () {
+      ctrl().setVenueType(VenueType.banquetHall);
+      ctrl().setBanquetVenue(
+        venueId: 'v1',
+        venueName: 'Grand Palace',
+        address: 'Grand Palace, Gachibowli',
+        latitude: 17.44,
+        longitude: 78.35,
+      );
+      ctrl().setVenueType(VenueType.privateProperty);
+
+      final p = container.read(eventDraftProvider).propertyDraft;
+      expect(p, isNotNull);
+      expect(p!.addressLine1, isNull);
+      expect(p.cityPincode, isNull);
+      expect(p.isComplete, isFalse); // needs a fresh, pinned location
+    });
+
+    test('a plain search location survives when NO hall was selected', () {
+      ctrl().setEventLocation(
+        address: 'Jubilee Hills, Hyderabad',
+        latitude: 17.43,
+        longitude: 78.40,
+      );
+      ctrl().setVenueType(VenueType.privateProperty);
+
+      final d = container.read(eventDraftProvider);
+      expect(d.location, 'Jubilee Hills, Hyderabad'); // the customer's own pick
+      expect(d.eventLatitude, 17.43);
+      expect(d.hasEventCoords, isTrue);
+    });
+  });
+
   group('start/end time consistency', () {
     test('first start pick auto-sets end to start + 3h', () {
       final start = DateTime(2026, 8, 20, 19, 0);

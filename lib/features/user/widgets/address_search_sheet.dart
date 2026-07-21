@@ -7,21 +7,33 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_sizes.dart';
 import '../../../core/constants/app_text_styles.dart';
+import '../../../core/services/location_service.dart';
 import '../../../core/services/photon_geocoder.dart';
 import '../../../data/models/user_address.dart';
 import '../../../shared/providers/address_providers.dart';
+import '../../../shared/providers/location_providers.dart';
 
 /// Bottom sheet: search for a place via Photon/OSM and return the chosen
 /// [GeocodeResult]. The caller is responsible for saving to the repo.
 class AddressSearchSheet extends ConsumerStatefulWidget {
-  const AddressSearchSheet._();
+  const AddressSearchSheet._({required this.allowCurrentLocation});
 
-  static Future<GeocodeResult?> show(BuildContext context) {
+  /// Whether the device-GPS shortcut is offered. Defaults to FALSE: GPS is
+  /// scoped to the approved event-planning flows (setting or changing the
+  /// event location), so opening this sheet anywhere else — e.g. the saved
+  /// address book — never prompts for location permission.
+  final bool allowCurrentLocation;
+
+  static Future<GeocodeResult?> show(
+    BuildContext context, {
+    bool allowCurrentLocation = false,
+  }) {
     return showModalBottomSheet<GeocodeResult>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => const AddressSearchSheet._(),
+      builder: (_) =>
+          AddressSearchSheet._(allowCurrentLocation: allowCurrentLocation),
     );
   }
 
@@ -36,6 +48,13 @@ class _AddressSearchSheetState extends ConsumerState<AddressSearchSheet> {
   bool _loading = false;
   String? _error;
   List<GeocodeResult> _results = const [];
+
+  /// True while a GPS lookup is in flight (the tile shows a spinner).
+  bool _gpsBusy = false;
+
+  /// A GPS-specific message shown under the tile when a lookup fails — never
+  /// blocks the sheet; manual search below stays fully usable.
+  String? _gpsError;
 
   @override
   void dispose() {
@@ -81,6 +100,62 @@ class _AddressSearchSheetState extends ConsumerState<AddressSearchSheet> {
         _loading = false;
       });
     }
+  }
+
+  /// Resolve the device location and return it as a [GeocodeResult]. GPS is
+  /// touched ONLY here — on an explicit tap while planning — so permission is
+  /// requested at the moment of intent, never at launch. Any failure (service
+  /// off, permission denied, lookup error) is shown inline and leaves the
+  /// manual address search fully available.
+  Future<void> _useCurrentLocation() async {
+    if (_gpsBusy) return;
+    setState(() {
+      _gpsBusy = true;
+      _gpsError = null;
+    });
+    try {
+      final addr = await ref.read(currentLocationProvider)();
+      if (!mounted) return;
+      Navigator.of(context).pop(_resultFromResolved(addr));
+    } on LocationException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _gpsBusy = false;
+        _gpsError = _gpsMessage(e.kind);
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _gpsBusy = false;
+        _gpsError = 'Couldn\'t get your location. Search your address below.';
+      });
+    }
+  }
+
+  static String _gpsMessage(LocationError kind) => switch (kind) {
+        LocationError.serviceDisabled =>
+          'Location is off. Turn it on, or search your address below.',
+        LocationError.permissionDenied ||
+        LocationError.permissionDeniedForever =>
+          'Location permission denied. Search your address below instead.',
+        LocationError.unknown =>
+          'Couldn\'t get your location. Search your address below.',
+      };
+
+  GeocodeResult _resultFromResolved(ResolvedAddress a) {
+    final parts = [a.line1, a.line2, a.city]
+        .where((s) => s != null && s.trim().isNotEmpty)
+        .cast<String>()
+        .toList();
+    final label =
+        parts.isEmpty ? 'Pinned to your current location' : parts.join(', ');
+    return GeocodeResult(
+      name: 'Current location',
+      displayAddress: label,
+      latitude: a.lat,
+      longitude: a.lng,
+      shortLabel: 'Current location',
+    );
   }
 
   @override
@@ -156,6 +231,7 @@ class _AddressSearchSheetState extends ConsumerState<AddressSearchSheet> {
                 ),
               ),
               const SizedBox(height: AppSizes.sm),
+              _buildGpsTile(),
               Expanded(
                 child: _buildBody(scrollCtl),
               ),
@@ -163,6 +239,80 @@ class _AddressSearchSheetState extends ConsumerState<AddressSearchSheet> {
           ),
         ),
       ),
+    );
+  }
+
+  /// "Use my current location" affordance — the only GPS entry point, and only
+  /// in the approved planning flows. Shows a spinner while resolving and an
+  /// inline, non-blocking message on failure.
+  Widget _buildGpsTile() {
+    if (!widget.allowCurrentLocation) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding:
+              const EdgeInsets.symmetric(horizontal: AppSizes.pagePaddingSm),
+          child: InkWell(
+            onTap: _gpsBusy ? null : _useCurrentLocation,
+            borderRadius: BorderRadius.circular(AppSizes.radiusMd),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSizes.sm,
+                vertical: AppSizes.sm,
+              ),
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 38,
+                    height: 38,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: AppColors.primarySoft,
+                        borderRadius: BorderRadius.circular(AppSizes.radiusSm),
+                      ),
+                      child: _gpsBusy
+                          ? const Padding(
+                              padding: EdgeInsets.all(10),
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(
+                              Icons.my_location_rounded,
+                              color: AppColors.primary,
+                              size: 18,
+                            ),
+                    ),
+                  ),
+                  const SizedBox(width: AppSizes.md),
+                  Expanded(
+                    child: Text(
+                      _gpsBusy
+                          ? 'Getting your location…'
+                          : 'Use my current location',
+                      style: AppTextStyles.bodyBold
+                          .copyWith(color: AppColors.primary),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        if (_gpsError != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              AppSizes.pagePadding,
+              2,
+              AppSizes.pagePadding,
+              AppSizes.xs,
+            ),
+            child: Text(
+              _gpsError!,
+              style: AppTextStyles.caption.copyWith(color: AppColors.textMuted),
+            ),
+          ),
+        const Divider(height: 1, color: AppColors.divider),
+      ],
     );
   }
 

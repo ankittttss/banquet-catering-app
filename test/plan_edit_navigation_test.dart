@@ -271,7 +271,8 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
 
-      await tester.tap(editButtons().at(1)); // Package is the second Edit
+      // Edit order: Event(0), Location(1), Package(2), Banquet venue(3).
+      await tester.tap(editButtons().at(2)); // Package is the third Edit
       await tester.pumpAndSettle(); // nav + async tiers + scroll animation
       expect(find.byType(EventDetailsScreen), findsOneWidget);
 
@@ -385,26 +386,27 @@ void main() {
     });
   });
 
-  group('deferred sections are not editable', () {
-    testWidgets('banquet plan → Edit only on Event + Package (2)',
+  group('every section is editable (Phase 3)', () {
+    testWidgets(
+        'banquet plan → Edit on Event + Location + Package + Banquet venue (4)',
         (tester) async {
       await pump(tester, initial: AppRoutes.eventPlan);
       seedBanquetPlan(container);
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
-      // Location and Banquet venue have no Edit action.
-      expect(editButtons(), findsNWidgets(2));
+      // Location and Banquet venue gained transactional Edit actions in Phase 3.
+      expect(editButtons(), findsNWidgets(4));
       await tester.pump(const Duration(milliseconds: 400));
     });
 
     testWidgets(
-        'private plan → Edit on Event + Package + Setup (3), not '
-        'property or location', (tester) async {
+        'private plan → Edit on Event + Location + Package + Property + '
+        'Setup (5)', (tester) async {
       await pump(tester, initial: AppRoutes.eventPlan);
       seedPrivatePlan(container);
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
-      expect(editButtons(), findsNWidgets(3));
+      expect(editButtons(), findsNWidgets(5));
       await tester.pump(const Duration(milliseconds: 400));
     });
   });
@@ -664,9 +666,12 @@ void main() {
         expect(snapCart(), cart0, reason: 'cart changed after edit $editIndex');
       }
 
+      // Private-plan Edit order: Event(0), Location(1), Package(2),
+      // Property(3), Setup(4). Location opens a sheet (covered elsewhere); the
+      // screen round-trips are Event, Package and Setup.
       await roundTrip(0, EventDetailsScreen); // Event
-      await roundTrip(1, EventDetailsScreen); // Package
-      await roundTrip(2, SetupEquipmentScreen); // Setup
+      await roundTrip(2, EventDetailsScreen); // Package
+      await roundTrip(4, SetupEquipmentScreen); // Setup
       await tester.pump(const Duration(milliseconds: 400));
     });
   });

@@ -15,6 +15,8 @@ import '../../../data/models/banquet_venue.dart';
 import '../../../data/models/venue_type.dart';
 import '../../../shared/providers/banquet_providers.dart';
 import '../../../shared/providers/event_providers.dart';
+import '../plan_edit_context.dart';
+import '../plan_edit_flows.dart';
 import '../planning_next_step.dart';
 import '../widgets/plan_flow_chrome.dart';
 
@@ -55,19 +57,54 @@ Future<void> _openBanquetPicker(
   BuildContext context,
   WidgetRef ref, {
   required bool proceedOnPick,
+  bool editReturn = false,
 }) async {
   final picked = await showModalBottomSheet<Object>(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
-    builder: (_) => const _BanquetPickerSheet(),
+    builder: (_) => _BanquetPickerSheet(returnSelection: editReturn),
   );
   if (!context.mounted) return;
   if (picked == _BanquetPickerSheet.changeLocationResult) {
-    // Navigate from the LIVE screen context (never the popped sheet's), and
-    // go() so the stack is replaced rather than stacking a duplicate
-    // Event Details page.
-    context.go(AppRoutes.eventDetails);
+    // Run the SAME transactional location change as everywhere else (candidate
+    // → impact preview → confirm). Jumping to Event Details here used to
+    // bypass it, letting the location mutate with no cart/venue impact check.
+    final changed = await changeEventLocationFlow(context, ref);
+    if (!context.mounted || !changed) return;
+    // A confirmed new location clears the venue, so reopen the picker to
+    // choose a hall near it.
+    await _openBanquetPicker(
+      context,
+      ref,
+      proceedOnPick: proceedOnPick,
+      editReturn: editReturn,
+    );
+    return;
+  }
+  // Edit mode: the sheet RETURNS the chosen venue instead of applying it, so
+  // the new hall is checked against the cart and confirmed BEFORE any mutation
+  // (no partial state — the transactional rule).
+  if (editReturn) {
+    if (picked is! BanquetVenue) return; // dismissed without picking
+    final applied = await applyChosenVenueInEdit(
+      context,
+      ref,
+      venueId: picked.id,
+      venueName: picked.name,
+      address: picked.address,
+      latitude: picked.latitude,
+      longitude: picked.longitude,
+      capacity: picked.capacity,
+    );
+    if (!context.mounted || !applied) return;
+    // Venue without a pin? Recover it from the address in the background.
+    if (picked.latitude == null || picked.longitude == null) {
+      unawaited(
+        _geocodeVenueCoords(ref.read(eventDraftProvider.notifier), picked),
+      );
+    }
+    returnFromEdit(context);
     return;
   }
   if (picked != true) return; // dismissed without picking
@@ -78,12 +115,117 @@ Future<void> _openBanquetPicker(
   }
 }
 
+/// Apply a venue-type selection. In edit mode a switch that would discard data
+/// (a selected hall, or property details + setup add-ons) is confirmed first,
+/// spelling out exactly what clears; in normal planning it applies immediately.
+Future<void> _selectVenueType(
+  BuildContext context,
+  WidgetRef ref,
+  bool editing,
+  VenueType target,
+) async {
+  HapticFeedback.selectionClick();
+  final draft = ref.read(eventDraftProvider);
+  if (draft.venueType == target) return; // re-tapping the current type: no-op
+  final notifier = ref.read(eventDraftProvider.notifier);
+
+  if (!editing) {
+    notifier.setVenueType(target);
+    return;
+  }
+
+  // Spell out what switching discards (setVenueType clears the other branch).
+  final clears = <String>[];
+  final losesHallLocation =
+      target == VenueType.privateProperty && draft.banquetVenueId != null;
+  if (target == VenueType.privateProperty) {
+    if (losesHallLocation) {
+      // The hall WAS the event location, so both go — say so plainly.
+      clears.add(
+        'your selected banquet venue'
+        '${draft.banquetVenueName != null ? ' (${draft.banquetVenueName})' : ''}',
+      );
+      clears.add('the event location it set');
+    }
+  } else {
+    final p = draft.propertyDraft;
+    final hasPropertyDetails = p != null &&
+        (p.type != null ||
+            (p.addressLine1?.trim().isNotEmpty ?? false) ||
+            (p.landmark?.trim().isNotEmpty ?? false) ||
+            (p.cityPincode?.trim().isNotEmpty ?? false));
+    if (hasPropertyDetails) clears.add('your private-property details');
+    if (draft.addonQuantities.isNotEmpty) {
+      clears.add('your setup & equipment add-ons');
+    }
+  }
+
+  if (clears.isEmpty) {
+    notifier.setVenueType(target); // nothing to lose
+    _afterSwitch(context, target, losesHallLocation);
+    return;
+  }
+
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: Text('Switch to ${target.label.toLowerCase()}?'),
+      content: Text(
+        'This will clear ${_joinClauses(clears)}.'
+        // The cart is deliberately left alone here: it is re-checked against
+        // the NEW location by the transactional flow once one is picked.
+        '${losesHallLocation ? "\n\nYou'll pick your property's location next — "
+            "your cart stays until then, and we'll check it against the new "
+            "location." : ''}',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(ctx).pop(false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(ctx).pop(true),
+          child: const Text('Switch'),
+        ),
+      ],
+    ),
+  );
+  // Cancel preserves the complete banquet plan untouched.
+  if (confirmed != true || !context.mounted) return;
+  notifier.setVenueType(target);
+  _afterSwitch(context, target, losesHallLocation);
+}
+
+/// After switching to private property from a selected hall the plan has NO
+/// location left, so send the customer straight to the property step where a
+/// new pinned location is required before it can complete.
+///
+/// REPLACE (not push): the venue screen is now describing a choice that no
+/// longer applies, so leaving it underneath would make Back from the property
+/// step land on a stale banquet screen — and a second "back" would then reach
+/// the plan, duplicating it. With a replacement, Done / AppBar back / system
+/// back all resolve to exactly one Event Plan, whether the venue step was
+/// pushed from the plan or entered directly.
+void _afterSwitch(BuildContext context, VenueType target, bool lostLocation) {
+  if (!lostLocation || target != VenueType.privateProperty) return;
+  if (!context.mounted) return;
+  context.pushReplacement(PlanEditContext.editProperty());
+}
+
+String _joinClauses(List<String> items) => items.length == 1
+    ? items.first
+    : '${items.sublist(0, items.length - 1).join(', ')} and ${items.last}';
+
 class VenueTypeScreen extends ConsumerWidget {
   const VenueTypeScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final draft = ref.watch(eventDraftProvider);
+    final edit = PlanEditContext.of(
+      GoRouterState.of(context),
+      PlanEditScreen.venueType,
+    );
 
     // Prerequisite guard (screen-level, reusing the shared planning cascade
     // to avoid router redirect-loops): the venue step needs a complete Event
@@ -122,132 +264,166 @@ class VenueTypeScreen extends ConsumerWidget {
     Future<void> onContinue() async {
       HapticFeedback.lightImpact();
       if (selected == VenueType.privateProperty) {
-        context.push(AppRoutes.eventProperty);
+        // Edit mode: continue into property details (which returns to the plan
+        // when done); normal mode pushes the next planning step.
+        context.push(
+          edit.isEditing
+              ? PlanEditContext.editProperty()
+              : AppRoutes.eventProperty,
+        );
         return;
       }
-      // Banquet: no venue yet → open the picker (and proceed on a pick);
-      // a valid selection → straight to the restaurant browser.
+      // Banquet: no venue yet → open the picker. In edit mode the pick is
+      // impact-checked and returns to the plan; normal mode proceeds forward.
       if (!hasVenue) {
-        await _openBanquetPicker(context, ref, proceedOnPick: true);
+        await _openBanquetPicker(
+          context,
+          ref,
+          proceedOnPick: !edit.isEditing,
+          editReturn: edit.isEditing,
+        );
+        return;
+      }
+      // Banquet with a valid venue: edit mode is done → back to the plan;
+      // normal mode goes to the restaurant browser.
+      if (edit.isEditing) {
+        returnFromEdit(context);
         return;
       }
       final t = DateTime.now().millisecondsSinceEpoch;
       context.push('${AppRoutes.userHome}?scrollTo=restaurants&t=$t');
     }
 
-    return Scaffold(
-      backgroundColor: AppColors.surfaceWarm,
-      body: SafeArea(
-        bottom: false,
-        child: Column(
-          children: [
-            const PlanFlowHeader(
-              title: "Where's the event?",
-              stepLabel: 'Venue',
-            ),
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(
-                  AppSizes.pagePadding,
-                  AppSizes.sm,
-                  AppSizes.pagePadding,
-                  AppSizes.md,
-                ),
-                children: [
-                  Text(
-                    'Hall or your place?',
-                    style: AppTextStyles.display.copyWith(
-                      fontSize: 28,
-                      height: 1.15,
-                    ),
-                  ),
-                  const SizedBox(height: AppSizes.xs),
-                  Text(
-                    'Both work for any tier. Private property unlocks setup & equipment.',
-                    style: AppTextStyles.bodyMuted.copyWith(fontSize: 15),
-                  ),
-                  const SizedBox(height: AppSizes.xl),
-                  _VenueCard(
-                    type: VenueType.banquetHall,
-                    selected: selected == VenueType.banquetHall,
-                    title: 'Banquet hall',
-                    subtitle: 'A curated venue from our network',
-                    overline: 'EASIEST · A VENUE FROM OUR NETWORK',
-                    overlineColor: AppColors.primary,
-                    accentColor: AppColors.primary,
-                    // Honest, workflow-backed value props only: the hall fee
-                    // is a real charge in place_order; the venue is the event
-                    // location, so the catering is delivered there; the
-                    // booking is routed to the venue operator for confirmation;
-                    // service staff are an add-on. (We deliberately avoid
-                    // "no equipment to rent" — the app simply has no banquet
-                    // equipment add-on flow; that doesn't guarantee any given
-                    // hall provides equipment.)
-                    bullets: const [
-                      'Hall fee in your quote',
-                      'We deliver to the venue',
-                      'Operator-confirmed booking',
-                      'Add service staff',
-                    ],
-                    imageUrl:
-                        'https://images.unsplash.com/photo-1530023367847-a683933f4172?auto=format&fit=crop&w=900&q=80',
-                    fallbackTint: AppColors.primarySoft,
-                    onTap: () {
-                      HapticFeedback.selectionClick();
-                      ref
-                          .read(eventDraftProvider.notifier)
-                          .setVenueType(VenueType.banquetHall);
-                    },
-                  ),
-                  if (selected == VenueType.banquetHall && hasVenue) ...[
-                    const SizedBox(height: AppSizes.md),
-                    _SelectedVenueCard(
-                      check: venueCheck!,
-                      guestCount: draft.guestCount,
-                      onChange: () => _openBanquetPicker(context, ref,
-                          proceedOnPick: false),
-                      onRetry: () =>
-                          ref.invalidate(selectedBanquetVenueCheckProvider),
-                    ),
-                  ],
-                  const SizedBox(height: AppSizes.lg),
-                  _VenueCard(
-                    type: VenueType.privateProperty,
-                    selected: selected == VenueType.privateProperty,
-                    title: 'Private property',
-                    subtitle: 'Your home, farmhouse, terrace, lawn',
-                    overline: 'MOST PERSONAL · HOSTED AT YOUR PLACE',
-                    overlineColor: AppColors.success,
-                    accentColor: AppColors.success,
-                    badgeLabel: 'NEW · MOST FLEXIBLE',
-                    bullets: const [
-                      'Hosted at your place',
-                      'Setup & equipment add-ons',
-                      'Add service staff',
-                    ],
-                    imageUrl:
-                        'https://images.unsplash.com/photo-1519225421980-715cb0215aed?auto=format&fit=crop&w=900&q=80',
-                    fallbackTint: AppColors.catGreenLt,
-                    onTap: () {
-                      HapticFeedback.selectionClick();
-                      ref
-                          .read(eventDraftProvider.notifier)
-                          .setVenueType(VenueType.privateProperty);
-                    },
-                  ),
-                  const SizedBox(height: AppSizes.lg),
-                ],
+    return PopScope(
+      // Edit mode: system/OS back returns to the Event Plan (pop when pushed,
+      // go on a direct deep link). Normal mode keeps default back.
+      canPop: !edit.isEditing,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) returnFromEdit(context);
+      },
+      child: Scaffold(
+        backgroundColor: AppColors.surfaceWarm,
+        body: SafeArea(
+          bottom: false,
+          child: Column(
+            children: [
+              PlanFlowHeader(
+                title: edit.isEditing ? 'Edit venue' : "Where's the event?",
+                stepLabel: 'Venue',
+                onBack: edit.isEditing ? () => returnFromEdit(context) : null,
               ),
-            ),
-            PlanFlowFooter(
-              labelLine1: selected == null ? 'Pick one' : 'You picked',
-              labelLine2: selected == null
-                  ? 'Hall or private property'
-                  : selected.label,
-              buttonLabel: 'Continue',
-              onPressed: canContinue ? () => onContinue() : null,
-            ),
-          ],
+              Expanded(
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(
+                    AppSizes.pagePadding,
+                    AppSizes.sm,
+                    AppSizes.pagePadding,
+                    AppSizes.md,
+                  ),
+                  children: [
+                    Text(
+                      'Hall or your place?',
+                      style: AppTextStyles.display.copyWith(
+                        fontSize: 28,
+                        height: 1.15,
+                      ),
+                    ),
+                    const SizedBox(height: AppSizes.xs),
+                    Text(
+                      'Both work for any tier. Private property unlocks setup & equipment.',
+                      style: AppTextStyles.bodyMuted.copyWith(fontSize: 15),
+                    ),
+                    const SizedBox(height: AppSizes.xl),
+                    _VenueCard(
+                      type: VenueType.banquetHall,
+                      selected: selected == VenueType.banquetHall,
+                      title: 'Banquet hall',
+                      subtitle: 'A curated venue from our network',
+                      overline: 'EASIEST · A VENUE FROM OUR NETWORK',
+                      overlineColor: AppColors.primary,
+                      accentColor: AppColors.primary,
+                      // Honest, workflow-backed value props only: the hall fee
+                      // is a real charge in place_order; the venue is the event
+                      // location, so the catering is delivered there; the
+                      // booking is routed to the venue operator for confirmation;
+                      // service staff are an add-on. (We deliberately avoid
+                      // "no equipment to rent" — the app simply has no banquet
+                      // equipment add-on flow; that doesn't guarantee any given
+                      // hall provides equipment.)
+                      bullets: const [
+                        'Hall fee in your quote',
+                        'We deliver to the venue',
+                        'Operator-confirmed booking',
+                        'Add service staff',
+                      ],
+                      imageUrl:
+                          'https://images.unsplash.com/photo-1530023367847-a683933f4172?auto=format&fit=crop&w=900&q=80',
+                      fallbackTint: AppColors.primarySoft,
+                      onTap: () => _selectVenueType(
+                        context,
+                        ref,
+                        edit.isEditing,
+                        VenueType.banquetHall,
+                      ),
+                    ),
+                    if (selected == VenueType.banquetHall && hasVenue) ...[
+                      const SizedBox(height: AppSizes.md),
+                      _SelectedVenueCard(
+                        check: venueCheck!,
+                        guestCount: draft.guestCount,
+                        onChange: () => _openBanquetPicker(
+                          context,
+                          ref,
+                          proceedOnPick: false,
+                          editReturn: edit.isEditing,
+                        ),
+                        onRetry: () =>
+                            ref.invalidate(selectedBanquetVenueCheckProvider),
+                      ),
+                    ],
+                    const SizedBox(height: AppSizes.lg),
+                    _VenueCard(
+                      type: VenueType.privateProperty,
+                      selected: selected == VenueType.privateProperty,
+                      title: 'Private property',
+                      subtitle: 'Your home, farmhouse, terrace, lawn',
+                      overline: 'MOST PERSONAL · HOSTED AT YOUR PLACE',
+                      overlineColor: AppColors.success,
+                      accentColor: AppColors.success,
+                      badgeLabel: 'NEW · MOST FLEXIBLE',
+                      bullets: const [
+                        'Hosted at your place',
+                        'Setup & equipment add-ons',
+                        'Add service staff',
+                      ],
+                      imageUrl:
+                          'https://images.unsplash.com/photo-1519225421980-715cb0215aed?auto=format&fit=crop&w=900&q=80',
+                      fallbackTint: AppColors.catGreenLt,
+                      onTap: () => _selectVenueType(
+                        context,
+                        ref,
+                        edit.isEditing,
+                        VenueType.privateProperty,
+                      ),
+                    ),
+                    const SizedBox(height: AppSizes.lg),
+                  ],
+                ),
+              ),
+              PlanFlowFooter(
+                labelLine1: selected == null ? 'Pick one' : 'You picked',
+                labelLine2: selected == null
+                    ? 'Hall or private property'
+                    : selected.label,
+                buttonLabel: edit.isEditing &&
+                        selected == VenueType.banquetHall &&
+                        hasVenue
+                    ? 'Done'
+                    : 'Continue',
+                onPressed: canContinue ? () => onContinue() : null,
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -836,7 +1012,12 @@ class _Bullet extends StatelessWidget {
 // ───────────────────────── Banquet picker sheet ─────────────────────────
 
 class _BanquetPickerSheet extends ConsumerWidget {
-  const _BanquetPickerSheet();
+  const _BanquetPickerSheet({this.returnSelection = false});
+
+  /// When true (editing from the plan), tapping a venue POPS the chosen
+  /// [BanquetVenue] instead of applying it, so the caller can check cart impact
+  /// and confirm before mutating. Normal planning applies on tap as before.
+  final bool returnSelection;
 
   /// Sheet result meaning "take me to Event Details to fix the location".
   /// The sheet itself NEVER navigates — its context dies with the pop; the
@@ -965,6 +1146,13 @@ class _BanquetPickerSheet extends ConsumerWidget {
                                     behavior: SnackBarBehavior.floating,
                                   ),
                                 );
+                                return;
+                              }
+                              // Edit mode: hand the venue back to the caller,
+                              // which checks cart impact + confirms before any
+                              // mutation. Normal mode applies immediately.
+                              if (returnSelection) {
+                                Navigator.of(context).pop(rows[i]);
                                 return;
                               }
                               final notifier =

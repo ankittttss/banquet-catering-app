@@ -37,6 +37,92 @@ void main() {
       );
       expect(c.section, EditSection.setup);
     });
+
+    test('venue on the Venue-type screen', () {
+      final c = parse(
+        '/user/event/venue?source=eventPlan&section=venue',
+        PlanEditScreen.venueType,
+      );
+      expect(c.isEditing, isTrue);
+      expect(c.section, EditSection.venue);
+    });
+
+    test('property on the Property screen', () {
+      final c = parse(
+        '/user/event/property?source=eventPlan&section=property',
+        PlanEditScreen.property,
+      );
+      expect(c.isEditing, isTrue);
+      expect(c.section, EditSection.property);
+    });
+  });
+
+  group('venue/property URL builders round-trip on their own screen', () {
+    test('editVenue() parses back to venue, and ONLY on the venue screen', () {
+      final url = PlanEditContext.editVenue();
+      expect(parse(url, PlanEditScreen.venueType).section, EditSection.venue);
+      // Same URL, wrong screens → normal mode.
+      for (final screen in [
+        PlanEditScreen.eventDetails,
+        PlanEditScreen.setup,
+        PlanEditScreen.property,
+      ]) {
+        expect(parse(url, screen).isEditing, isFalse, reason: '$screen');
+      }
+    });
+
+    test('editProperty() parses back to property, and ONLY on that screen', () {
+      final url = PlanEditContext.editProperty();
+      expect(
+        parse(url, PlanEditScreen.property).section,
+        EditSection.property,
+      );
+      for (final screen in [
+        PlanEditScreen.eventDetails,
+        PlanEditScreen.setup,
+        PlanEditScreen.venueType,
+      ]) {
+        expect(parse(url, screen).isEditing, isFalse, reason: '$screen');
+      }
+    });
+  });
+
+  group('venue/property sections are rejected on the wrong screen', () {
+    test('every section is accepted by exactly ONE screen', () {
+      const bySection = {
+        'event': PlanEditScreen.eventDetails,
+        'package': PlanEditScreen.eventDetails,
+        'setup': PlanEditScreen.setup,
+        'venue': PlanEditScreen.venueType,
+        'property': PlanEditScreen.property,
+      };
+      for (final entry in bySection.entries) {
+        for (final screen in PlanEditScreen.values) {
+          final c = parse(
+            '/x?source=eventPlan&section=${entry.key}',
+            screen,
+          );
+          final shouldEdit = screen == entry.value;
+          expect(
+            c.isEditing,
+            shouldEdit,
+            reason: 'section=${entry.key} on $screen',
+          );
+        }
+      }
+    });
+
+    test('venue/property still need the eventPlan source', () {
+      expect(
+        parse('/x?section=venue', PlanEditScreen.venueType).isEditing,
+        isFalse,
+      );
+      expect(
+        parse('/x?source=other&section=property', PlanEditScreen.property)
+            .isEditing,
+        isFalse,
+      );
+    });
   });
 
   group('valid section on the WRONG screen → normal mode', () {

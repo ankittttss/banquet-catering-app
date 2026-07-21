@@ -6,10 +6,10 @@ import '../../core/router/app_routes.dart';
 /// Which planning screen is reading the edit context. Section validity is
 /// screen-specific, so `section=setup` on Event Details (or `section=event`
 /// on the Setup screen) is rejected rather than treated as a half-valid edit.
-enum PlanEditScreen { eventDetails, setup }
+enum PlanEditScreen { eventDetails, setup, venueType, property }
 
 /// The sub-area an edit targets. Whitelisted — anything else is normal mode.
-enum EditSection { event, package, setup }
+enum EditSection { event, package, setup, venue, property }
 
 /// Typed, STRICTLY validated edit context parsed from a route's query string.
 ///
@@ -56,6 +56,8 @@ class PlanEditContext {
         'event' => EditSection.event,
         'package' => EditSection.package,
         'setup' => EditSection.setup,
+        'venue' => EditSection.venue,
+        'property' => EditSection.property,
         _ => null,
       };
 
@@ -65,6 +67,8 @@ class PlanEditContext {
             EditSection.package,
           },
         PlanEditScreen.setup => const {EditSection.setup},
+        PlanEditScreen.venueType => const {EditSection.venue},
+        PlanEditScreen.property => const {EditSection.property},
       };
 
   // ── URL builders — the ONLY sanctioned way to construct an edit URL ──
@@ -77,6 +81,12 @@ class PlanEditContext {
 
   /// The setup & equipment (add-ons) screen.
   static String editSetup() => _url(AppRoutes.eventSetup, 'setup');
+
+  /// The venue-type screen — switch hall/private, or change the banquet hall.
+  static String editVenue() => _url(AppRoutes.eventVenueType, 'venue');
+
+  /// The private-property screen — edit property type + address details.
+  static String editProperty() => _url(AppRoutes.eventProperty, 'property');
 
   static String _url(String base, String section) =>
       '$base?source=$_source&section=$section';

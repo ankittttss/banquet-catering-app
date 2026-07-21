@@ -13,13 +13,16 @@ import '../../../core/utils/material_icon_map.dart';
 import '../../../data/models/event_category.dart';
 import '../../../data/models/event_tier.dart';
 import '../../../shared/providers/address_providers.dart';
+import '../../../shared/providers/cart_providers.dart';
 import '../../../shared/providers/event_providers.dart';
 import '../../../shared/providers/event_tier_providers.dart';
 import '../../../shared/providers/home_providers.dart';
 import '../../../shared/widgets/app_scaffold.dart';
+import '../location_change.dart';
 import '../plan_edit_context.dart';
+import '../plan_edit_flows.dart';
 import '../planning_next_step.dart';
-import '../widgets/address_search_sheet.dart';
+import '../planning_session.dart';
 
 /// Visual accents per tier code — keeps the old package colour/icon palette
 /// without having to push those fields into the DB.
@@ -94,22 +97,34 @@ class _EventDetailsScreenState extends ConsumerState<EventDetailsScreen> {
       );
       if (edit.isEditing) return;
       // Pre-fill the event location from the ACTIVE address (the one the
-      // customer selected in the home header chip — falls back to their
-      // default), carrying its coordinates so the restaurant list can sort
-      // nearest to it until the user picks a specific event location.
-      // Previously this read the default address, silently disagreeing with
-      // the address the rest of the app was using.
+      // customer selected in the home header chip), but ONLY when doing so is
+      // genuinely consequence-free. An automatic write must never be a silent
+      // location change:
+      //  • it needs a real pin — a coordinate-less address can't be verified
+      //    against any kitchen, and writing it would strand the plan with an
+      //    unserviceable location;
+      //  • it must not touch location-dependent state — setEventLocation
+      //    clears a selected venue and the property address;
+      //  • it must not invalidate a cart the customer already built.
+      // When any of those apply we leave the location UNSET, so the customer
+      // sets it deliberately through the transactional flow.
       final draft = ref.read(eventDraftProvider);
-      if (draft.location == null || draft.location!.trim().isEmpty) {
-        final active = ref.read(activeAddressProvider);
-        if (active != null) {
-          ref.read(eventDraftProvider.notifier).setEventLocation(
-                address: active.fullAddress,
-                latitude: active.hasCoords ? active.latitude : null,
-                longitude: active.hasCoords ? active.longitude : null,
-              );
-        }
-      }
+      final locationEmpty =
+          draft.location == null || draft.location!.trim().isEmpty;
+      if (!locationEmpty) return;
+
+      final active = ref.read(activeAddressProvider);
+      if (active == null) return;
+      if (!hasUsableCoords(active.latitude, active.longitude)) return;
+      if (draft.banquetVenueId != null) return;
+      if (eventLocationChangeClearsProperty(draft)) return;
+      if (ref.read(cartProvider).isNotEmpty) return;
+
+      ref.read(eventDraftProvider.notifier).setEventLocation(
+            address: active.fullAddress,
+            latitude: active.latitude,
+            longitude: active.longitude,
+          );
     });
   }
 
@@ -213,21 +228,14 @@ class _EventDetailsScreenState extends ConsumerState<EventDetailsScreen> {
     ref.read(eventDraftProvider.notifier).setEndTime(end);
   }
 
-  Future<void> _pickEventLocation() async {
-    final res = await AddressSearchSheet.show(context);
-    if (res == null || !mounted) return;
-    final label = res.displayAddress.trim().isNotEmpty
-        ? res.displayAddress
-        : (res.shortLabel.trim().isNotEmpty ? res.shortLabel : res.name);
-    // Photon results always carry coords; the saved-address fallback may use
-    // 0/0 when a saved row has none — treat that as "no coords".
-    final hasCoords = res.latitude != 0 || res.longitude != 0;
-    ref.read(eventDraftProvider.notifier).setEventLocation(
-          address: label,
-          latitude: hasCoords ? res.latitude : null,
-          longitude: hasCoords ? res.longitude : null,
-        );
-  }
+  /// Change the event location through the ONE transactional flow.
+  ///
+  /// This screen is reachable from Home, Cart and Checkout with a live cart and
+  /// plan, so it must not write the location directly: the flow validates the
+  /// pin, previews which cart lines / venue / property details the move
+  /// invalidates, and applies only on confirmation. A fresh plan has no
+  /// consequences, so it still applies immediately.
+  Future<void> _pickEventLocation() => changeEventLocationFlow(context, ref);
 
   void _applyCategory(EventCategory cat) {
     HapticFeedback.selectionClick();

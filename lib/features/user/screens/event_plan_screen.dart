@@ -14,6 +14,7 @@ import '../../../shared/widgets/app_scaffold.dart';
 import '../../../shared/widgets/empty_state.dart';
 import '../event_plan_summary.dart';
 import '../plan_edit_context.dart';
+import '../plan_edit_flows.dart';
 
 /// Read-only overview of the customer's in-progress event: what is planned,
 /// and an honest verdict on whether it is actually orderable.
@@ -75,11 +76,12 @@ class EventPlanScreen extends ConsumerWidget {
                   ],
                 ),
                 const SizedBox(height: AppSizes.sm),
-                // Location editing is deferred to Phase 3's transactional
-                // change flow — read-only here (no Edit action).
+                // Transactional location change: pick an address, preview which
+                // venue/cart selections it invalidates, apply only on confirm.
                 _Section(
                   icon: PhosphorIconsFill.mapPin,
                   title: 'Location',
+                  onEdit: () => changeEventLocationFlow(context, ref),
                   rows: [('Event address', s.locationText)],
                 ),
                 const SizedBox(height: AppSizes.sm),
@@ -99,12 +101,12 @@ class EventPlanScreen extends ConsumerWidget {
                 ),
                 const SizedBox(height: AppSizes.sm),
                 if (s.isPrivateProperty) ...[
-                  // Property DETAILS editing is deferred to Phase 3
-                  // (addressLine1/cityPincode can disagree with the confirmed
-                  // event coordinates) — read-only here.
+                  // Edit property type + address, or switch to a banquet hall,
+                  // via the reused property/venue screens (return to plan).
                   _Section(
                     icon: PhosphorIconsFill.house,
                     title: 'Private property',
+                    onEdit: () => context.push(PlanEditContext.editProperty()),
                     rows: [('Property', s.propertyText)],
                   ),
                   const SizedBox(height: AppSizes.sm),
@@ -122,10 +124,12 @@ class EventPlanScreen extends ConsumerWidget {
                     ],
                   ),
                 ] else
-                  // Banquet venue change is deferred to Phase 3 — read-only.
+                  // Change the hall, or switch to private property, via the
+                  // reused venue screen (safe, confirmed, returns to plan).
                   _Section(
                     icon: PhosphorIconsFill.buildings,
                     title: 'Banquet venue',
+                    onEdit: () => context.push(PlanEditContext.editVenue()),
                     rows: [
                       (
                         'Selected',
@@ -140,8 +144,34 @@ class EventPlanScreen extends ConsumerWidget {
                             ref.invalidate(selectedBanquetVenueCheckProvider)
                         : null,
                   ),
+                const SizedBox(height: AppSizes.lg),
+                _StartFreshButton(onTap: () => startFreshFlow(context, ref)),
               ],
             ),
+    );
+  }
+}
+
+/// Destructive footer action — clears the whole plan and the cart after a
+/// confirmation that spells out exactly what is (and isn't) removed.
+class _StartFreshButton extends StatelessWidget {
+  const _StartFreshButton({required this.onTap});
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return OutlinedButton.icon(
+      onPressed: onTap,
+      icon: const Icon(Icons.refresh_rounded, size: 18),
+      label: const Text('Start fresh'),
+      style: OutlinedButton.styleFrom(
+        foregroundColor: AppColors.error,
+        side: BorderSide(color: AppColors.error.withValues(alpha: 0.4)),
+        minimumSize: const Size.fromHeight(48),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppSizes.radiusSm),
+        ),
+      ),
     );
   }
 }
