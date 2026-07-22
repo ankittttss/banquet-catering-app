@@ -400,13 +400,15 @@ void main() {
     });
 
     testWidgets(
-        'private plan → Edit on Event + Location + Package + Property + '
-        'Setup (5)', (tester) async {
+        'private plan → Edit on Event + Location + Package + Venue type + '
+        'Property + Setup (6)', (tester) async {
       await pump(tester, initial: AppRoutes.eventPlan);
       seedPrivatePlan(container);
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
-      expect(editButtons(), findsNWidgets(5));
+      // "Venue type" is what lets a private plan switch back to a hall.
+      expect(editButtons(), findsNWidgets(6));
+      expect(find.text('Venue type'), findsOneWidget);
       await tester.pump(const Duration(milliseconds: 400));
     });
   });
@@ -433,7 +435,7 @@ void main() {
       // Location: the address picker must NOT open. (For a banquet plan the
       // location is the venue address.)
       await tester.tap(
-        find.text('Grand Palace, Gachibowli'),
+        find.text('Grand Palace'),
         warnIfMissed: false,
       );
       await tester.pump();
@@ -523,7 +525,7 @@ void main() {
 
       expect(hasTap(tester, find.text('Wedding')), isFalse,
           reason: 'occasion tile must expose no tap action');
-      expect(hasTap(tester, find.text('Grand Palace, Gachibowli')), isFalse,
+      expect(hasTap(tester, find.text('Grand Palace')), isFalse,
           reason: 'location row must expose no tap action');
       handle.dispose();
       await tester.pump(const Duration(milliseconds: 400));
@@ -538,7 +540,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
 
       expect(hasTap(tester, find.text('Wedding')), isTrue);
-      expect(hasTap(tester, find.text('Grand Palace, Gachibowli')), isTrue);
+      expect(hasTap(tester, find.text('Grand Palace')), isTrue);
       handle.dispose();
       await tester.pump(const Duration(milliseconds: 400));
     });
@@ -553,7 +555,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
 
       expect(find.byType(AddressSearchSheet), findsNothing);
-      await tester.tap(find.text('Grand Palace, Gachibowli'));
+      await tester.tap(find.text('Grand Palace'));
       await tester.pumpAndSettle();
       expect(find.byType(AddressSearchSheet), findsOneWidget);
       await tester.pump(const Duration(milliseconds: 400));
@@ -667,11 +669,11 @@ void main() {
       }
 
       // Private-plan Edit order: Event(0), Location(1), Package(2),
-      // Property(3), Setup(4). Location opens a sheet (covered elsewhere); the
-      // screen round-trips are Event, Package and Setup.
+      // Venue type(3), Property(4), Setup(5). Location opens a sheet (covered
+      // elsewhere); the screen round-trips are Event, Package and Setup.
       await roundTrip(0, EventDetailsScreen); // Event
       await roundTrip(2, EventDetailsScreen); // Package
-      await roundTrip(4, SetupEquipmentScreen); // Setup
+      await roundTrip(5, SetupEquipmentScreen); // Setup
       await tester.pump(const Duration(milliseconds: 400));
     });
   });

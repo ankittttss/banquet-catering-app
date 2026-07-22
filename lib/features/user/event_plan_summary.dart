@@ -257,6 +257,10 @@ EventPlanSummary buildEventPlanSummary({
     dateText: _dateOnly(draft),
     timeText: _timeRange(draft),
     guestsText: '${draft.guestCount} guests',
+    // The ADDRESS on purpose. Elsewhere a booked hall is shown by name
+    // (EventDraft.eventLocationLabel), but this page already devotes a whole
+    // "Banquet venue" section to that name — repeating it here would say the
+    // same thing twice and drop the address entirely.
     locationText: (draft.location?.trim().isNotEmpty ?? false)
         ? draft.location!.trim()
         : 'Event location not set',

@@ -404,7 +404,10 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
 
-      expect(find.text('Private property'), findsOneWidget);
+      // Twice on purpose: the "Venue type" row states the TYPE, and the
+      // section below holds the property DETAILS.
+      expect(find.text('Private property'), findsNWidgets(2));
+      expect(find.text('Venue type'), findsOneWidget);
       expect(find.text('Setup & equipment'), findsOneWidget);
       expect(find.text('Banquet venue'), findsNothing);
       expect(find.textContaining('Farmhouse'), findsOneWidget);
