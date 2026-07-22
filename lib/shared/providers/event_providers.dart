@@ -321,13 +321,20 @@ class EventDraftController extends Notifier<EventDraft> {
         addonQuantities: const {},
       );
     } else {
+      // Switching away from a SELECTED hall must also drop the event location:
+      // the hall's address + pin WERE the event location, so keeping them would
+      // silently make the old venue the private-property location (and the
+      // property screen would accept that stale pin). Dropping the venue id
+      // alone is not enough. When no hall was selected the location is the
+      // customer's own search result — keep it.
+      final hadVenue = s.banquetVenueId != null;
       state = EventDraft(
         eventName: s.eventName,
         categorySlug: s.categorySlug,
         date: s.date,
-        location: s.location,
-        eventLatitude: s.eventLatitude,
-        eventLongitude: s.eventLongitude,
+        location: hadVenue ? null : s.location,
+        eventLatitude: hadVenue ? null : s.eventLatitude,
+        eventLongitude: hadVenue ? null : s.eventLongitude,
         session: s.session,
         startTime: s.startTime,
         endTime: s.endTime,
@@ -339,7 +346,10 @@ class EventDraftController extends Notifier<EventDraft> {
         banquetVenueCapacity: null,
         serviceBoyCount: s.serviceBoyCount,
         venueType: type,
-        propertyDraft: s.propertyDraft ?? const PrivatePropertyDraft(),
+        // The old hall's address never describes the customer's property.
+        propertyDraft: hadVenue
+            ? PrivatePropertyDraft(type: s.propertyDraft?.type)
+            : (s.propertyDraft ?? const PrivatePropertyDraft()),
         addonQuantities: s.addonQuantities,
       );
     }

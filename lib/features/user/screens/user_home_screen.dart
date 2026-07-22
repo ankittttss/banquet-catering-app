@@ -26,6 +26,8 @@ import '../../../shared/widgets/restaurant_card.dart';
 import '../../../shared/widgets/safe_net_image.dart';
 import '../../../shared/widgets/shimmer.dart';
 import '../../../shared/widgets/user_bottom_nav.dart';
+import '../../../shared/providers/event_plan_providers.dart';
+import '../event_plan_summary.dart';
 import '../planning_next_step.dart';
 import '../widgets/address_picker_sheet.dart';
 
@@ -115,6 +117,11 @@ class _UserHomeScreenState extends ConsumerState<UserHomeScreen> {
               ),
               if (needsLocationConfirm)
                 const SliverToBoxAdapter(child: _ConfirmLocationHint()),
+              // NB: no EventPlanChip here — home already has its own event
+              // surface (the draft card above, plus the floating location
+              // header), so a chip would just repeat date/guests and the
+              // "open the plan" tap. The chip lives on search / restaurant /
+              // menu, which have no such card.
               const _RestaurantList(),
               const SliverToBoxAdapter(child: SizedBox(height: AppSizes.xxxl)),
             ],
@@ -840,18 +847,21 @@ class _HeroOrDraft extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final draft = ref.watch(eventDraftProvider);
-    final progress = _DraftProgress.from(draft);
-    if (!progress.hasStarted) return const _HeroBanner();
-    return _DraftEventCard(draft: draft, progress: progress);
+    // THE shared summary — completion here also accounts for the live tier
+    // and banquet-venue checks, so the card can never claim "done" while the
+    // package or hall needs attention.
+    final summary = ref.watch(eventPlanSummaryProvider);
+    if (!summary.hasMeaningfulDraft) return const _HeroBanner();
+    return _DraftEventCard(draft: draft, summary: summary);
   }
 }
 
 // ───────────────────────── Draft event card ─────────────────────────
 
 class _DraftEventCard extends StatelessWidget {
-  const _DraftEventCard({required this.draft, required this.progress});
+  const _DraftEventCard({required this.draft, required this.summary});
   final EventDraft draft;
-  final _DraftProgress progress;
+  final EventPlanSummary summary;
 
   @override
   Widget build(BuildContext context) {
@@ -868,15 +878,10 @@ class _DraftEventCard extends StatelessWidget {
         child: InkWell(
           onTap: () {
             HapticFeedback.lightImpact();
-            final route = progress.nextRoute;
-            if (route == AppRoutes.userHome) {
-              // Fully planned — drop them at the restaurant list to add
-              // dishes. A fresh nonce makes home's scroll-to-restaurants fire.
-              final t = DateTime.now().millisecondsSinceEpoch;
-              context.push('${AppRoutes.userHome}?scrollTo=restaurants&t=$t');
-            } else {
-              context.push(route);
-            }
+            // The summary's route already reflects live validation (and never
+            // points back at Home), so the label, the progress and this tap
+            // destination cannot disagree.
+            context.push(summary.actionRoute);
           },
           borderRadius: BorderRadius.circular(AppSizes.radiusLg),
           child: Container(
@@ -901,15 +906,24 @@ class _DraftEventCard extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    Text(
-                      'CONTINUE PLANNING',
-                      style: AppTextStyles.captionBold.copyWith(
-                        color: Colors.white,
-                        fontSize: 11,
-                        letterSpacing: 1.4,
+                    // Expanded + ellipsis so the label takes the remaining
+                    // width and yields to the DRAFT chip rather than risk
+                    // overflowing the row on very narrow widths or a longer
+                    // localized label. Replaces a Spacer, which could not
+                    // shrink the text.
+                    Expanded(
+                      child: Text(
+                        'CONTINUE PLANNING',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTextStyles.captionBold.copyWith(
+                          color: Colors.white,
+                          fontSize: 11,
+                          letterSpacing: 1.4,
+                        ),
                       ),
                     ),
-                    const Spacer(),
+                    const SizedBox(width: AppSizes.sm),
                     Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 10,
@@ -936,7 +950,7 @@ class _DraftEventCard extends StatelessWidget {
                 ),
                 const SizedBox(height: AppSizes.md),
                 Text(
-                  progress.title,
+                  summary.title,
                   style: AppTextStyles.display.copyWith(
                     color: Colors.white,
                     fontSize: 26,
@@ -952,7 +966,7 @@ class _DraftEventCard extends StatelessWidget {
                   children: [
                     _DraftMeta(
                       icon: Icons.calendar_today_outlined,
-                      text: progress.dateText,
+                      text: summary.cardSubtitle,
                     ),
                     _DraftMeta(
                       icon: Icons.group_outlined,
@@ -964,7 +978,7 @@ class _DraftEventCard extends StatelessWidget {
                 ClipRRect(
                   borderRadius: BorderRadius.circular(AppSizes.radiusPill),
                   child: LinearProgressIndicator(
-                    value: progress.fraction,
+                    value: summary.fraction,
                     minHeight: 6,
                     backgroundColor: Colors.white.withValues(alpha: 0.28),
                     valueColor:
@@ -976,7 +990,7 @@ class _DraftEventCard extends StatelessWidget {
                   children: [
                     Expanded(
                       child: Text(
-                        progress.nextHint,
+                        summary.actionHint,
                         style: AppTextStyles.body.copyWith(
                           color: Colors.white.withValues(alpha: 0.92),
                           fontSize: 14,
@@ -1036,107 +1050,6 @@ class _DraftMeta extends StatelessWidget {
         ),
       ],
     );
-  }
-}
-
-class _DraftProgress {
-  const _DraftProgress({
-    required this.fraction,
-    required this.title,
-    required this.dateText,
-    required this.nextHint,
-    required this.nextRoute,
-    required this.hasStarted,
-  });
-
-  final double fraction;
-  final String title;
-  final String dateText;
-  final String nextHint;
-
-  /// Route the "Continue planning" card opens — the next unfinished step,
-  /// not always the first screen.
-  final String nextRoute;
-  final bool hasStarted;
-
-  static _DraftProgress from(EventDraft d) {
-    final hasStarted = d.session != null ||
-        d.date != null ||
-        (d.location != null && d.location!.trim().isNotEmpty) ||
-        d.tierId != null ||
-        d.banquetVenueId != null;
-
-    // The last planning step depends on the venue branch: a banquet-hall
-    // event finishes by picking a venue, a private-property event by
-    // completing the property details. (Previously this always demanded a
-    // banquet venue, permanently capping private-property drafts at 5/6.)
-    final isPrivate = d.venueType == VenueType.privateProperty;
-    final venueStepDone = isPrivate
-        ? (d.propertyDraft?.isComplete ?? false)
-        : d.banquetVenueId != null;
-
-    final steps = <bool>[
-      d.session != null,
-      d.date != null,
-      d.startTime != null && d.endTime != null,
-      d.location != null && d.location!.trim().isNotEmpty,
-      d.tierId != null,
-      venueStepDone,
-    ];
-    final filled = steps.where((e) => e).length;
-    final fraction = filled / steps.length;
-
-    // Hint + destination for the "Continue planning" card come from one
-    // shared cascade (planningNextStep) so the label and the tap target can
-    // never disagree.
-    final step = planningNextStep(d);
-
-    return _DraftProgress(
-      fraction: fraction,
-      title: _composeTitle(d),
-      dateText: _composeDate(d),
-      nextHint: step.hint,
-      nextRoute: step.route,
-      hasStarted: hasStarted,
-    );
-  }
-
-  static String _composeTitle(EventDraft d) {
-    // Custom name takes priority — e.g. "Aanya's Sangeet" — and falls
-    // back to a composed label only when the user hasn't named it yet.
-    final custom = d.eventName?.trim();
-    if (custom != null && custom.isNotEmpty) return custom;
-    final session = d.session;
-    if (session != null) return '$session for ${d.guestCount}';
-    return 'Your event for ${d.guestCount}';
-  }
-
-  static String _composeDate(EventDraft d) {
-    if (d.date == null) return 'Date not set';
-    const months = [
-      'Jan',
-      'Feb',
-      'Mar',
-      'Apr',
-      'May',
-      'Jun',
-      'Jul',
-      'Aug',
-      'Sep',
-      'Oct',
-      'Nov',
-      'Dec',
-    ];
-    const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    final dt = d.date!;
-    final base =
-        '${weekdays[dt.weekday - 1]}, ${dt.day} ${months[dt.month - 1]}';
-    if (d.startTime == null) return base;
-    final st = d.startTime!;
-    final hour12 = st.hour % 12 == 0 ? 12 : st.hour % 12;
-    final ampm = st.hour >= 12 ? 'PM' : 'AM';
-    final mm = st.minute.toString().padLeft(2, '0');
-    return '$base · $hour12:$mm $ampm';
   }
 }
 

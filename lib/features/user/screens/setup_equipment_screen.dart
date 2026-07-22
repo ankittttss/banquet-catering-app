@@ -12,6 +12,7 @@ import '../../../core/utils/material_icon_map.dart';
 import '../../../data/models/addon.dart';
 import '../../../shared/providers/addon_providers.dart';
 import '../../../shared/providers/event_providers.dart';
+import '../plan_edit_context.dart';
 import '../widgets/plan_flow_chrome.dart';
 
 class SetupEquipmentScreen extends ConsumerStatefulWidget {
@@ -27,6 +28,14 @@ class _SetupEquipmentScreenState extends ConsumerState<SetupEquipmentScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      // Never auto-seed in edit mode — that would silently re-add add-ons the
+      // customer may have deliberately cleared. Seeding is first-visit only.
+      final edit = PlanEditContext.of(
+        GoRouterState.of(context),
+        PlanEditScreen.setup,
+      );
+      if (edit.isEditing) return;
       // Seed the default selection the first time the user lands here so
       // the screen feels "Pre-filled for N guests" out of the box.
       final draft = ref.read(eventDraftProvider);
@@ -46,6 +55,10 @@ class _SetupEquipmentScreenState extends ConsumerState<SetupEquipmentScreen> {
     final total = ref.watch(addonsTotalProvider);
     final count = ref.watch(addonsCountProvider);
     final guests = draft.guestCount;
+    final edit = PlanEditContext.of(
+      GoRouterState.of(context),
+      PlanEditScreen.setup,
+    );
 
     // Group catalog by .group for the SECTION headers.
     final byGroup = <String, List<Addon>>{};
@@ -53,53 +66,67 @@ class _SetupEquipmentScreenState extends ConsumerState<SetupEquipmentScreen> {
       byGroup.putIfAbsent(a.group, () => []).add(a);
     }
 
-    return Scaffold(
-      backgroundColor: AppColors.surfaceWarm,
-      body: SafeArea(
-        bottom: false,
-        child: Column(
-          children: [
-            const PlanFlowHeader(
-              title: 'Setup & equipment',
-              stepLabel: 'Venue',
-              subtitleOverride: 'Optional add-ons for your property',
-            ),
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(
-                  AppSizes.pagePadding,
-                  AppSizes.sm,
-                  AppSizes.pagePadding,
-                  AppSizes.md,
-                ),
-                children: [
-                  _PrefilledBanner(guests: guests),
-                  const SizedBox(height: AppSizes.lg),
-                  for (final group in byGroup.keys) ...[
-                    _GroupHeader(label: group),
-                    const SizedBox(height: AppSizes.sm),
-                    _GroupCard(items: byGroup[group]!),
-                    const SizedBox(height: AppSizes.lg),
-                  ],
-                ],
+    return PopScope(
+      // Edit mode: OS/system back returns to the Event Plan (pop when pushed,
+      // go on a direct deep link). Normal mode keeps default back.
+      canPop: !edit.isEditing,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) returnFromEdit(context);
+      },
+      child: Scaffold(
+        backgroundColor: AppColors.surfaceWarm,
+        body: SafeArea(
+          bottom: false,
+          child: Column(
+            children: [
+              PlanFlowHeader(
+                title: edit.isEditing ? 'Edit setup' : 'Setup & equipment',
+                stepLabel: 'Venue',
+                subtitleOverride: 'Optional add-ons for your property',
+                // Edit mode returns to the Event Plan on a deep link (no route
+                // underneath); normal mode keeps the header's default back.
+                onBack: edit.isEditing ? () => returnFromEdit(context) : null,
               ),
-            ),
-            PlanFlowFooter(
-              labelLine1: '$count add-ons · setup',
-              labelLine2: Formatters.currency(total),
-              labelLine2Color: AppColors.primary,
-              buttonLabel: 'Pick the menu',
-              onPressed: () {
-                HapticFeedback.lightImpact();
-                // Setup is the final planning step — go straight to the menu.
-                final t = DateTime.now().millisecondsSinceEpoch;
-                // Push so the back stack preserves the planning steps.
-                context.push(
-                  '${AppRoutes.userHome}?scrollTo=restaurants&t=$t',
-                );
-              },
-            ),
-          ],
+              Expanded(
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(
+                    AppSizes.pagePadding,
+                    AppSizes.sm,
+                    AppSizes.pagePadding,
+                    AppSizes.md,
+                  ),
+                  children: [
+                    _PrefilledBanner(guests: guests),
+                    const SizedBox(height: AppSizes.lg),
+                    for (final group in byGroup.keys) ...[
+                      _GroupHeader(label: group),
+                      const SizedBox(height: AppSizes.sm),
+                      _GroupCard(items: byGroup[group]!),
+                      const SizedBox(height: AppSizes.lg),
+                    ],
+                  ],
+                ),
+              ),
+              PlanFlowFooter(
+                labelLine1: '$count add-ons · setup',
+                labelLine2: Formatters.currency(total),
+                labelLine2Color: AppColors.primary,
+                buttonLabel: edit.isEditing ? 'Done' : 'Pick the menu',
+                onPressed: edit.isEditing
+                    ? () => returnFromEdit(context)
+                    : () {
+                        HapticFeedback.lightImpact();
+                        // Setup is the final planning step — go straight to the
+                        // menu.
+                        final t = DateTime.now().millisecondsSinceEpoch;
+                        // Push so the back stack preserves the planning steps.
+                        context.push(
+                          '${AppRoutes.userHome}?scrollTo=restaurants&t=$t',
+                        );
+                      },
+              ),
+            ],
+          ),
         ),
       ),
     );

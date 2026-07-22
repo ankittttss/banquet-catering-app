@@ -21,6 +21,7 @@ class PlanFlowHeader extends StatelessWidget {
     required this.title,
     required this.stepLabel,
     this.subtitleOverride,
+    this.onBack,
   });
 
   final String title;
@@ -30,6 +31,10 @@ class PlanFlowHeader extends StatelessWidget {
   /// sub-screens that want a bespoke line (e.g. "Optional add-ons for your
   /// property").
   final String? subtitleOverride;
+
+  /// Overrides the back button's default `pop → userHome fallback`. Edit mode
+  /// uses this to fall back to the Event Plan on a direct deep link instead.
+  final VoidCallback? onBack;
 
   @override
   Widget build(BuildContext context) {
@@ -46,9 +51,10 @@ class PlanFlowHeader extends StatelessWidget {
           Row(
             children: [
               InkWell(
-                onTap: () => context.canPop()
-                    ? context.pop()
-                    : context.go(AppRoutes.userHome),
+                onTap: onBack ??
+                    () => context.canPop()
+                        ? context.pop()
+                        : context.go(AppRoutes.userHome),
                 customBorder: const CircleBorder(),
                 child: const Padding(
                   padding: EdgeInsets.all(AppSizes.sm),

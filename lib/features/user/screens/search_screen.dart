@@ -17,6 +17,7 @@ import '../../../shared/providers/search_providers.dart';
 import '../../../shared/providers/search_results_providers.dart';
 import '../../../shared/widgets/app_scaffold.dart';
 import '../../../shared/widgets/safe_net_image.dart';
+import '../widgets/event_plan_chip.dart';
 
 class SearchScreen extends ConsumerStatefulWidget {
   const SearchScreen({super.key, this.initialQuery});
@@ -458,6 +459,9 @@ class _ResultsView extends ConsumerWidget {
             color: AppColors.primary,
             backgroundColor: Colors.transparent,
           ),
+        // Persistent (does not scroll away) so the plan stays reachable while
+        // the customer browses results.
+        const EventPlanChip(),
         Expanded(
           child: ListView(
             padding: const EdgeInsets.only(

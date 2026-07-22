@@ -13,12 +13,16 @@ import '../../../core/utils/material_icon_map.dart';
 import '../../../data/models/event_category.dart';
 import '../../../data/models/event_tier.dart';
 import '../../../shared/providers/address_providers.dart';
+import '../../../shared/providers/cart_providers.dart';
 import '../../../shared/providers/event_providers.dart';
 import '../../../shared/providers/event_tier_providers.dart';
 import '../../../shared/providers/home_providers.dart';
 import '../../../shared/widgets/app_scaffold.dart';
+import '../location_change.dart';
+import '../plan_edit_context.dart';
+import '../plan_edit_flows.dart';
 import '../planning_next_step.dart';
-import '../widgets/address_search_sheet.dart';
+import '../planning_session.dart';
 
 /// Visual accents per tier code — keeps the old package colour/icon palette
 /// without having to push those fields into the DB.
@@ -68,6 +72,12 @@ class _EventDetailsScreenState extends ConsumerState<EventDetailsScreen> {
   String? _categorySlug;
   late final TextEditingController _nameCtrl;
 
+  /// Anchor for scroll-to-package when opened via `section=package`.
+  final _packageKey = GlobalKey();
+
+  /// One-shot guard so the edit-mode scroll fires exactly once.
+  bool _didEditScroll = false;
+
   @override
   void initState() {
     super.initState();
@@ -77,23 +87,44 @@ class _EventDetailsScreenState extends ConsumerState<EventDetailsScreen> {
     // Pre-select the occasion the customer chose on the home grid.
     _categorySlug = ref.read(eventDraftProvider).categorySlug;
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      // In edit mode the plan already has a location — never auto-prefill it
+      // (that would be a silent mutation the moment the customer opens an
+      // edit). Prefill only happens during first-time forward planning.
+      final edit = PlanEditContext.of(
+        GoRouterState.of(context),
+        PlanEditScreen.eventDetails,
+      );
+      if (edit.isEditing) return;
       // Pre-fill the event location from the ACTIVE address (the one the
-      // customer selected in the home header chip — falls back to their
-      // default), carrying its coordinates so the restaurant list can sort
-      // nearest to it until the user picks a specific event location.
-      // Previously this read the default address, silently disagreeing with
-      // the address the rest of the app was using.
+      // customer selected in the home header chip), but ONLY when doing so is
+      // genuinely consequence-free. An automatic write must never be a silent
+      // location change:
+      //  • it needs a real pin — a coordinate-less address can't be verified
+      //    against any kitchen, and writing it would strand the plan with an
+      //    unserviceable location;
+      //  • it must not touch location-dependent state — setEventLocation
+      //    clears a selected venue and the property address;
+      //  • it must not invalidate a cart the customer already built.
+      // When any of those apply we leave the location UNSET, so the customer
+      // sets it deliberately through the transactional flow.
       final draft = ref.read(eventDraftProvider);
-      if (draft.location == null || draft.location!.trim().isEmpty) {
-        final active = ref.read(activeAddressProvider);
-        if (active != null) {
-          ref.read(eventDraftProvider.notifier).setEventLocation(
-                address: active.fullAddress,
-                latitude: active.hasCoords ? active.latitude : null,
-                longitude: active.hasCoords ? active.longitude : null,
-              );
-        }
-      }
+      final locationEmpty =
+          draft.location == null || draft.location!.trim().isEmpty;
+      if (!locationEmpty) return;
+
+      final active = ref.read(activeAddressProvider);
+      if (active == null) return;
+      if (!hasUsableCoords(active.latitude, active.longitude)) return;
+      if (draft.banquetVenueId != null) return;
+      if (eventLocationChangeClearsProperty(draft)) return;
+      if (ref.read(cartProvider).isNotEmpty) return;
+
+      ref.read(eventDraftProvider.notifier).setEventLocation(
+            address: active.fullAddress,
+            latitude: active.latitude,
+            longitude: active.longitude,
+          );
     });
   }
 
@@ -197,27 +228,41 @@ class _EventDetailsScreenState extends ConsumerState<EventDetailsScreen> {
     ref.read(eventDraftProvider.notifier).setEndTime(end);
   }
 
-  Future<void> _pickEventLocation() async {
-    final res = await AddressSearchSheet.show(context);
-    if (res == null || !mounted) return;
-    final label = res.displayAddress.trim().isNotEmpty
-        ? res.displayAddress
-        : (res.shortLabel.trim().isNotEmpty ? res.shortLabel : res.name);
-    // Photon results always carry coords; the saved-address fallback may use
-    // 0/0 when a saved row has none — treat that as "no coords".
-    final hasCoords = res.latitude != 0 || res.longitude != 0;
-    ref.read(eventDraftProvider.notifier).setEventLocation(
-          address: label,
-          latitude: hasCoords ? res.latitude : null,
-          longitude: hasCoords ? res.longitude : null,
-        );
-  }
+  /// Change the event location through the ONE transactional flow.
+  ///
+  /// This screen is reachable from Home, Cart and Checkout with a live cart and
+  /// plan, so it must not write the location directly: the flow validates the
+  /// pin, previews which cart lines / venue / property details the move
+  /// invalidates, and applies only on confirmation. A fresh plan has no
+  /// consequences, so it still applies immediately.
+  Future<void> _pickEventLocation() => changeEventLocationFlow(context, ref);
 
   void _applyCategory(EventCategory cat) {
     HapticFeedback.selectionClick();
     setState(() => _categorySlug = cat.slug);
     ref.read(eventDraftProvider.notifier).setCategory(cat);
   }
+
+  /// Bring the package section into view (called after tiers load). Fires once.
+  void _scrollToPackage() {
+    if (_didEditScroll) return;
+    final ctx = _packageKey.currentContext;
+    if (ctx == null) return; // not laid out yet — a later frame retries
+    _didEditScroll = true;
+    Scrollable.ensureVisible(
+      ctx,
+      duration: const Duration(milliseconds: 400),
+      curve: Curves.easeOutCubic,
+      alignment: 0.05,
+    );
+  }
+
+  /// Visually mutes [child] while editing. The actual interaction guard is the
+  /// NULL callback passed into the child (occasion/location), which removes the
+  /// tap action for pointer, keyboard AND semantics — an IgnorePointer here
+  /// would only stop the pointer.
+  Widget _mutedInEdit(bool editing, Widget child) =>
+      editing ? Opacity(opacity: 0.55, child: child) : child;
 
   @override
   Widget build(BuildContext context) {
@@ -248,184 +293,235 @@ class _EventDetailsScreenState extends ConsumerState<EventDetailsScreen> {
     final blockedHint =
         step.route == AppRoutes.eventDetails ? step.hint : tierBlock;
 
-    return AppScaffold(
-      padded: false,
-      appBar: AppBar(
-        title: const Text('Plan your event'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () =>
-              context.canPop() ? context.pop() : context.go(AppRoutes.userHome),
+    // Strict, screen-aware edit context: only source=eventPlan + section
+    // event|package activates edit mode here; anything else is normal mode.
+    final edit = PlanEditContext.of(
+      GoRouterState.of(context),
+      PlanEditScreen.eventDetails,
+    );
+    // Bring the package section into view once tiers have loaded (its height
+    // is only correct after the async content lands). Runs at most once.
+    if (edit.section == EditSection.package &&
+        !_didEditScroll &&
+        tiersAsync.hasValue) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToPackage());
+    }
+
+    return PopScope(
+      // In edit mode, intercept OS/system back so it returns to the Event Plan
+      // for a DIRECT deep link too (a pushed edit already pops there). Normal
+      // mode keeps the default back behaviour.
+      canPop: !edit.isEditing,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) returnFromEdit(context);
+      },
+      child: AppScaffold(
+        padded: false,
+        appBar: AppBar(
+          title: Text(edit.isEditing ? 'Edit event' : 'Plan your event'),
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_rounded),
+            // Edit mode returns to the Event Plan (pop, or go there on a deep
+            // link) and keeps the already-applied edits; normal mode keeps the
+            // existing back-to-home fallback.
+            onPressed: () => edit.isEditing
+                ? returnFromEdit(context)
+                : (context.canPop()
+                    ? context.pop()
+                    : context.go(AppRoutes.userHome)),
+          ),
         ),
-      ),
-      body: ListView(
-        padding: const EdgeInsets.only(bottom: AppSizes.lg),
-        children: [
-          _Section(
-            title: 'Event name',
-            required: true,
-            child: _EventNameField(
-              controller: _nameCtrl,
-              onChanged: (v) =>
-                  ref.read(eventDraftProvider.notifier).setEventName(v),
-            ),
-          ),
-          _Section(
-            title: 'Event type',
-            child: catsAsync.when(
-              loading: () => const SizedBox(
-                height: 80,
-                child: Center(child: CircularProgressIndicator()),
+        body: ListView(
+          padding: const EdgeInsets.only(bottom: AppSizes.lg),
+          children: [
+            _Section(
+              title: 'Event name',
+              required: true,
+              child: _EventNameField(
+                controller: _nameCtrl,
+                onChanged: (v) =>
+                    ref.read(eventDraftProvider.notifier).setEventName(v),
               ),
-              // Honest failure state — previously loading, error and empty
-              // all rendered the same endless spinner.
-              error: (_, __) => _InlineLoadError(
-                message: "Couldn't load occasions",
-                onRetry: () => ref.invalidate(eventCategoriesProvider),
-              ),
-              data: (cats) => cats.isEmpty
-                  ? Text(
-                      'No occasions available yet.',
-                      style: AppTextStyles.caption,
-                    )
-                  : _CategoryGrid(
-                      categories: cats,
-                      selectedSlug: _categorySlug,
-                      onSelect: _applyCategory,
-                    ),
             ),
-          ),
-          _Section(
-            title: 'Session',
-            required: true,
-            child: _SessionChips(
-              selected: draft.session,
-              onSelect: (s) {
-                HapticFeedback.selectionClick();
-                ref.read(eventDraftProvider.notifier).setSession(s);
-              },
-            ),
-          ),
-          _Section(
-            title: 'Number of guests',
-            child: _GuestSelector(
-              count: draft.guestCount,
-              onChanged: (v) =>
-                  ref.read(eventDraftProvider.notifier).setGuestCount(v),
-            ),
-          ),
-          _Section(
-            title: 'Event location',
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _PickerRow(
-                  icon: Icons.location_on_outlined,
-                  value:
-                      (draft.location == null || draft.location!.trim().isEmpty)
-                          ? 'Add event location'
-                          : draft.location!,
-                  onTap: _pickEventLocation,
+            _Section(
+              title: 'Event type',
+              child: catsAsync.when(
+                loading: () => const SizedBox(
+                  height: 80,
+                  child: Center(child: CircularProgressIndicator()),
                 ),
-                const SizedBox(height: AppSizes.xs),
-                Text(
-                  'We show restaurants nearest to your event location.',
-                  style: AppTextStyles.caption,
+                // Honest failure state — previously loading, error and empty
+                // all rendered the same endless spinner.
+                error: (_, __) => _InlineLoadError(
+                  message: "Couldn't load occasions",
+                  onRetry: () => ref.invalidate(eventCategoriesProvider),
                 ),
-              ],
-            ),
-          ),
-          _Section(
-            title: 'Date & time',
-            child: Column(
-              children: [
-                _PickerRow(
-                  icon: Icons.calendar_today_rounded,
-                  value: draft.date == null
-                      ? 'Pick a date'
-                      : Formatters.date(draft.date!),
-                  onTap: _pickDate,
-                ),
-                const SizedBox(height: AppSizes.sm),
-                _PickerRow(
-                  icon: Icons.schedule_rounded,
-                  value: draft.startTime == null
-                      ? 'Pick a start time'
-                      : 'Starts ${_formatTime(draft.startTime!)}',
-                  onTap: _pickStartTime,
-                ),
-                const SizedBox(height: AppSizes.sm),
-                _PickerRow(
-                  icon: Icons.schedule_rounded,
-                  value: draft.endTime == null
-                      ? 'Pick an end time'
-                      : 'Ends ${_formatTime(draft.endTime!)}',
-                  onTap: _pickEndTime,
-                ),
-              ],
-            ),
-          ),
-          _Section(
-            title: 'Choose a package',
-            child: _TierPicker(selectedTierId: draft.tierId),
-          ),
-          const SizedBox(height: AppSizes.md),
-          Padding(
-            padding:
-                const EdgeInsets.symmetric(horizontal: AppSizes.pagePadding),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                FilledButton(
-                  // Gate driven by THE shared cascade (planningNextStep)
-                  // plus the loaded-tier requirement — the same rules the
-                  // home card, checkout and place_order use — so this
-                  // screen can never let something through that a later
-                  // step bounces back.
-                  onPressed: blockedHint != null ? null : _onContinue,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: AppColors.primary,
-                    minimumSize: const Size.fromHeight(52),
-                    disabledBackgroundColor: AppColors.border,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(AppSizes.radiusSm),
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      Text(
-                        'Continue',
-                        style: AppTextStyles.buttonLabel.copyWith(
-                          color: Colors.white,
-                          fontSize: 15,
-                          height: 1.0,
+                data: (cats) => cats.isEmpty
+                    ? Text(
+                        'No occasions available yet.',
+                        style: AppTextStyles.caption,
+                      )
+                    // Occasion is READ-ONLY in edit mode: setCategory silently
+                    // rewrites session + guest count, which can invalidate the
+                    // venue/cart — deferred to Phase 3. A null onSelect removes
+                    // the tap action for pointer, keyboard AND semantics.
+                    : _mutedInEdit(
+                        edit.isEditing,
+                        _CategoryGrid(
+                          categories: cats,
+                          selectedSlug: _categorySlug,
+                          onSelect: edit.isEditing ? null : _applyCategory,
                         ),
                       ),
-                      const SizedBox(width: 6),
-                      const Icon(
-                        Icons.chevron_right_rounded,
-                        color: Colors.white,
-                        size: 20,
-                      ),
-                    ],
-                  ),
-                ),
-                if (blockedHint != null)
-                  Padding(
-                    padding: const EdgeInsets.only(top: AppSizes.sm),
-                    child: Text(
-                      blockedHint,
-                      textAlign: TextAlign.center,
-                      style: AppTextStyles.caption
-                          .copyWith(color: AppColors.textMuted),
+              ),
+            ),
+            _Section(
+              title: 'Session',
+              required: true,
+              child: _SessionChips(
+                selected: draft.session,
+                onSelect: (s) {
+                  HapticFeedback.selectionClick();
+                  ref.read(eventDraftProvider.notifier).setSession(s);
+                },
+              ),
+            ),
+            _Section(
+              title: 'Number of guests',
+              child: _GuestSelector(
+                count: draft.guestCount,
+                onChanged: (v) =>
+                    ref.read(eventDraftProvider.notifier).setGuestCount(v),
+              ),
+            ),
+            _Section(
+              title: 'Event location',
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Location change is READ-ONLY in edit mode: it drives
+                  // discovery/serviceability and needs the Phase 3 candidate +
+                  // cart-impact preflight before it may mutate. A null onTap
+                  // removes the tap action for pointer, keyboard AND semantics.
+                  _mutedInEdit(
+                    edit.isEditing,
+                    _PickerRow(
+                      icon: Icons.location_on_outlined,
+                      onTap: edit.isEditing ? null : _pickEventLocation,
+                      value: (draft.location == null ||
+                              draft.location!.trim().isEmpty)
+                          ? 'Add event location'
+                          : draft.location!,
                     ),
                   ),
-              ],
+                  const SizedBox(height: AppSizes.xs),
+                  Text(
+                    'We show restaurants nearest to your event location.',
+                    style: AppTextStyles.caption,
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+            _Section(
+              title: 'Date & time',
+              child: Column(
+                children: [
+                  _PickerRow(
+                    icon: Icons.calendar_today_rounded,
+                    value: draft.date == null
+                        ? 'Pick a date'
+                        : Formatters.date(draft.date!),
+                    onTap: _pickDate,
+                  ),
+                  const SizedBox(height: AppSizes.sm),
+                  _PickerRow(
+                    icon: Icons.schedule_rounded,
+                    value: draft.startTime == null
+                        ? 'Pick a start time'
+                        : 'Starts ${_formatTime(draft.startTime!)}',
+                    onTap: _pickStartTime,
+                  ),
+                  const SizedBox(height: AppSizes.sm),
+                  _PickerRow(
+                    icon: Icons.schedule_rounded,
+                    value: draft.endTime == null
+                        ? 'Pick an end time'
+                        : 'Ends ${_formatTime(draft.endTime!)}',
+                    onTap: _pickEndTime,
+                  ),
+                ],
+              ),
+            ),
+            _Section(
+              key: _packageKey,
+              title: 'Choose a package',
+              child: _TierPicker(
+                selectedTierId: draft.tierId,
+                editing: edit.isEditing,
+              ),
+            ),
+            const SizedBox(height: AppSizes.md),
+            Padding(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: AppSizes.pagePadding),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  FilledButton(
+                    // Edit mode: "Done" always returns to the Event Plan (edits
+                    // are already applied). Normal mode: the shared-cascade +
+                    // loaded-tier gate, unchanged.
+                    onPressed: edit.isEditing
+                        ? () => returnFromEdit(context)
+                        : (blockedHint != null ? null : _onContinue),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      minimumSize: const Size.fromHeight(52),
+                      disabledBackgroundColor: AppColors.border,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(AppSizes.radiusSm),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Text(
+                          edit.isEditing ? 'Done' : 'Continue',
+                          style: AppTextStyles.buttonLabel.copyWith(
+                            color: Colors.white,
+                            fontSize: 15,
+                            height: 1.0,
+                          ),
+                        ),
+                        if (!edit.isEditing) ...[
+                          const SizedBox(width: 6),
+                          const Icon(
+                            Icons.chevron_right_rounded,
+                            color: Colors.white,
+                            size: 20,
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  // The blocked hint is a normal-mode affordance; Done never
+                  // blocks, so it's hidden in edit mode.
+                  if (!edit.isEditing && blockedHint != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: AppSizes.sm),
+                      child: Text(
+                        blockedHint,
+                        textAlign: TextAlign.center,
+                        style: AppTextStyles.caption
+                            .copyWith(color: AppColors.textMuted),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -481,6 +577,7 @@ class _EventDetailsScreenState extends ConsumerState<EventDetailsScreen> {
 
 class _Section extends StatelessWidget {
   const _Section({
+    super.key,
     required this.title,
     required this.child,
     this.required = false,
@@ -628,7 +725,10 @@ class _CategoryGrid extends StatelessWidget {
 
   final List<EventCategory> categories;
   final String? selectedSlug;
-  final ValueChanged<EventCategory> onSelect;
+
+  /// Null disables selection (read-only edit gate) — the chips expose no tap
+  /// action to pointer, keyboard or semantics.
+  final ValueChanged<EventCategory>? onSelect;
 
   @override
   Widget build(BuildContext context) {
@@ -638,6 +738,7 @@ class _CategoryGrid extends StatelessWidget {
         child: Center(child: CircularProgressIndicator()),
       );
     }
+    final select = onSelect;
     return Wrap(
       spacing: AppSizes.sm,
       runSpacing: AppSizes.sm,
@@ -646,7 +747,7 @@ class _CategoryGrid extends StatelessWidget {
           _CategoryChip(
             category: c,
             selected: c.slug == selectedSlug,
-            onTap: () => onSelect(c),
+            onTap: select == null ? null : () => select(c),
           ),
       ],
     );
@@ -661,7 +762,9 @@ class _CategoryChip extends StatelessWidget {
   });
   final EventCategory category;
   final bool selected;
-  final VoidCallback onTap;
+
+  /// Null disables the chip (read-only edit gate).
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -911,7 +1014,10 @@ class _PickerRow extends StatelessWidget {
   });
   final IconData icon;
   final String value;
-  final VoidCallback onTap;
+
+  /// Null disables the row entirely — InkWell exposes no tap action to
+  /// pointer, keyboard or semantics (used for the read-only edit gate).
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -949,8 +1055,14 @@ class _PickerRow extends StatelessWidget {
 // ───────────────────────── Tier picker ─────────────────────────
 
 class _TierPicker extends ConsumerWidget {
-  const _TierPicker({required this.selectedTierId});
+  const _TierPicker({required this.selectedTierId, this.editing = false});
   final String? selectedTierId;
+
+  /// In edit mode the package is NEVER auto-selected/reconciled — that would
+  /// silently mutate the plan just by opening an edit. The list renders with
+  /// nothing selected until the customer taps; Done may return with the
+  /// package still needing attention. Normal planning keeps the auto-select.
+  final bool editing;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -976,11 +1088,18 @@ class _TierPicker extends ConsumerWidget {
         // Resolve the draft's selection against the ACTIVE list. Null means
         // unselected OR invalid — a persisted draft may still carry a
         // legacy fallback id ('budget'/'standard'/'premium') or a tier that
-        // was deactivated since. Either way it's replaced with the first
-        // active tier, so the selected card is always real and visible and
-        // Continue can never proceed on an invisible, invalid tier.
+        // was deactivated since.
+        //
+        // In NORMAL planning, a null result is replaced with the first active
+        // tier so the selected card is always real and visible and Continue
+        // can never proceed on an invisible, invalid tier. In EDIT mode this
+        // auto-replacement is suppressed (see below): opening an edit must
+        // never silently change the package.
         final selected = resolveSelectedTier(tiers, selectedTierId);
-        if (selected == null) {
+        // Auto-select a valid default ONLY in normal planning. In edit mode a
+        // missing/invalid/deactivated selection is left as-is (nothing shown
+        // selected) so opening an edit never silently changes the package.
+        if (selected == null && !editing) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             final first = tiers.first;
             ref
