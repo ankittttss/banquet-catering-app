@@ -397,6 +397,69 @@ void main() {
     });
   });
 
+  group('private → banquet is reachable again', () {
+    Future<void> settle(WidgetTester tester) async {
+      for (var i = 0; i < 4; i++) {
+        await tester.pump(const Duration(milliseconds: 400));
+      }
+    }
+
+    void seedPrivatePlan(ProviderContainer c) {
+      final ctrl = c.read(eventDraftProvider.notifier);
+      final d = DateTime.now().add(const Duration(days: 30));
+      ctrl.setEventName('Housewarming');
+      ctrl.setSession('Lunch');
+      ctrl.setDate(DateTime(d.year, d.month, d.day));
+      ctrl.setStartTime(DateTime(d.year, d.month, d.day, 12));
+      ctrl.setEventLocation(
+        address: 'Jubilee Hills, Hyderabad',
+        latitude: 17.43,
+        longitude: 78.40,
+      );
+      ctrl.setTier(tierId: tierId, tierCode: 'STANDARD');
+      ctrl.setVenueType(VenueType.privateProperty);
+      ctrl.setPropertyType(PropertyType.farmhouse);
+    }
+
+    testWidgets(
+        'a private plan exposes a Venue type edit that opens the '
+        'venue screen', (tester) async {
+      await pump(tester, seedBeforeMount: seedPrivatePlan);
+
+      // The row exists at all — without it there is NO path back.
+      expect(find.text('Venue type'), findsOneWidget);
+      expect(find.text('Private property'), findsWidgets);
+
+      // Edit order for a private plan: Event, Location, Package, Venue type,
+      // Private property, Setup.
+      await tester.tap(find.text('Edit').at(3));
+      await settle(tester);
+      expect(find.text('Edit venue'), findsOneWidget);
+    });
+
+    testWidgets('switching private → banquet hall works end to end',
+        (tester) async {
+      await pump(tester, seedBeforeMount: seedPrivatePlan);
+      await tester.tap(find.text('Edit').at(3));
+      await settle(tester);
+
+      // Choosing the hall clears the private-property branch, so it confirms.
+      await tester.tap(find.text('Banquet hall'));
+      await settle(tester);
+      if (find.text('Switch').evaluate().isNotEmpty) {
+        await tester.tap(find.text('Switch'));
+        await settle(tester);
+      }
+
+      final draft = container.read(eventDraftProvider);
+      expect(draft.venueType, VenueType.banquetHall);
+      expect(draft.propertyDraft, isNull); // private branch dropped
+      // The searched location survives — no hall was ever selected.
+      expect(draft.location, 'Jubilee Hills, Hyderabad');
+      expect(draft.hasEventCoords, isTrue);
+    });
+  });
+
   group('venue picker has no transactional bypass', () {
     testWidgets(
         '"Change location" runs the transactional flow instead of jumping to '
@@ -557,7 +620,8 @@ void main() {
       final draftBefore = draftJson();
       final cartBefore = cartSigs();
 
-      await tester.tap(find.text('Grand Palace, Gachibowli').last);
+      // The location row shows the booked hall by NAME, not its address.
+      await tester.tap(find.text('Grand Palace').last);
       await tester.pumpAndSettle();
       // The transactional address sheet — not a direct write.
       expect(find.text('Search an address'), findsOneWidget);

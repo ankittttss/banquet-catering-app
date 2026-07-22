@@ -9,7 +9,6 @@ import '../../../core/constants/app_sizes.dart';
 import '../../../core/constants/app_text_styles.dart';
 import '../../../core/router/app_routes.dart';
 import '../../../core/utils/material_icon_map.dart';
-import '../../../data/models/collection.dart';
 import '../../../data/models/event_category.dart';
 import '../../../data/models/event_draft.dart';
 import '../../../data/models/venue_type.dart';
@@ -24,10 +23,10 @@ import '../../../shared/widgets/double_back_exit.dart';
 import '../../../shared/widgets/empty_state.dart';
 import '../../../shared/widgets/restaurant_card.dart';
 import '../../../shared/widgets/safe_net_image.dart';
-import '../../../shared/widgets/shimmer.dart';
 import '../../../shared/widgets/user_bottom_nav.dart';
 import '../../../shared/providers/event_plan_providers.dart';
 import '../event_plan_summary.dart';
+import '../plan_edit_context.dart';
 import '../planning_next_step.dart';
 import '../widgets/address_picker_sheet.dart';
 
@@ -48,17 +47,15 @@ class _UserHomeScreenState extends ConsumerState<UserHomeScreen> {
   Future<void> _refresh() async {
     ref.invalidate(restaurantsProvider);
     ref.invalidate(eventCategoriesProvider);
-    ref.invalidate(collectionsProvider);
     ref.invalidate(addressesProvider);
     // Wait for EVERY refreshed section, not just restaurants — otherwise the
-    // spinner disappears while categories/collections are still reloading.
-    // Each future is shielded so one failing section can't wedge the pull.
+    // spinner disappears while categories are still reloading. Each future is
+    // shielded so one failing section can't wedge the pull.
     Future<void> quiet(Future<Object?> f) =>
         f.then<void>((_) {}).catchError((_) {});
     await Future.wait<void>([
       quiet(ref.read(restaurantsProvider.future)),
       quiet(ref.read(eventCategoriesProvider.future)),
-      quiet(ref.read(collectionsProvider.future)),
       quiet(ref.read(addressesProvider.future)),
     ]);
   }
@@ -104,11 +101,6 @@ class _UserHomeScreenState extends ConsumerState<UserHomeScreen> {
               const SliverToBoxAdapter(child: _HeroOrDraft()),
               const _SectionHeader(title: "What's the occasion?"),
               const SliverToBoxAdapter(child: _EventCategoriesGrid()),
-              const SliverToBoxAdapter(child: SizedBox(height: AppSizes.md)),
-              // Curated section renders its own header so header + tiles
-              // appear and disappear together (no orphaned title on error
-              // or empty data).
-              const SliverToBoxAdapter(child: _CollectionsScroll()),
               const SliverToBoxAdapter(child: SizedBox(height: AppSizes.md)),
               const SliverToBoxAdapter(child: _FilterChipsRow()),
               _SectionHeader(
@@ -202,11 +194,21 @@ class _LocationHeader extends ConsumerWidget {
     final IconData markerIcon;
     final VoidCallback onHeaderTap;
     if (planning) {
-      final comma = eventLocation.indexOf(',');
       overline = 'Event location';
-      mainLabel =
-          comma > 0 ? eventLocation.substring(0, comma).trim() : eventLocation;
-      subLine = comma > 0 ? eventLocation : null;
+      // A selected banquet hall is shown by NAME (its address becomes the
+      // sub-line); a private/searched location has only an address, so the
+      // first segment is the label and the full line supports it.
+      final venue = draft.banquetVenueName?.trim();
+      if (venue != null && venue.isNotEmpty) {
+        mainLabel = venue;
+        subLine = draft.eventLocationDetail;
+      } else {
+        final comma = eventLocation.indexOf(',');
+        mainLabel = comma > 0
+            ? eventLocation.substring(0, comma).trim()
+            : eventLocation;
+        subLine = comma > 0 ? eventLocation : null;
+      }
       markerIcon = Icons.event_rounded;
       onHeaderTap = () => context.push(AppRoutes.eventDetails);
     } else {
@@ -1179,14 +1181,8 @@ class _SectionHeader extends StatelessWidget {
 }
 
 class _SectionHeaderRow extends StatelessWidget {
-  const _SectionHeaderRow({
-    required this.title,
-    this.trailing,
-    this.onTrailingTap,
-  });
+  const _SectionHeaderRow({required this.title});
   final String title;
-  final String? trailing;
-  final VoidCallback? onTrailingTap;
 
   @override
   Widget build(BuildContext context) {
@@ -1201,35 +1197,6 @@ class _SectionHeaderRow extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Flexible(child: Text(title, style: AppTextStyles.heading1)),
-          if (trailing != null)
-            InkWell(
-              onTap: onTrailingTap == null
-                  ? null
-                  : () {
-                      HapticFeedback.selectionClick();
-                      onTrailingTap!();
-                    },
-              borderRadius: BorderRadius.circular(AppSizes.radiusSm),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: AppSizes.xs, vertical: AppSizes.xs),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      trailing!,
-                      style: AppTextStyles.bodyBold
-                          .copyWith(color: AppColors.primary, fontSize: 13),
-                    ),
-                    if (onTrailingTap != null) ...[
-                      const SizedBox(width: 2),
-                      const Icon(Icons.arrow_forward_rounded,
-                          size: 14, color: AppColors.primary),
-                    ],
-                  ],
-                ),
-              ),
-            ),
         ],
       ),
     );
@@ -1420,83 +1387,6 @@ class _EventGridSkeleton extends StatelessWidget {
   }
 }
 
-// ───────────────────────── Collections scroll ─────────────────────────
-
-/// The whole "Curated for events" section — HEADER INCLUDED, so the title,
-/// the tiles, the skeleton and the error state all appear and disappear as
-/// one unit (no orphaned header over nothing).
-///
-/// Cards are limited to collections whose slug maps to a catalog-verified
-/// search term ([collectionSearchTerm]) — a card must never open an empty
-/// search. When no collection qualifies (or the list is empty), the entire
-/// section collapses.
-class _CollectionsScroll extends ConsumerWidget {
-  const _CollectionsScroll();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final async = ref.watch(collectionsProvider);
-
-    Widget titled(Widget child) => Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _SectionHeaderRow(
-              title: 'Curated for events',
-              trailing: 'See all',
-              onTrailingTap: () => context.push(AppRoutes.search),
-            ),
-            child,
-          ],
-        );
-
-    return async.when(
-      loading: () => titled(
-        SizedBox(
-          height: 110,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            physics: const NeverScrollableScrollPhysics(),
-            padding:
-                const EdgeInsets.symmetric(horizontal: AppSizes.pagePadding),
-            itemCount: 3,
-            separatorBuilder: (_, __) => const SizedBox(width: AppSizes.sm),
-            itemBuilder: (_, __) => ShimmerBox(
-              width: 170,
-              height: 110,
-              borderRadius: BorderRadius.circular(AppSizes.radiusMd),
-            ),
-          ),
-        ),
-      ),
-      error: (_, __) => titled(
-        _SectionLoadError(
-          message: "Couldn't load collections",
-          onRetry: () => ref.invalidate(collectionsProvider),
-        ),
-      ),
-      data: (list) {
-        final usable = list
-            .where((c) => collectionSearchTerm(c.slug) != null)
-            .toList(growable: false);
-        if (usable.isEmpty) return const SizedBox.shrink();
-        return titled(
-          SizedBox(
-            height: 110,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              padding:
-                  const EdgeInsets.symmetric(horizontal: AppSizes.pagePadding),
-              itemCount: usable.length,
-              separatorBuilder: (_, __) => const SizedBox(width: AppSizes.sm),
-              itemBuilder: (_, i) => _CollectionCard(collection: usable[i]),
-            ),
-          ),
-        );
-      },
-    );
-  }
-}
-
 /// Compact inline failure row for a home section: message + Retry. Keeps the
 /// section visible and recoverable instead of silently vanishing.
 class _SectionLoadError extends StatelessWidget {
@@ -1531,56 +1421,6 @@ class _SectionLoadError extends StatelessWidget {
                     AppTextStyles.bodyBold.copyWith(color: AppColors.primary),
               ),
             ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _CollectionCard extends StatelessWidget {
-  const _CollectionCard({required this.collection});
-  final Collection collection;
-
-  @override
-  Widget build(BuildContext context) {
-    final bg =
-        AppColors.fromHex(collection.bgHex, fallback: AppColors.primarySoft);
-    final fg =
-        AppColors.fromHex(collection.iconHex, fallback: AppColors.primary);
-    return InkWell(
-      onTap: () {
-        HapticFeedback.lightImpact();
-        // Land on live search results for this collection's theme, using the
-        // catalog-VERIFIED term for this slug (the raw slug/name returned
-        // zero results — the cards used to open empty searches).
-        final term = collectionSearchTerm(collection.slug);
-        if (term == null) return; // unmapped cards are filtered out anyway
-        context.push('${AppRoutes.search}?q=${Uri.encodeComponent(term)}');
-      },
-      borderRadius: BorderRadius.circular(AppSizes.radiusMd),
-      child: Container(
-        width: 170,
-        padding: const EdgeInsets.all(AppSizes.md),
-        decoration: BoxDecoration(
-          color: bg,
-          borderRadius: BorderRadius.circular(AppSizes.radiusMd),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(
-              materialIconByName(collection.iconName),
-              color: fg,
-              size: 26,
-            ),
-            const Spacer(),
-            Text(
-              collection.name,
-              style: AppTextStyles.heading3.copyWith(fontSize: 14),
-            ),
-            // NOTE: the DB `subtitle` ("28 places" etc.) is deliberately NOT
-            // rendered — those counts were static seed text, not real data.
           ],
         ),
       ),
@@ -1665,13 +1505,48 @@ class _RestaurantList extends ConsumerWidget {
       ),
       data: (list) {
         if (list.isEmpty) {
-          return const SliverToBoxAdapter(
+          // Say WHY it's empty. The list is filtered by (a) the selected
+          // package — which can legitimately match no kitchen at all — and
+          // (b) the sort chip, on top of the location radius. A generic
+          // "no restaurants yet" reads as broken and hides the way out.
+          final draft = ref.watch(eventDraftProvider);
+          final sort = ref.watch(homeSortProvider);
+          final where = draft.eventLocationLabel;
+          final near = where == null ? 'you' : '“$where”';
+
+          final String title;
+          final String message;
+          final String actionLabel;
+          final VoidCallback onAction;
+          if (draft.tierId != null) {
+            title = 'No kitchens serve this package here';
+            message = 'No kitchen near $near offers the package you picked. '
+                'Try a different package, or change the event location.';
+            actionLabel = 'Change package';
+            onAction = () => context.push(PlanEditContext.editPackage());
+          } else if (sort != HomeSort.relevance) {
+            title = 'No kitchens match “${sort.label}”';
+            message = 'Nothing near $near matches that filter right now.';
+            actionLabel = 'Clear filter';
+            onAction = () =>
+                ref.read(homeSortProvider.notifier).state = HomeSort.relevance;
+          } else {
+            title = 'No kitchens near $near yet';
+            message = 'We couldn\'t find a kitchen that delivers here. '
+                'Try a different event location.';
+            actionLabel = 'Change location';
+            onAction = () => context.push(AppRoutes.eventDetails);
+          }
+
+          return SliverToBoxAdapter(
             child: Padding(
-              padding: EdgeInsets.all(AppSizes.pagePadding),
+              padding: const EdgeInsets.all(AppSizes.pagePadding),
               child: EmptyState(
                 icon: Icons.restaurant_rounded,
-                title: 'No restaurants yet',
-                message: 'Try a different filter or come back soon.',
+                title: title,
+                message: message,
+                actionLabel: actionLabel,
+                onAction: onAction,
               ),
             ),
           );

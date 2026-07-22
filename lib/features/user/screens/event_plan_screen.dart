@@ -82,7 +82,9 @@ class EventPlanScreen extends ConsumerWidget {
                   icon: PhosphorIconsFill.mapPin,
                   title: 'Location',
                   onEdit: () => changeEventLocationFlow(context, ref),
-                  rows: [('Event address', s.locationText)],
+                  // Neutral label: the value is a venue NAME for a booked hall
+                  // and an address for a private property.
+                  rows: [('Event location', s.locationText)],
                 ),
                 const SizedBox(height: AppSizes.sm),
                 _Section(
@@ -101,8 +103,18 @@ class EventPlanScreen extends ConsumerWidget {
                 ),
                 const SizedBox(height: AppSizes.sm),
                 if (s.isPrivateProperty) ...[
-                  // Edit property type + address, or switch to a banquet hall,
-                  // via the reused property/venue screens (return to plan).
+                  // The ONLY way back to the venue-type screen for a private
+                  // plan. Banquet plans reach it through their "Banquet venue"
+                  // Edit; without this row a customer who picked private
+                  // property could never switch to a hall again.
+                  _Section(
+                    icon: PhosphorIconsFill.buildings,
+                    title: 'Venue type',
+                    onEdit: () => context.push(PlanEditContext.editVenue()),
+                    rows: const [('Type', 'Private property')],
+                  ),
+                  const SizedBox(height: AppSizes.sm),
+                  // Property type + address details.
                   _Section(
                     icon: PhosphorIconsFill.house,
                     title: 'Private property',

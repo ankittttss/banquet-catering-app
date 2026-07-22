@@ -92,6 +92,31 @@ class EventDraft {
   /// True when the event location carries usable coordinates.
   bool get hasEventCoords => eventLatitude != null && eventLongitude != null;
 
+  /// How the event location should be NAMED in the UI.
+  ///
+  /// A booked banquet hall is known by its name, not its street address —
+  /// "Grand Palace" means something to the customer in a way that
+  /// "Plot 42, Survey No. 118/A…" does not. A private property has no such
+  /// name, so its address stays the label.
+  ///
+  /// Display only: [location] + coordinates remain the routing/serviceability
+  /// truth everywhere, and the address is still shown as supporting detail.
+  String? get eventLocationLabel {
+    final venue = banquetVenueName?.trim();
+    if (venue != null && venue.isNotEmpty) return venue;
+    final addr = location?.trim();
+    return (addr != null && addr.isNotEmpty) ? addr : null;
+  }
+
+  /// The address line that supports [eventLocationLabel]. Null when it would
+  /// just repeat the label (private property, where the label IS the address).
+  String? get eventLocationDetail {
+    final venue = banquetVenueName?.trim();
+    if (venue == null || venue.isEmpty) return null;
+    final addr = location?.trim();
+    return (addr != null && addr.isNotEmpty && addr != venue) ? addr : null;
+  }
+
   bool get isComplete =>
       date != null &&
       (location != null && location!.trim().isNotEmpty) &&

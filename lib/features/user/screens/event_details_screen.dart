@@ -408,10 +408,8 @@ class _EventDetailsScreenState extends ConsumerState<EventDetailsScreen> {
                     _PickerRow(
                       icon: Icons.location_on_outlined,
                       onTap: edit.isEditing ? null : _pickEventLocation,
-                      value: (draft.location == null ||
-                              draft.location!.trim().isEmpty)
-                          ? 'Add event location'
-                          : draft.location!,
+                      // A booked hall reads as its NAME, not its address.
+                      value: draft.eventLocationLabel ?? 'Add event location',
                     ),
                   ),
                   const SizedBox(height: AppSizes.xs),
